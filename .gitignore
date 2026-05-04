@@ -1,0 +1,16 @@
+# Project/language specific
+/target
+**/*.rs.bk
+/dev_notes
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# macOS / Windows
+.DS_Store
+Thumbs.db
