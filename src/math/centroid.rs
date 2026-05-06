@@ -1,6 +1,16 @@
 //! Centroid calculation utilities.
 use crate::math::{Scalar, Vector};
 
+/// Calculates the geometric centroid for a given set of points.
+///
+/// The centroid serves as the local geometric center and acts as the reference
+/// origin for residual encoding within a partition. In the formal FSE
+/// specification, this corresponds to the partition centroid $\mu_k$.
+///
+/// # Panics
+///
+/// Panics if the provided slice of points is empty, or if any points have
+/// inconsistent dimensionalities.
 pub fn compute_centroid(points: &[Vector]) -> Vec<Scalar> {
     assert!(
         !points.is_empty(),

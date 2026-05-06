@@ -1,3 +1,7 @@
+//! Mathematical primitives used by the FSE runtime.
+//!
+//! This module contains the coordinate, bounding, centroid, and residual
+//! structures that correspond to the formal model of FSE.
 pub mod bounds;
 pub mod centroid;
 pub mod residuals;

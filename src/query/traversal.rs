@@ -3,6 +3,20 @@
 use crate::query::QueryRegion;
 use crate::storage::FSEIndex;
 
+/// Traverses the FSE hierarchy to identify leaf partitions that intersect a query region.
+///
+/// This function implements Stage I metadata pruning, effectively filtering out large
+/// portions of the search space by evaluating the intersection between partition
+/// bounding regions and the provided query. The traversal engine only descends into
+/// subtrees that are geometrically admissible, ensuring that only relevant leaf nodes
+/// are retained for fine-grained evaluation. Formally, this executes the pruning
+/// operator $\Pi(Q, P_k)$, where a partition $P_k$ is retained only if
+/// $Q \cap B_k \neq \emptyset$.
+///
+/// # Panics
+///
+/// Panics if the dimensionality of the query region does not match the dimensionality
+/// of the global FSE index.
 pub fn traverse(index: &FSEIndex, query: &QueryRegion) -> Vec<usize> {
     assert_eq!(
         index.dimensions,
