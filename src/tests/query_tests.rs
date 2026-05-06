@@ -1,7 +1,5 @@
-use crate::math::Vector;
-use crate::math::{BoundingBox, ResidualBlock};
-use crate::query::QueryRegion;
-use crate::query::traverse;
+use crate::math::{BoundingBox, ResidualBlock, Vector};
+use crate::query::{QueryRegion, evaluate_query, reconstruct_partition, traverse};
 use crate::storage::{FSEIndex, PartitionNode};
 
 #[test]
@@ -60,4 +58,36 @@ fn traversal_descends_into_intersecting_children_only() {
     let retained = traverse(&index, &query);
 
     assert_eq!(retained, vec![1]);
+}
+
+#[test]
+fn reconstruction_restores_original_points_from_partition_residuals() {
+    let points = vec![
+        Vector::new(vec![2.0, 4.0]),
+        Vector::new(vec![4.0, 8.0]),
+        Vector::new(vec![6.0, 12.0]),
+    ];
+
+    let node = PartitionNode::from_points(0, &points);
+    let reconstructed = reconstruct_partition(&node);
+
+    assert_eq!(reconstructed, points);
+}
+
+#[test]
+fn evaluator_returns_only_points_inside_query_region() {
+    let points = vec![
+        Vector::new(vec![0.0, 0.0]),
+        Vector::new(vec![1.0, 1.0]),
+        Vector::new(vec![2.0, 2.0]),
+        Vector::new(vec![3.0, 3.0]),
+    ];
+
+    let query = QueryRegion::new(vec![1.0, 1.0], vec![2.0, 2.0]);
+    let matches = evaluate_query(&points, &query);
+
+    assert_eq!(
+        matches,
+        vec![Vector::new(vec![1.0, 1.0]), Vector::new(vec![2.0, 2.0]),]
+    );
 }
