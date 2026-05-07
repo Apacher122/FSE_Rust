@@ -1,4 +1,4 @@
-use crate::build::splitter::{median_split_on_axis, select_split_axis};
+use crate::build::splitter::select_split_axis;
 use crate::math::Vector;
 
 #[test]
