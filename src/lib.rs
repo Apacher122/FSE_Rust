@@ -2,6 +2,7 @@
 //!
 //! The crate provides a reference implementation of the core FSE execution mode.
 
+pub mod benchmark;
 pub mod build;
 pub mod math;
 pub mod query;
