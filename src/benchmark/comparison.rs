@@ -1,6 +1,6 @@
 //! Comparison utilities for FSE and flat scan execution.
 
-use crate::benchmark::{FlatScanStats, flat_scan_with_stats};
+use crate::benchmark::{FlatScanStats, TimingReport, flat_scan_with_stats, measure_elapsed};
 use crate::math::{Scalar, Vector};
 use crate::query::{QueryExecutionStats, QueryRegion, execute_query_with_stats};
 use crate::storage::FSEIndex;
@@ -10,8 +10,8 @@ use crate::storage::FSEIndex;
 /// # Runtime Role
 ///
 /// `QueryComparisonReport` is intended for early correctness and performance
-/// analysis. It does not measure wall-clock time. Instead, it compares logical
-/// execution work between the baseline scan path and the FSE query path.
+/// analysis. It compares logical execution work and lightweight elapsed timing
+/// between the baseline scan path and the FSE query path.
 #[derive(Clone, Debug, PartialEq)]
 pub struct QueryComparisonReport {
     /// Statistics from the flat scan baseline.
@@ -19,6 +19,9 @@ pub struct QueryComparisonReport {
 
     /// Statistics from the FSE execution path.
     pub fse_stats: QueryExecutionStats,
+
+    /// Wall-clock timing measurements for both execution paths.
+    pub timing: TimingReport,
 
     /// Number of records avoided by FSE reconstruction relative to flat scan evaluation.
     pub avoided_reconstructions: usize,
@@ -48,8 +51,8 @@ pub fn compare_query_execution(
     points: &[Vector],
     query: &QueryRegion,
 ) -> QueryComparisonReport {
-    let scan_report = flat_scan_with_stats(points, query);
-    let fse_report = execute_query_with_stats(index, query);
+    let (scan_report, flat_scan_elapsed) = measure_elapsed(|| flat_scan_with_stats(points, query));
+    let (fse_report, fse_elapsed) = measure_elapsed(|| execute_query_with_stats(index, query));
 
     let mut scan_results = scan_report.results;
     let mut fse_results = fse_report.results;
@@ -79,6 +82,10 @@ pub fn compare_query_execution(
     QueryComparisonReport {
         scan_stats: scan_report.stats,
         fse_stats: fse_report.stats,
+        timing: TimingReport {
+            flat_scan_elapsed,
+            fse_elapsed,
+        },
         avoided_reconstructions,
         reconstruction_avoidance_ratio,
         candidate_ratio,

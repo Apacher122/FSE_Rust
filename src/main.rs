@@ -1,7 +1,4 @@
-use fse_rust::benchmark::{
-    aggregate_workload_metrics, clustered_points_2d, clustered_workload_cases,
-    pruning_efficiency_report, summarize_workload_comparisons,
-};
+use fse_rust::benchmark::{clustered_points_2d, clustered_workload_cases, run_benchmark_suite};
 use fse_rust::build::{BuildConfig, FSEBuilder};
 
 fn main() {
@@ -14,8 +11,16 @@ fn main() {
     let validation = validated.validation;
 
     let workloads = clustered_workload_cases();
-    let summaries = summarize_workload_comparisons(&index, &points, &workloads);
-    let aggregate = aggregate_workload_metrics(&summaries);
+    let report = run_benchmark_suite(&index, &points, &workloads);
+
+    println!("FSE benchmark suite");
+    println!("===================");
+    println!();
+
+    println!("Dataset records: {}", points.len());
+    println!("Index nodes: {}", index.node_count());
+    println!("Workloads: {}", report.aggregate.workload_count);
+    println!();
 
     println!("Index validation: {}", validation.is_valid());
     println!(
@@ -32,18 +37,9 @@ fn main() {
     );
     println!();
 
-    println!("FSE query workload demo");
-    println!("=======================");
-    println!();
-
-    println!("Dataset records: {}", points.len());
-    println!("Index nodes: {}", index.node_count());
-    println!("Workloads: {}", aggregate.workload_count);
-    println!();
-
-    for summary in &summaries {
+    for (summary, pruning_report) in report.comparisons.iter().zip(&report.pruning_reports) {
         let comparison = &summary.comparison;
-        let pruning = pruning_efficiency_report(comparison);
+        let pruning = &pruning_report.pruning;
 
         println!("Workload: {}", summary.workload_name);
         println!("Stats:");
@@ -52,9 +48,14 @@ fn main() {
             comparison.scan_stats.evaluated_records
         );
         println!(
+            "  flat scan elapsed: {:?}",
+            comparison.timing.flat_scan_elapsed
+        );
+        println!(
             "  FSE visited nodes: {}",
             comparison.fse_stats.visited_nodes
         );
+        println!("  FSE elapsed: {:?}", comparison.timing.fse_elapsed);
         println!(
             "  FSE retained leaves: {}",
             comparison.fse_stats.retained_leaves
@@ -64,10 +65,18 @@ fn main() {
             comparison.retained_leaf_ratio
         );
         println!(
+            "  leaf pruning efficiency: {:.2}",
+            pruning.leaf_pruning_efficiency
+        );
+        println!(
             "  FSE reconstructed records: {}",
             comparison.fse_stats.reconstructed_records
         );
         println!("  candidate ratio: {:.2}", comparison.candidate_ratio);
+        println!(
+            "  record pruning efficiency: {:.2}",
+            pruning.record_pruning_efficiency
+        );
         println!(
             "  matched records: {}",
             comparison.fse_stats.matched_records
@@ -80,24 +89,11 @@ fn main() {
             "  reconstruction avoidance ratio: {:.2}",
             comparison.reconstruction_avoidance_ratio
         );
-        println!(
-            "average candidate ratio: {:.2}",
-            aggregate.average_candidate_ratio
-        );
-        println!(
-            "average retained leaf ratio: {:.2}",
-            aggregate.average_retained_leaf_ratio
-        );
-        println!(
-            "  record pruning efficiency: {:.2}",
-            pruning.record_pruning_efficiency
-        );
-        println!(
-            "  leaf pruning efficiency: {:.2}",
-            pruning.leaf_pruning_efficiency
-        );
+
         println!();
     }
+
+    let aggregate = &report.aggregate;
 
     println!("Aggregate workload metrics");
     println!("--------------------------");
