@@ -1,6 +1,6 @@
 use fse_rust::benchmark::{
     aggregate_workload_metrics, clustered_points_2d, clustered_workload_cases,
-    summarize_workload_comparisons,
+    pruning_efficiency_report, summarize_workload_comparisons,
 };
 use fse_rust::build::{BuildConfig, FSEBuilder};
 
@@ -43,6 +43,7 @@ fn main() {
 
     for summary in &summaries {
         let comparison = &summary.comparison;
+        let pruning = pruning_efficiency_report(comparison);
 
         println!("Workload: {}", summary.workload_name);
         println!("Stats:");
@@ -87,6 +88,14 @@ fn main() {
             "average retained leaf ratio: {:.2}",
             aggregate.average_retained_leaf_ratio
         );
+        println!(
+            "  record pruning efficiency: {:.2}",
+            pruning.record_pruning_efficiency
+        );
+        println!(
+            "  leaf pruning efficiency: {:.2}",
+            pruning.leaf_pruning_efficiency
+        );
         println!();
     }
 
@@ -119,5 +128,21 @@ fn main() {
     println!(
         "average reconstruction avoidance ratio: {:.2}",
         aggregate.average_reconstruction_avoidance_ratio
+    );
+    println!(
+        "average candidate ratio: {:.2}",
+        aggregate.average_candidate_ratio
+    );
+    println!(
+        "average retained leaf ratio: {:.2}",
+        aggregate.average_retained_leaf_ratio
+    );
+    println!(
+        "weighted reconstruction avoidance ratio: {:.2}",
+        aggregate.weighted_reconstruction_avoidance_ratio
+    );
+    println!(
+        "weighted candidate ratio: {:.2}",
+        aggregate.weighted_candidate_ratio
     );
 }

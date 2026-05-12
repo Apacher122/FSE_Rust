@@ -98,6 +98,8 @@ fn aggregate_workload_metrics_handles_empty_summary_list() {
     assert_eq!(aggregate.average_reconstruction_avoidance_ratio, 0.0);
     assert_eq!(aggregate.average_candidate_ratio, 0.0);
     assert_eq!(aggregate.average_retained_leaf_ratio, 0.0);
+    assert_eq!(aggregate.weighted_reconstruction_avoidance_ratio, 0.0);
+    assert_eq!(aggregate.weighted_candidate_ratio, 0.0);
 }
 
 #[test]
@@ -126,4 +128,36 @@ fn aggregate_workload_metrics_reports_average_retained_leaf_ratio() {
 
     assert!(aggregate.average_retained_leaf_ratio >= 0.0);
     assert!(aggregate.average_retained_leaf_ratio <= 1.0);
+}
+
+#[test]
+fn aggregate_workload_metrics_reports_weighted_reconstruction_avoidance_ratio() {
+    let points = clustered_points_2d();
+    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
+    let index = builder.build(&points);
+    let workloads = clustered_workload_cases();
+
+    let summaries = summarize_workload_comparisons(&index, &points, &workloads);
+    let aggregate = aggregate_workload_metrics(&summaries);
+
+    let expected = aggregate.total_avoided_reconstructions as f32
+        / aggregate.total_scan_evaluated_records as f32;
+
+    assert_eq!(aggregate.weighted_reconstruction_avoidance_ratio, expected);
+}
+
+#[test]
+fn aggregate_workload_metrics_reports_weighted_candidate_ratio() {
+    let points = clustered_points_2d();
+    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
+    let index = builder.build(&points);
+    let workloads = clustered_workload_cases();
+
+    let summaries = summarize_workload_comparisons(&index, &points, &workloads);
+    let aggregate = aggregate_workload_metrics(&summaries);
+
+    let expected = aggregate.total_fse_reconstructed_records as f32
+        / aggregate.total_scan_evaluated_records as f32;
+
+    assert_eq!(aggregate.weighted_candidate_ratio, expected);
 }

@@ -57,6 +57,12 @@ pub struct AggregateWorkloadMetrics {
 
     /// Average retained leaf ratio across workload cases.
     pub average_retained_leaf_ratio: Scalar,
+
+    /// Weighted reconstruction avoidance ratio across all workload records.
+    pub weighted_reconstruction_avoidance_ratio: Scalar,
+
+    /// Weighted candidate ratio across all workload records.
+    pub weighted_candidate_ratio: Scalar,
 }
 
 /// Runs all workload cases and returns comparison summaries.
@@ -92,9 +98,8 @@ pub fn summarize_workload_comparisons(
 ///
 /// # Notes
 ///
-/// The average reconstruction avoidance ratio is the arithmetic mean of the
-/// per-workload ratios. It is intentionally separate from the total avoided
-/// reconstruction ratio because both are useful for different reporting styles.
+/// The average ratios are arithmetic means of the per-workload ratios.
+/// Weighted ratios are computed from aggregate record counts.
 pub fn aggregate_workload_metrics(
     summaries: &[WorkloadComparisonSummary],
 ) -> AggregateWorkloadMetrics {
@@ -109,7 +114,7 @@ pub fn aggregate_workload_metrics(
         ..AggregateWorkloadMetrics::default()
     };
 
-    let mut ratio_sum = 0.0;
+    let mut avoidance_ratio_sum = 0.0;
     let mut candidate_ratio_sum = 0.0;
     let mut retained_leaf_ratio_sum = 0.0;
 
@@ -123,14 +128,33 @@ pub fn aggregate_workload_metrics(
         aggregate.total_fse_matched_records += comparison.fse_stats.matched_records;
         aggregate.total_avoided_reconstructions += comparison.avoided_reconstructions;
 
-        ratio_sum += comparison.reconstruction_avoidance_ratio;
+        avoidance_ratio_sum += comparison.reconstruction_avoidance_ratio;
         candidate_ratio_sum += comparison.candidate_ratio;
         retained_leaf_ratio_sum += comparison.retained_leaf_ratio;
     }
 
-    aggregate.average_reconstruction_avoidance_ratio = ratio_sum / workload_count as Scalar;
+    aggregate.average_reconstruction_avoidance_ratio =
+        avoidance_ratio_sum / workload_count as Scalar;
     aggregate.average_candidate_ratio = candidate_ratio_sum / workload_count as Scalar;
     aggregate.average_retained_leaf_ratio = retained_leaf_ratio_sum / workload_count as Scalar;
 
+    aggregate.weighted_reconstruction_avoidance_ratio = ratio_or_zero(
+        aggregate.total_avoided_reconstructions,
+        aggregate.total_scan_evaluated_records,
+    );
+
+    aggregate.weighted_candidate_ratio = ratio_or_zero(
+        aggregate.total_fse_reconstructed_records,
+        aggregate.total_scan_evaluated_records,
+    );
+
     aggregate
+}
+
+fn ratio_or_zero(numerator: usize, denominator: usize) -> Scalar {
+    if denominator == 0 {
+        0.0
+    } else {
+        numerator as Scalar / denominator as Scalar
+    }
 }

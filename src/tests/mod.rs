@@ -6,6 +6,7 @@ mod correctness_tests;
 mod dataset_tests;
 mod math_tests;
 mod metrics_tests;
+mod pruning_tests;
 mod query_tests;
 mod splitter_tests;
 mod storage_tests;
