@@ -212,10 +212,12 @@ fn execute_query_with_stats_reports_single_leaf_work() {
     );
 
     assert_eq!(report.stats.visited_nodes, 1);
+    assert_eq!(report.stats.total_leaves, 1);
     assert_eq!(report.stats.retained_leaves, 1);
+    assert_eq!(report.stats.retained_leaf_ratio, 1.0);
+    assert_eq!(report.stats.total_records, 3);
     assert_eq!(report.stats.reconstructed_records, 3);
     assert_eq!(report.stats.matched_records, 2);
-    assert_eq!(report.stats.total_records, 3);
     assert_eq!(report.stats.candidate_ratio, 1.0);
 }
 
@@ -232,10 +234,12 @@ fn execute_query_with_stats_reports_pruned_root_without_reconstruction() {
     assert!(report.results.is_empty());
 
     assert_eq!(report.stats.visited_nodes, 1);
+    assert_eq!(report.stats.total_leaves, 1);
     assert_eq!(report.stats.retained_leaves, 0);
+    assert_eq!(report.stats.retained_leaf_ratio, 0.0);
+    assert_eq!(report.stats.total_records, 2);
     assert_eq!(report.stats.reconstructed_records, 0);
     assert_eq!(report.stats.matched_records, 0);
-    assert_eq!(report.stats.total_records, 2);
     assert_eq!(report.stats.candidate_ratio, 0.0);
 }
 
@@ -269,7 +273,9 @@ fn execute_query_with_stats_reports_hierarchy_traversal_work() {
     assert_eq!(report.results, vec![Vector::new(vec![2.0, 2.0])]);
 
     assert_eq!(report.stats.visited_nodes, 3);
+    assert_eq!(report.stats.total_leaves, 2);
     assert_eq!(report.stats.retained_leaves, 1);
+    assert_eq!(report.stats.retained_leaf_ratio, 0.5);
     assert_eq!(report.stats.total_records, 4);
     assert_eq!(report.stats.reconstructed_records, 2);
     assert_eq!(report.stats.matched_records, 1);

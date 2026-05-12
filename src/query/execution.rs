@@ -20,8 +20,12 @@ use crate::storage::FSEIndex;
 pub struct QueryExecutionStats {
     /// Number of hierarchy nodes whose metadata was visited.
     pub visited_nodes: usize,
+    /// Number of leaf partitions in the index.
+    pub total_leaves: usize,
     /// Number of leaf partitions retained after metadata pruning.
     pub retained_leaves: usize,
+    /// Fraction of leaf partitions retained after metadata pruning.
+    pub retained_leaf_ratio: Scalar,
     /// Number of records represented by the index.
     pub total_records: usize,
     /// Number of records reconstructed after pruning.
@@ -81,7 +85,10 @@ pub fn execute_query_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryE
         "query dimensionality must match index dimensionality"
     );
 
+    let total_leaves = index.nodes.iter().filter(|node| node.is_leaf).count();
+
     let mut stats = QueryExecutionStats {
+        total_leaves,
         total_records: index.root_node().cardinality,
         ..QueryExecutionStats::default()
     };
@@ -119,6 +126,12 @@ pub fn execute_query_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryE
         0.0
     } else {
         stats.reconstructed_records as Scalar / stats.total_records as Scalar
+    };
+
+    stats.retained_leaf_ratio = if stats.total_leaves == 0 {
+        0.0
+    } else {
+        stats.retained_leaves as Scalar / stats.total_leaves as Scalar
     };
 
     QueryExecutionReport { results, stats }

@@ -54,6 +54,9 @@ pub struct AggregateWorkloadMetrics {
 
     /// Average candidate ratio across workload cases.
     pub average_candidate_ratio: Scalar,
+
+    /// Average retained leaf ratio across workload cases.
+    pub average_retained_leaf_ratio: Scalar,
 }
 
 /// Runs all workload cases and returns comparison summaries.
@@ -108,6 +111,7 @@ pub fn aggregate_workload_metrics(
 
     let mut ratio_sum = 0.0;
     let mut candidate_ratio_sum = 0.0;
+    let mut retained_leaf_ratio_sum = 0.0;
 
     for summary in summaries {
         let comparison = &summary.comparison;
@@ -121,10 +125,12 @@ pub fn aggregate_workload_metrics(
 
         ratio_sum += comparison.reconstruction_avoidance_ratio;
         candidate_ratio_sum += comparison.candidate_ratio;
+        retained_leaf_ratio_sum += comparison.retained_leaf_ratio;
     }
 
     aggregate.average_reconstruction_avoidance_ratio = ratio_sum / workload_count as Scalar;
     aggregate.average_candidate_ratio = candidate_ratio_sum / workload_count as Scalar;
+    aggregate.average_retained_leaf_ratio = retained_leaf_ratio_sum / workload_count as Scalar;
 
     aggregate
 }

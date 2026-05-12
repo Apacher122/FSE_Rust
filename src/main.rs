@@ -59,6 +59,10 @@ fn main() {
             comparison.fse_stats.retained_leaves
         );
         println!(
+            "  retained leaf ratio: {:.2}",
+            comparison.retained_leaf_ratio
+        );
+        println!(
             "  FSE reconstructed records: {}",
             comparison.fse_stats.reconstructed_records
         );
@@ -78,6 +82,10 @@ fn main() {
         println!(
             "average candidate ratio: {:.2}",
             aggregate.average_candidate_ratio
+        );
+        println!(
+            "average retained leaf ratio: {:.2}",
+            aggregate.average_retained_leaf_ratio
         );
         println!();
     }
