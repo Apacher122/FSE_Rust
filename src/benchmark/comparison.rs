@@ -16,10 +16,13 @@ use crate::storage::FSEIndex;
 pub struct QueryComparisonReport {
     /// Statistics from the flat scan baseline.
     pub scan_stats: FlatScanStats,
+
     /// Statistics from the FSE execution path.
     pub fse_stats: QueryExecutionStats,
-    // Number of records avoided by FSE reconstruction relative to flat scan evaluation.
+
+    /// Number of records avoided by FSE reconstruction relative to flat scan evaluation.
     pub avoided_reconstructions: usize,
+
     /// Fraction of baseline record evaluations avoided by FSE reconstruction.
     pub reconstruction_avoidance_ratio: Scalar,
 }
@@ -34,7 +37,6 @@ pub struct QueryComparisonReport {
 /// # Panics
 ///
 /// Panics when the FSE result set differs from the flat scan result set.
-/// Compares FSE query execution against flat scan execution.
 pub fn compare_query_execution(
     index: &FSEIndex,
     points: &[Vector],
@@ -43,18 +45,23 @@ pub fn compare_query_execution(
     let scan_report = flat_scan_with_stats(points, query);
     let fse_report = execute_query_with_stats(index, query);
 
-    // CRITICAL: We must ensure both produce identical results.
+    let mut scan_results = scan_report.results;
+    let mut fse_results = fse_report.results;
+
+    sort_points(&mut scan_results);
+    sort_points(&mut fse_results);
+
     assert_eq!(
-        fse_report.results.len(),
-        scan_report.results.len(),
-        "FSE and Flat Scan must return the same number of results"
+        fse_results, scan_results,
+        "FSE query results must match flat scan results"
     );
 
     let evaluated_records = scan_report.stats.evaluated_records;
     let reconstructed_records = fse_report.stats.reconstructed_records;
+
     let avoided_reconstructions = evaluated_records.saturating_sub(reconstructed_records);
 
-    let ratio = if evaluated_records == 0 {
+    let reconstruction_avoidance_ratio = if evaluated_records == 0 {
         0.0
     } else {
         avoided_reconstructions as Scalar / evaluated_records as Scalar
@@ -64,6 +71,20 @@ pub fn compare_query_execution(
         scan_stats: scan_report.stats,
         fse_stats: fse_report.stats,
         avoided_reconstructions,
-        reconstruction_avoidance_ratio: ratio,
+        reconstruction_avoidance_ratio,
     }
+}
+
+fn sort_points(points: &mut [Vector]) {
+    points.sort_by(|left, right| {
+        for (left_value, right_value) in left.values.iter().zip(&right.values) {
+            match left_value.partial_cmp(right_value) {
+                Some(std::cmp::Ordering::Equal) => continue,
+                Some(ordering) => return ordering,
+                None => return std::cmp::Ordering::Equal,
+            }
+        }
+
+        left.values.len().cmp(&right.values.len())
+    });
 }

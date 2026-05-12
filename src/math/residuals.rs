@@ -2,13 +2,16 @@
 
 use crate::math::{Scalar, Vector};
 
-/// A structure-of-arrays (SoA) layout for storing centroid-relative residual vectors.
+/// Residual vectors stored in structure-of-arrays layout.
 ///
-/// `ResidualBlock` organizes residual coordinates by dimension rather than by individual
-/// record (row). This memory layout is intentionally designed to maximize cache efficiency
-/// during traversal and to seamlessly support vectorized SIMD reconstruction pipelines.
-/// In the formal FSE specification, this structure represents the residual encoding
-/// $\Delta_k(x) = x - \mu_k$.
+/// # Runtime Role
+///
+/// `ResidualBlock` stores residual coordinates by dimension instead of by row.
+/// This layout supports cache-friendly traversal and later SIMD reconstruction.
+///
+/// # Formal Reference
+///
+/// This structure corresponds to the residual encoding `Delta_k(x) = x - mu_k`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ResidualBlock {
     /// Residual values grouped by dimension.
@@ -21,16 +24,30 @@ impl ResidualBlock {
         Self { dimensions }
     }
 
-    /// Computes a residual block from a set of absolute coordinates and a local centroid.
+    /// Builds a residual block from points and a centroid.
     ///
-    /// This method converts standard positional coordinates into centroid-relative
-    /// residual values by subtracting the local centroid from each point. Formally,
-    /// this executes the transformation $\Delta_k(x) = x - \mu_k$.
+    /// # Runtime Role
+    ///
+    /// Converts absolute coordinates into centroid-relative residual values.
+    ///
+    /// # Formal Reference
+    ///
+    /// This implements `Delta_k(x) = x - mu_k`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when dimensionality is inconsistent.
     pub fn from_points(points: &[Vector], centroid: &[Scalar]) -> Self {
         let dimensions = centroid.len();
+        assert!(dimensions > 0, "centroid must have at least one dimension");
         let mut residuals = vec![Vec::with_capacity(points.len()); dimensions];
 
         for point in points {
+            assert_eq!(
+                point.dimensions(),
+                dimensions,
+                "point and centroid dimensionality must match"
+            );
             for dimension in 0..dimensions {
                 residuals[dimension].push(point.values[dimension] - centroid[dimension]);
             }

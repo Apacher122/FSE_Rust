@@ -2,25 +2,31 @@
 
 use crate::math::{Scalar, Vector};
 
-/// An axis-aligned bounding box used to spatially prune partitions during queries.
+/// Axis-aligned bounding box used for partition-level pruning.
 ///
-/// A `BoundingBox` defines a rectangular region in multidimensional space by tracking
-/// the minimum and maximum coordinate values along each dimension. In the formal FSE
-/// specification, this corresponds to the bounded support region $B_k$.
+/// # Runtime Role
+///
+/// `BoundingBox` stores the minimum and maximum coordinate value for each
+/// dimension of a partition.
+///
+/// # Formal Reference
+///
+/// This structure corresponds to the bounded support region `B_k`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BoundingBox {
-    /// The minimum coordinate value for each dimension.
+    /// Minimum coordinate value per dimension.
     pub min: Vec<Scalar>,
-    /// The maximum coordinate value for each dimension.
+
+    /// Maximum coordinate value per dimension.
     pub max: Vec<Scalar>,
 }
 
 impl BoundingBox {
-    /// Creates a new bounding box from explicit minimum and maximum coordinates.
+    /// Creates a bounding box from explicit minimum and maximum coordinates.
     ///
     /// # Panics
     ///
-    /// Panics if the `min` and `max` vectors have different dimensionalities.
+    /// Panics when the minimum and maximum vectors have different dimensions.
     pub fn new(min: Vec<Scalar>, max: Vec<Scalar>) -> Self {
         assert_eq!(
             min.len(),
@@ -30,28 +36,36 @@ impl BoundingBox {
         Self { min, max }
     }
 
-    /// Computes the smallest axis-aligned bounding box that encapsulates all provided points.
+    /// Builds the exact bounding box for a non-empty set of points.
     ///
-    /// This method iteratively finds the extreme minimum and maximum coordinates across
-    /// all dimensions to construct the bounding region (formally known as the extrema
-    /// construction for $B_k$).
+    /// # Runtime Role
+    ///
+    /// Computes the smallest axis-aligned box containing every provided point.
+    ///
+    /// # Formal Reference
+    ///
+    /// This implements the extrema construction for `B_k`.
     ///
     /// # Panics
     ///
-    /// Panics if the provided slice of points is empty, or if any points have
-    /// inconsistent dimensionalities.
+    /// Panics when no points are provided or when dimensionality is inconsistent.
     pub fn from_points(points: &[Vector]) -> Self {
-        // using an assert here to fail-fast during the prototype phase if empty data is passed.
         assert!(
             !points.is_empty(),
             "cannot construct a bounding box from an empty point set"
         );
 
         let dimensions = points[0].dimensions();
+        assert!(dimensions > 0, "points must have at least one dimension");
         let mut min = vec![Scalar::INFINITY; dimensions];
         let mut max = vec![Scalar::NEG_INFINITY; dimensions];
 
         for point in points {
+            assert_eq!(
+                point.dimensions(),
+                dimensions,
+                "all points must have the same dimensionality"
+            );
             for dimension in 0..dimensions {
                 let value = point.values[dimension];
                 if value < min[dimension] {
@@ -65,15 +79,14 @@ impl BoundingBox {
         Self { min, max }
     }
 
-    /// Returns the number of dimensions this bounding box spans.
+    /// Returns the number of dimensions represented by the bounding box.
     pub fn dimensions(&self) -> usize {
         self.min.len()
     }
 
-    /// Checks if a point lies entirely within the bounding box.
+    /// Returns true when the point lies inside the bounding box.
     ///
-    /// Points that lie exactly on the boundary are considered contained.
-    /// Returns `false` if the point's dimensionality does not match the bounding box.
+    /// Boundary values are treated as contained.
     pub fn contains_point(&self, point: &Vector) -> bool {
         if point.dimensions() != self.dimensions() {
             return false;
@@ -87,13 +100,15 @@ impl BoundingBox {
         true
     }
 
-    /// Checks if this bounding box intersects with another bounding box.
+    /// Returns true when two bounding boxes intersect.
     ///
-    /// This is the core geometric pruning test used during metadata traversal to quickly
-    /// discard partitions that do not overlap with a query region. Formally, this evaluates
-    /// the condition $Q \cap B_k \neq \emptyset$.
+    /// # Runtime Role
     ///
-    /// Returns `false` if the dimensionalities differ.
+    /// This is the core geometric pruning test used during metadata traversal.
+    ///
+    /// # Formal Reference
+    ///
+    /// This implements the condition `Q intersect B_k != empty`.
     pub fn intersects(&self, other: &BoundingBox) -> bool {
         if self.dimensions() != other.dimensions() {
             return false;
@@ -108,16 +123,20 @@ impl BoundingBox {
         true
     }
 
-    /// Calculates the multidimensional volume of the bounding box.
+    /// Returns the volume of the bounding box.
     ///
-    /// Volume is used as a structural density metric to estimate how tightly a partition's
-    /// bounding region encapsulates its underlying records. Formally, this corresponds to $\text{Vol}(B_k)$.
+    /// # Runtime Role
+    ///
+    /// Volume is used by structural density metrics to estimate how tightly a
+    /// partition's bounded support represents its contained records.
+    ///
+    /// # Formal Reference
+    ///
+    /// This corresponds to `Vol(B_k)`.
     ///
     /// # Notes
     ///
-    /// * If any dimension has a width of exactly zero (a degenerate dimension), the
-    ///   resulting volume will be `0.0`.
-    /// * Returns `0.0` if any minimum coordinate exceeds its corresponding maximum.
+    /// Degenerate dimensions with zero width produce zero volume.
     pub fn volume(&self) -> Scalar {
         let mut volume = 1.0;
         for dimension in 0..self.dimensions() {
@@ -130,17 +149,22 @@ impl BoundingBox {
         volume
     }
 
-    /// Checks if this bounding box fully encloses another bounding box.
+    /// Returns true when this bounding box fully contains another bounding box.
     ///
-    /// This is primarily used during parent-child containment validation to ensure that the
-    /// hierarchy bounds remain structurally valid. It verifies the recursive requirement
-    /// that all descendant bounding regions fit entirely within their ancestor's region.
+    /// # Runtime Role
     ///
-    /// Returns `false` if the dimensionalities differ.
+    /// Parent-child containment validation uses this method to ensure hierarchy
+    /// bounds remain structurally valid.
+    ///
+    /// # Formal Reference
+    ///
+    /// This corresponds to the recursive containment requirement that descendant
+    /// bounding regions remain contained within ancestor bounding regions.
     pub fn contains_bounds(&self, other: &BoundingBox) -> bool {
         if self.dimensions() != other.dimensions() {
             return false;
         }
+
         for dimension in 0..self.dimensions() {
             if other.min[dimension] < self.min[dimension]
                 || other.max[dimension] > self.max[dimension]
@@ -148,6 +172,7 @@ impl BoundingBox {
                 return false;
             }
         }
+
         true
     }
 }

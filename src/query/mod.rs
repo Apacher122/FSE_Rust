@@ -1,3 +1,8 @@
+//! Query execution components.
+//!
+//! This module contains query region definitions and the staged execution logic
+//! used by the FSE runtime.
+
 pub mod evaluator;
 pub mod execution;
 pub mod reconstruction;

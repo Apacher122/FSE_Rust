@@ -10,6 +10,11 @@ use crate::query::QueryRegion;
 /// Predicate evaluation performs Stage III of the FSE query pipeline. It filters
 /// reconstructed candidate records after metadata pruning and deferred
 /// reconstruction have already occurred.
+///
+/// # Formal Reference
+///
+/// This implements the logical evaluation function `q(x)`, where a point is
+/// retained exactly when `x` lies inside the query region `Q`.
 pub fn evaluate_query(points: &[Vector], query: &QueryRegion) -> Vec<Vector> {
     let mut matches = Vec::new();
 

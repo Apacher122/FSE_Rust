@@ -1,6 +1,7 @@
 mod benchmark_tests;
 mod build_tests;
 mod centroid_tests;
+mod comparison_tests;
 mod correctness_tests;
 mod dataset_tests;
 mod math_tests;
@@ -8,4 +9,6 @@ mod metrics_tests;
 mod query_tests;
 mod splitter_tests;
 mod storage_tests;
+mod summary_tests;
 mod validation_tests;
+mod workload_tests;

@@ -1,18 +1,23 @@
 //! Coordinate vector representation.
 
-/// The scalar coordinate type used throughout the FSE runtime.
+/// Scalar coordinate type used throughout the FSE runtime.
 ///
-/// This implementation uses `f32` to optimize for planned SIMD acceleration paths.
-/// May introduce Scalar generic <T> if f64 is needed.
+/// `f32` is used for the initial implementation to match the planned SIMD path.
+/// Precision-sensitive experiments can later introduce a configurable scalar type.
 pub type Scalar = f32;
 
 /// A point in the ambient coordinate space.
 ///
-/// `Vector` represents a single record coordinate in the embedded space used
-/// by the FSE architecture. In the formal specification, this structure
-/// corresponds to a point $x$ within the dataset $D$.
+/// # Runtime Role
+///
+/// `Vector` represents a record coordinate in the embedded space used by FSE.
+///
+/// # Formal Reference
+///
+/// This structure corresponds to a point `x` in the dataset `D`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Vector {
+    /// Coordinate values for the point.
     pub values: Vec<Scalar>,
 }
 
@@ -22,10 +27,12 @@ impl Vector {
         Vector { values }
     }
 
+    /// Returns the number of dimensions represented by the vector.
     pub fn dimensions(&self) -> usize {
         self.values.len()
     }
 
+    /// Returns true when the vector contains no coordinates.
     pub fn is_empty(&self) -> bool {
         self.values.is_empty()
     }

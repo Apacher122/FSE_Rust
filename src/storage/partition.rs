@@ -2,15 +2,20 @@
 
 use crate::math::{BoundingBox, ResidualBlock, Scalar, Vector, compute_centroid};
 
-/// A structural partition within the Fractal Semantic Encoding (FSE) runtime.
+/// A structural partition in the FSE runtime.
 ///
-/// `PartitionNode` serves as the core unit of the hierarchy, storing local metadata and
-/// the residual representation for a specific spatial region. A node can represent
-/// either an internal routing element or a terminal leaf. For leaf nodes, the
-/// residuals store the compressed records used for reconstruction during query
-/// execution. Internal nodes typically leave residuals empty but track the total
-/// `cardinality` of the underlying subtree. Formally, this structure corresponds
-/// to the partition tuple $P_k = (D_k, \mu_k, B_k, \Delta_k)$.
+/// # Runtime Role
+///
+/// `PartitionNode` stores the local metadata and residual representation for a
+/// partition. It may represent either an internal hierarchy node or a leaf node.
+///
+/// For leaf nodes, residuals store the records reconstructed during query
+/// execution. For internal nodes, residuals may be empty while `cardinality`
+/// still records the total number of records represented by the subtree.
+///
+/// # Formal Reference
+///
+/// This structure corresponds to the partition tuple `P_k = (D_k, mu_k, B_k, Delta_k)`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PartitionNode {
     /// A stable, unique identifier for the node within the index.

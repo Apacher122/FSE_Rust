@@ -2,26 +2,31 @@
 
 use crate::math::{BoundingBox, Scalar, Vector};
 
-/// An axis-aligned query region used for spatial filtering.
+/// Axis-aligned query region.
 ///
-/// `QueryRegion` defines an admissible geometric constraint that is evaluated
-/// against partition bounding boxes during metadata traversal. In the formal
-/// FSE specification, this structure corresponds to the axis-aligned query region $Q$.
+/// # Runtime Role
+///
+/// `QueryRegion` represents an admissible query region that can be evaluated
+/// against partition bounding boxes during metadata traversal.
+///
+/// # Formal Reference
+///
+/// This structure corresponds to an axis-aligned query region `Q`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct QueryRegion {
-    /// The minimum coordinate value for each query dimension.
+    /// Minimum coordinate value per query dimension.
     pub min: Vec<Scalar>,
-    /// The maximum coordinate value for each query dimension.
+
+    /// Maximum coordinate value per query dimension.
     pub max: Vec<Scalar>,
 }
 
 impl QueryRegion {
-    /// Creates a new query region from explicit minimum and maximum coordinates.
+    /// Creates a query region from explicit minimum and maximum coordinates.
     ///
     /// # Panics
     ///
-    /// Panics if the `min` and `max` vectors have different dimensionalities,
-    /// or if the vectors are empty.
+    /// Panics when minimum and maximum vectors have different dimensionality.
     pub fn new(min: Vec<Scalar>, max: Vec<Scalar>) -> Self {
         assert_eq!(
             min.len(),
@@ -35,23 +40,24 @@ impl QueryRegion {
         Self { min, max }
     }
 
-    /// Returns the number of dimensions represented by this query region.
+    /// Returns the number of dimensions represented by the query region.
     pub fn dimensions(&self) -> usize {
         self.min.len()
     }
 
     /// Converts the query region into a bounding box.
     ///
-    /// This conversion allows query-to-box intersection tests to reuse the
-    /// standardized bounded-region logic employed by partition metadata.
+    /// # Runtime Role
+    ///
+    /// This allows query-box intersection to reuse the same bounded-region logic
+    /// used by partition metadata.
     pub fn as_bounds(&self) -> BoundingBox {
         BoundingBox::new(self.min.clone(), self.max.clone())
     }
 
-    /// Checks if a point lies entirely inside the query region.
+    /// Returns true when the point lies inside the query region.
     ///
-    /// Points located exactly on the boundary are treated as contained.
-    /// Returns `false` if the point's dimensionality does not match the query region.
+    /// Boundary values are treated as contained.
     pub fn contains_point(&self, point: &Vector) -> bool {
         if point.dimensions() != self.dimensions() {
             return false;

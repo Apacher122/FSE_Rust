@@ -8,7 +8,7 @@ use std::collections::HashSet;
 /// # Runtime Role
 ///
 /// `IndexValidationReport` collects individual validation checks into one
-/// result object that can be used by tests, demos, and future builder
+/// result object that can be used by tests, demos, and future builder diagnostics.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IndexValidationReport {
     /// Whether all leaf nodes satisfy the configured maximum leaf size.
@@ -88,11 +88,6 @@ pub fn validate_leaf_cardinality(index: &FSEIndex, max_leaf_size: usize) -> bool
 /// - a node does not directly reference itself,
 /// - every node is reachable from the root.
 pub fn validate_hierarchy_topology(index: &FSEIndex) -> bool {
-    // Validation Rules:
-    // - root node exists
-    // - leaf nodes have no children
-    // - internal nodes have children
-    // - every node is reachable from root
     if index.nodes.is_empty() || index.root >= index.nodes.len() {
         return false;
     }
@@ -104,29 +99,65 @@ pub fn validate_hierarchy_topology(index: &FSEIndex) -> bool {
         if !node.is_leaf && node.children.is_empty() {
             return false;
         }
+        for child_id in &node.children {
+            if *child_id >= index.nodes.len() {
+                return false;
+            }
+
+            if *child_id == node.id {
+                return false;
+            }
+        }
     }
 
     let mut visited = HashSet::new();
     let mut stack = vec![index.root];
+
     while let Some(node_id) = stack.pop() {
         if !visited.insert(node_id) {
             continue;
         }
-        for child_id in &index.nodes[node_id].children {
+
+        let node = &index.nodes[node_id];
+
+        for child_id in &node.children {
             stack.push(*child_id);
         }
     }
+
     visited.len() == index.nodes.len()
 }
 
+/// Validates that every child bounding box is contained by its parent.
+///
+/// # Runtime Role
+///
+/// This function verifies the hierarchy containment invariant required for
+/// recursive pruning correctness.
+///
+/// # Validation Rule
+///
+/// For every parent-child edge in the hierarchy:
+///
+/// `B_child` must be contained within `B_parent`.
 pub fn validate_parent_child_bounds(index: &FSEIndex) -> bool {
+    if index.nodes.is_empty() || index.root >= index.nodes.len() {
+        return false;
+    }
+
     for node in &index.nodes {
         for child_id in &node.children {
+            if *child_id >= index.nodes.len() {
+                return false;
+            }
+
             let child = &index.nodes[*child_id];
+
             if !node.bounds.contains_bounds(&child.bounds) {
                 return false;
             }
         }
     }
+
     true
 }

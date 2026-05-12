@@ -13,6 +13,7 @@ pub struct FlatScanStats {
 }
 
 /// Flat scan result paired with execution statistics.
+#[derive(Clone, Debug, PartialEq)]
 pub struct FlatScanReport {
     /// Exact query matches.
     pub results: Vec<Vector>,
@@ -31,13 +32,7 @@ pub struct FlatScanReport {
 ///
 /// This corresponds to the scan complexity baseline `T_scan(N) = O(N)`.
 pub fn flat_scan(points: &[Vector], query: &QueryRegion) -> Vec<Vector> {
-    let mut results = Vec::new();
-    for point in points {
-        if query.contains_point(point) {
-            results.push(point.clone());
-        }
-    }
-    results
+    flat_scan_with_stats(points, query).results
 }
 
 /// Executes a plain linear scan and returns execution statistics.

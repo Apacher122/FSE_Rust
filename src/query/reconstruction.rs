@@ -13,6 +13,10 @@ use crate::storage::PartitionNode;
 /// # Formal Reference
 ///
 /// This implements the reconstruction operator `Phi_k(Delta) = mu_k + Delta`.
+///
+/// # Panics
+///
+/// Panics when centroid and residual dimensionality are inconsistent.
 pub fn reconstruct_partition(node: &PartitionNode) -> Vec<Vector> {
     let dimensions = node.residuals.dimensions();
 

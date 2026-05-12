@@ -2,23 +2,26 @@
 
 use crate::query::QueryRegion;
 
-pub struct QueryWorkloadCase {
-    pub name: String,
-    pub query: QueryRegion,
-}
-
 /// Named query case used for repeatable benchmark and demo execution.
 ///
 /// # Runtime Role
 ///
 /// `QueryWorkloadCase` gives examples and benchmark code a stable way to run
 /// multiple query shapes against the same dataset.
+#[derive(Clone, Debug, PartialEq)]
+pub struct QueryWorkloadCase {
+    /// Human-readable workload name.
+    pub name: String,
+
+    /// Query region executed for this workload case.
+    pub query: QueryRegion,
+}
+
 impl QueryWorkloadCase {
+    /// Creates a named workload case.
     pub fn new(name: impl Into<String>, query: QueryRegion) -> Self {
         Self {
-            // Human-readable workload name
             name: name.into(),
-            // Query region executed for this workload case
             query,
         }
     }
@@ -33,6 +36,7 @@ impl QueryWorkloadCase {
 /// - selective cluster query
 /// - empty query
 /// - full-range query
+/// - boundary-crossing query
 pub fn clustered_workload_cases() -> Vec<QueryWorkloadCase> {
     vec![
         QueryWorkloadCase::new(
@@ -46,6 +50,10 @@ pub fn clustered_workload_cases() -> Vec<QueryWorkloadCase> {
         QueryWorkloadCase::new(
             "full_dataset_range",
             QueryRegion::new(vec![-10.0, -10.0], vec![130.0, 130.0]),
+        ),
+        QueryWorkloadCase::new(
+            "cluster_boundary_range",
+            QueryRegion::new(vec![18.0, 18.0], vec![52.0, 52.0]),
         ),
     ]
 }

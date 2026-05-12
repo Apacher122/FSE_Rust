@@ -9,6 +9,9 @@ pub mod splitter;
 pub mod validation;
 pub mod variance;
 
-pub use builder::{BuildConfig, FSEBuilder};
+pub use builder::{BuildConfig, FSEBuilder, ValidatedFSEIndex};
 pub use metrics::{index_density, partition_density};
-pub use validation::{IndexValidationReport, validate_index};
+pub use validation::{
+    IndexValidationReport, validate_hierarchy_topology, validate_index, validate_leaf_cardinality,
+    validate_parent_child_bounds,
+};
