@@ -27,6 +27,7 @@ fn comparison_report_counts_avoided_reconstructions() {
 
     assert_eq!(report.avoided_reconstructions, 2);
     assert_eq!(report.reconstruction_avoidance_ratio, 0.5);
+    assert_eq!(report.candidate_ratio, 0.5);
 }
 
 #[test]
@@ -53,6 +54,7 @@ fn comparison_report_handles_full_range_query() {
 
     assert_eq!(report.avoided_reconstructions, 0);
     assert_eq!(report.reconstruction_avoidance_ratio, 0.0);
+    assert_eq!(report.candidate_ratio, 1.0);
 }
 
 #[test]
@@ -79,4 +81,5 @@ fn comparison_report_handles_empty_result_query() {
 
     assert_eq!(report.avoided_reconstructions, 4);
     assert_eq!(report.reconstruction_avoidance_ratio, 1.0);
+    assert_eq!(report.candidate_ratio, 0.0);
 }

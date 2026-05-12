@@ -1,6 +1,6 @@
 //! End-to-end query execution.
 
-use crate::math::Vector;
+use crate::math::{Scalar, Vector};
 use crate::query::{QueryRegion, evaluate_query, reconstruct_partition};
 use crate::storage::FSEIndex;
 
@@ -16,16 +16,20 @@ use crate::storage::FSEIndex;
 /// These values correspond to the runtime terms in the staged execution model:
 /// metadata traversal, retained candidate partitions, deferred reconstruction,
 /// and exact point-level evaluation.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct QueryExecutionStats {
     /// Number of hierarchy nodes whose metadata was visited.
     pub visited_nodes: usize,
     /// Number of leaf partitions retained after metadata pruning.
     pub retained_leaves: usize,
+    /// Number of records represented by the index.
+    pub total_records: usize,
     /// Number of records reconstructed after pruning.
     pub reconstructed_records: usize,
     /// Number of records returned after exact predicate evaluation.
     pub matched_records: usize,
+    /// Fraction of total records reconstructed after pruning.
+    pub candidate_ratio: Scalar,
 }
 
 /// Query result paired with execution statistics.
@@ -77,7 +81,11 @@ pub fn execute_query_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryE
         "query dimensionality must match index dimensionality"
     );
 
-    let mut stats = QueryExecutionStats::default();
+    let mut stats = QueryExecutionStats {
+        total_records: index.root_node().cardinality,
+        ..QueryExecutionStats::default()
+    };
+
     let mut results = Vec::new();
 
     let query_bounds = query.as_bounds();
@@ -106,6 +114,12 @@ pub fn execute_query_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryE
             }
         }
     }
+
+    stats.candidate_ratio = if stats.total_records == 0 {
+        0.0
+    } else {
+        stats.reconstructed_records as Scalar / stats.total_records as Scalar
+    };
 
     QueryExecutionReport { results, stats }
 }

@@ -16,15 +16,14 @@ use crate::storage::FSEIndex;
 pub struct QueryComparisonReport {
     /// Statistics from the flat scan baseline.
     pub scan_stats: FlatScanStats,
-
     /// Statistics from the FSE execution path.
     pub fse_stats: QueryExecutionStats,
-
     /// Number of records avoided by FSE reconstruction relative to flat scan evaluation.
     pub avoided_reconstructions: usize,
-
     /// Fraction of baseline record evaluations avoided by FSE reconstruction.
     pub reconstruction_avoidance_ratio: Scalar,
+    /// Fraction of total records reconstructed by FSE.
+    pub candidate_ratio: Scalar,
 }
 
 /// Compares FSE query execution against flat scan execution.
@@ -67,11 +66,14 @@ pub fn compare_query_execution(
         avoided_reconstructions as Scalar / evaluated_records as Scalar
     };
 
+    let candidate_ratio = fse_report.stats.candidate_ratio;
+
     QueryComparisonReport {
         scan_stats: scan_report.stats,
         fse_stats: fse_report.stats,
         avoided_reconstructions,
         reconstruction_avoidance_ratio,
+        candidate_ratio,
     }
 }
 

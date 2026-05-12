@@ -215,6 +215,8 @@ fn execute_query_with_stats_reports_single_leaf_work() {
     assert_eq!(report.stats.retained_leaves, 1);
     assert_eq!(report.stats.reconstructed_records, 3);
     assert_eq!(report.stats.matched_records, 2);
+    assert_eq!(report.stats.total_records, 3);
+    assert_eq!(report.stats.candidate_ratio, 1.0);
 }
 
 #[test]
@@ -233,15 +235,18 @@ fn execute_query_with_stats_reports_pruned_root_without_reconstruction() {
     assert_eq!(report.stats.retained_leaves, 0);
     assert_eq!(report.stats.reconstructed_records, 0);
     assert_eq!(report.stats.matched_records, 0);
+    assert_eq!(report.stats.total_records, 2);
+    assert_eq!(report.stats.candidate_ratio, 0.0);
 }
 
 #[test]
 fn execute_query_with_stats_reports_hierarchy_traversal_work() {
-    let root = PartitionNode::new(
+    let root = PartitionNode::with_cardinality(
         0,
         vec![5.0, 5.0],
         BoundingBox::new(vec![0.0, 0.0], vec![10.0, 10.0]),
         ResidualBlock::new(vec![Vec::new(), Vec::new()]),
+        4,
         vec![1, 2],
         false,
     );
@@ -265,6 +270,8 @@ fn execute_query_with_stats_reports_hierarchy_traversal_work() {
 
     assert_eq!(report.stats.visited_nodes, 3);
     assert_eq!(report.stats.retained_leaves, 1);
+    assert_eq!(report.stats.total_records, 4);
     assert_eq!(report.stats.reconstructed_records, 2);
     assert_eq!(report.stats.matched_records, 1);
+    assert_eq!(report.stats.candidate_ratio, 0.5);
 }

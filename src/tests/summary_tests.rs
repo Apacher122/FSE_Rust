@@ -96,4 +96,19 @@ fn aggregate_workload_metrics_handles_empty_summary_list() {
     assert_eq!(aggregate.total_fse_matched_records, 0);
     assert_eq!(aggregate.total_avoided_reconstructions, 0);
     assert_eq!(aggregate.average_reconstruction_avoidance_ratio, 0.0);
+    assert_eq!(aggregate.average_candidate_ratio, 0.0);
+}
+
+#[test]
+fn aggregate_workload_metrics_reports_average_candidate_ratio() {
+    let points = clustered_points_2d();
+    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
+    let index = builder.build(&points);
+    let workloads = clustered_workload_cases();
+
+    let summaries = summarize_workload_comparisons(&index, &points, &workloads);
+    let aggregate = aggregate_workload_metrics(&summaries);
+
+    assert!(aggregate.average_candidate_ratio >= 0.0);
+    assert!(aggregate.average_candidate_ratio <= 1.0);
 }

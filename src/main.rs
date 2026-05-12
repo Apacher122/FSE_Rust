@@ -62,6 +62,7 @@ fn main() {
             "  FSE reconstructed records: {}",
             comparison.fse_stats.reconstructed_records
         );
+        println!("  candidate ratio: {:.2}", comparison.candidate_ratio);
         println!(
             "  matched records: {}",
             comparison.fse_stats.matched_records
@@ -74,7 +75,10 @@ fn main() {
             "  reconstruction avoidance ratio: {:.2}",
             comparison.reconstruction_avoidance_ratio
         );
-
+        println!(
+            "average candidate ratio: {:.2}",
+            aggregate.average_candidate_ratio
+        );
         println!();
     }
 
