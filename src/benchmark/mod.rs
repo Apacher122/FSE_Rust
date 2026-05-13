@@ -13,7 +13,10 @@ pub mod timing;
 pub mod workload;
 
 pub use comparison::{QueryComparisonReport, compare_query_execution};
-pub use datasets::clustered_points_2d;
+pub use datasets::{
+    ClusteredDatasetConfig, clustered_points_2d, generate_clustered_points_2d,
+    large_clustered_points_2d,
+};
 pub use pruning::{PruningEfficiencyReport, pruning_efficiency_report};
 pub use runner::{BenchmarkSuiteReport, WorkloadPruningReport, run_benchmark_suite};
 pub use scan::{FlatScanReport, FlatScanStats, flat_scan, flat_scan_with_stats};
@@ -23,5 +26,6 @@ pub use summary::{
 };
 pub use timing::{TimingReport, measure_elapsed};
 pub use workload::{
-    QueryWorkloadCase, RangeWorkloadConfig, clustered_workload_cases, generate_range_workload_cases,
+    QueryWorkloadCase, RangeWorkloadConfig, clustered_workload_cases,
+    generate_range_workload_cases, large_clustered_workload_cases,
 };

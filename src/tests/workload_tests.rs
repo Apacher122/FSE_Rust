@@ -1,5 +1,6 @@
 use crate::benchmark::{
     RangeWorkloadConfig, clustered_workload_cases, generate_range_workload_cases,
+    large_clustered_workload_cases,
 };
 
 #[test]
@@ -28,6 +29,62 @@ fn clustered_workload_cases_have_two_dimensional_queries() {
     for case in cases {
         assert_eq!(case.query.dimensions(), 2);
     }
+}
+
+#[test]
+fn large_clustered_workload_cases_include_expected_case_count() {
+    let cases = large_clustered_workload_cases();
+
+    assert_eq!(cases.len(), 13);
+}
+
+#[test]
+fn large_clustered_workload_cases_include_expected_names() {
+    let cases = large_clustered_workload_cases();
+
+    let names: Vec<&str> = cases.iter().map(|case| case.name.as_str()).collect();
+
+    assert_eq!(
+        names,
+        vec![
+            "large_cluster_range_000",
+            "large_cluster_range_001",
+            "large_cluster_range_002",
+            "large_cluster_range_003",
+            "large_cluster_range_004",
+            "large_cluster_range_005",
+            "large_cluster_range_006",
+            "large_cluster_range_007",
+            "large_cluster_range_008",
+            "large_cluster_range_009",
+            "large_empty_far_range",
+            "large_full_dataset_range",
+            "large_cross_cluster_boundary",
+        ]
+    );
+}
+
+#[test]
+fn large_clustered_workload_cases_have_two_dimensional_queries() {
+    let cases = large_clustered_workload_cases();
+
+    for case in cases {
+        assert_eq!(case.query.dimensions(), 2);
+    }
+}
+
+#[test]
+fn large_clustered_workload_cases_target_expected_cluster_ranges() {
+    let cases = large_clustered_workload_cases();
+
+    assert_eq!(cases[0].query.min, vec![0.0, 0.0]);
+    assert_eq!(cases[0].query.max, vec![25.0, 25.0]);
+
+    assert_eq!(cases[1].query.min, vec![1000.0, 1000.0]);
+    assert_eq!(cases[1].query.max, vec![1025.0, 1025.0]);
+
+    assert_eq!(cases[9].query.min, vec![9000.0, 9000.0]);
+    assert_eq!(cases[9].query.max, vec![9025.0, 9025.0]);
 }
 
 #[test]

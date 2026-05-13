@@ -123,7 +123,7 @@ pub fn generate_range_workload_cases(config: &RangeWorkloadConfig) -> Vec<QueryW
         let mut max = Vec::with_capacity(config.dimensions());
 
         for dimension in 0..config.dimensions() {
-            // generation should be deterministic for stable results
+            // Keep generation deterministic so benchmark output is stable.
             let lower = config.start[dimension] + config.step[dimension] * index as Scalar;
             let upper = lower + config.width[dimension];
 
@@ -140,16 +140,12 @@ pub fn generate_range_workload_cases(config: &RangeWorkloadConfig) -> Vec<QueryW
     workloads
 }
 
-/// Returns reusable query cases for the deterministic clustered 2D dataset.
+/// Returns reusable query cases for the small deterministic clustered 2D dataset.
 ///
 /// # Runtime Role
 ///
-/// These cases cover different selectivity profiles:
-///
-/// - selective cluster query
-/// - empty query
-/// - full-range query
-/// - boundary-crossing query
+/// These cases cover different selectivity profiles for the 60-record demo
+/// dataset.
 pub fn clustered_workload_cases() -> Vec<QueryWorkloadCase> {
     let mut workloads = generate_range_workload_cases(&RangeWorkloadConfig::new(
         "cluster_range",
@@ -159,7 +155,7 @@ pub fn clustered_workload_cases() -> Vec<QueryWorkloadCase> {
         vec![5.0, 5.0],
     ));
 
-    // keep a few named cases because they are easier to read in demo output
+    // Keep a few named cases because they are easier to read in demo output.
     workloads.push(QueryWorkloadCase::new(
         "empty_far_range",
         QueryRegion::new(vec![200.0, 200.0], vec![220.0, 220.0]),
@@ -173,6 +169,39 @@ pub fn clustered_workload_cases() -> Vec<QueryWorkloadCase> {
     workloads.push(QueryWorkloadCase::new(
         "cluster_boundary_range",
         QueryRegion::new(vec![18.0, 18.0], vec![52.0, 52.0]),
+    ));
+
+    workloads
+}
+
+/// Returns reusable query cases for the large deterministic clustered 2D dataset.
+///
+/// # Runtime Role
+///
+/// These cases target the 10,000-record deterministic dataset whose cluster
+/// origins are spaced by 1,000 units.
+pub fn large_clustered_workload_cases() -> Vec<QueryWorkloadCase> {
+    let mut workloads = generate_range_workload_cases(&RangeWorkloadConfig::new(
+        "large_cluster_range",
+        10,
+        vec![0.0, 0.0],
+        vec![1000.0, 1000.0],
+        vec![25.0, 25.0],
+    ));
+
+    workloads.push(QueryWorkloadCase::new(
+        "large_empty_far_range",
+        QueryRegion::new(vec![20_000.0, 20_000.0], vec![21_000.0, 21_000.0]),
+    ));
+
+    workloads.push(QueryWorkloadCase::new(
+        "large_full_dataset_range",
+        QueryRegion::new(vec![-100.0, -100.0], vec![10_000.0, 10_000.0]),
+    ));
+
+    workloads.push(QueryWorkloadCase::new(
+        "large_cross_cluster_boundary",
+        QueryRegion::new(vec![490.0, 490.0], vec![1_025.0, 1_025.0]),
     ));
 
     workloads

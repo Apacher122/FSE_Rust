@@ -1,8 +1,10 @@
-use fse_rust::benchmark::{clustered_points_2d, clustered_workload_cases, run_benchmark_suite};
+use fse_rust::benchmark::{
+    large_clustered_points_2d, large_clustered_workload_cases, run_benchmark_suite,
+};
 use fse_rust::build::{BuildConfig, FSEBuilder};
 
 fn main() {
-    let points = clustered_points_2d();
+    let points = large_clustered_points_2d();
 
     let builder = FSEBuilder::new(BuildConfig::new(8, 8));
     let validated = builder.build_validated(&points);
@@ -10,7 +12,7 @@ fn main() {
     let index = validated.index;
     let validation = validated.validation;
 
-    let workloads = clustered_workload_cases();
+    let workloads = large_clustered_workload_cases();
     let report = run_benchmark_suite(&index, &points, &workloads);
 
     println!("FSE benchmark suite");
