@@ -1,9 +1,9 @@
 //! Benchmark suite runner.
 
 use crate::benchmark::{
-    AggregateWorkloadMetrics, PruningEfficiencyReport, QueryWorkloadCase,
-    WorkloadComparisonSummary, aggregate_workload_metrics, pruning_efficiency_report,
-    summarize_workload_comparisons,
+    AggregateWorkloadMetrics, PruningEfficiencyReport, QueryWorkloadCase, RepeatedTimingConfig,
+    WorkloadComparisonSummary, aggregate_workload_metrics, compare_query_execution_repeated,
+    pruning_efficiency_report,
 };
 use crate::math::Vector;
 use crate::storage::FSEIndex;
@@ -53,7 +53,34 @@ pub fn run_benchmark_suite(
     points: &[Vector],
     workloads: &[QueryWorkloadCase],
 ) -> BenchmarkSuiteReport {
-    let comparisons = summarize_workload_comparisons(index, points, workloads);
+    run_benchmark_suite_repeated(index, points, workloads, &RepeatedTimingConfig::default())
+}
+
+/// Runs the current FSE benchmark suite with repeated timing configuration.
+///
+/// # Runtime Role
+///
+/// This function lets callers tune the number of measured timing iterations
+/// while reusing the same comparison and aggregation flow.
+pub fn run_benchmark_suite_repeated(
+    index: &FSEIndex,
+    points: &[Vector],
+    workloads: &[QueryWorkloadCase],
+    timing_config: &RepeatedTimingConfig,
+) -> BenchmarkSuiteReport {
+    let comparisons: Vec<WorkloadComparisonSummary> = workloads
+        .iter()
+        .map(|workload| WorkloadComparisonSummary {
+            workload_name: workload.name.clone(),
+            comparison: compare_query_execution_repeated(
+                index,
+                points,
+                &workload.query,
+                timing_config,
+            ),
+        })
+        .collect();
+
     let aggregate = aggregate_workload_metrics(&comparisons);
 
     let pruning_reports = comparisons

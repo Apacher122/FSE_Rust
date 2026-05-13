@@ -1,6 +1,9 @@
 //! Comparison utilities for FSE and flat scan execution.
 
-use crate::benchmark::{FlatScanStats, TimingReport, flat_scan_with_stats, measure_elapsed};
+use crate::benchmark::{
+    FlatScanStats, RepeatedComparisonTimingReport, RepeatedTimingConfig, TimingReport,
+    duration_ratio, flat_scan_with_stats, measure_elapsed, measure_repeated,
+};
 use crate::math::{Scalar, Vector};
 use crate::query::{QueryExecutionStats, QueryRegion, execute_query_with_stats};
 use crate::storage::FSEIndex;
@@ -20,8 +23,11 @@ pub struct QueryComparisonReport {
     /// Statistics from the FSE execution path.
     pub fse_stats: QueryExecutionStats,
 
-    /// Wall-clock timing measurements for both execution paths.
+    /// Wall-clock timing measurements for one execution of both paths.
     pub timing: TimingReport,
+
+    /// Repeated timing measurements for both execution paths.
+    pub repeated_timing: RepeatedComparisonTimingReport,
 
     /// Number of records avoided by FSE reconstruction relative to flat scan evaluation.
     pub avoided_reconstructions: usize,
@@ -34,6 +40,12 @@ pub struct QueryComparisonReport {
 
     /// Fraction of leaf partitions retained by FSE.
     pub retained_leaf_ratio: Scalar,
+
+    /// Single-run timing ratio composed as flat scan elapsed divided by FSE elapsed.
+    pub single_run_timing_ratio: f64,
+
+    /// Average timing ratio computed as flat scan average divided by FSE average elapsed.
+    pub average_timing_ratio: f64,
 }
 
 /// Compares FSE query execution against flat scan execution.
@@ -51,6 +63,21 @@ pub fn compare_query_execution(
     points: &[Vector],
     query: &QueryRegion,
 ) -> QueryComparisonReport {
+    compare_query_execution_repeated(index, points, query, &RepeatedTimingConfig::default())
+}
+
+/// Compares FSE query execution against flat scan execution with repeated timing.
+///
+/// # Runtime Role
+///
+/// This function preserves correctness validation while collecting averaged
+/// timing measurements over multiple iterations.
+pub fn compare_query_execution_repeated(
+    index: &FSEIndex,
+    points: &[Vector],
+    query: &QueryRegion,
+    timing_config: &RepeatedTimingConfig,
+) -> QueryComparisonReport {
     let (scan_report, flat_scan_elapsed) = measure_elapsed(|| flat_scan_with_stats(points, query));
     let (fse_report, fse_elapsed) = measure_elapsed(|| execute_query_with_stats(index, query));
 
@@ -63,6 +90,21 @@ pub fn compare_query_execution(
     assert_eq!(
         fse_results, scan_results,
         "FSE query results must match flat scan results"
+    );
+
+    let repeated_timing = RepeatedComparisonTimingReport {
+        flat_scan: measure_repeated(timing_config, || {
+            let _ = flat_scan_with_stats(points, query);
+        }),
+        fse: measure_repeated(timing_config, || {
+            let _ = execute_query_with_stats(index, query);
+        }),
+    };
+
+    let single_run_timing_ratio = duration_ratio(flat_scan_elapsed, fse_elapsed);
+    let average_timing_ratio = duration_ratio(
+        repeated_timing.flat_scan.average_elapsed,
+        repeated_timing.fse.average_elapsed,
     );
 
     let evaluated_records = scan_report.stats.evaluated_records;
@@ -86,6 +128,9 @@ pub fn compare_query_execution(
             flat_scan_elapsed,
             fse_elapsed,
         },
+        repeated_timing,
+        single_run_timing_ratio,
+        average_timing_ratio,
         avoided_reconstructions,
         reconstruction_avoidance_ratio,
         candidate_ratio,

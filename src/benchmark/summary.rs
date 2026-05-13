@@ -1,8 +1,11 @@
 //! Workload comparison summaries.
 
-use crate::benchmark::{QueryComparisonReport, QueryWorkloadCase, compare_query_execution};
+use crate::benchmark::{
+    QueryComparisonReport, QueryWorkloadCase, compare_query_execution, duration_ratio,
+};
 use crate::math::{Scalar, Vector};
 use crate::storage::FSEIndex;
+use std::time::Duration;
 
 /// Comparison result for a named workload case.
 ///
@@ -63,6 +66,24 @@ pub struct AggregateWorkloadMetrics {
 
     /// Weighted candidate ratio across all workload records.
     pub weighted_candidate_ratio: Scalar,
+
+    /// Sum of per-workload flat scan average elapsed times.
+    pub total_flat_scan_average_elapsed: Duration,
+
+    /// Sum of per-workload FSE average elapsed times.
+    pub total_fse_average_elapsed: Duration,
+
+    /// Mean flat scan average elapsed time per workload.
+    pub mean_flat_scan_average_elapsed: Duration,
+
+    /// Mean FSE average elapsed time per workload.
+    pub mean_fse_average_elapsed: Duration,
+
+    /// Arithmetic mean of per-workload average timing ratios.
+    pub mean_timing_ratio: f64,
+
+    /// Timing ratio computed from aggregate average elapsed times.
+    pub weighted_timing_ratio: f64,
 }
 
 /// Runs all workload cases and returns comparison summaries.
@@ -117,6 +138,7 @@ pub fn aggregate_workload_metrics(
     let mut avoidance_ratio_sum = 0.0;
     let mut candidate_ratio_sum = 0.0;
     let mut retained_leaf_ratio_sum = 0.0;
+    let mut timing_ratio_sum = 0.0;
 
     for summary in summaries {
         let comparison = &summary.comparison;
@@ -127,10 +149,13 @@ pub fn aggregate_workload_metrics(
         aggregate.total_fse_reconstructed_records += comparison.fse_stats.reconstructed_records;
         aggregate.total_fse_matched_records += comparison.fse_stats.matched_records;
         aggregate.total_avoided_reconstructions += comparison.avoided_reconstructions;
-
+        aggregate.total_flat_scan_average_elapsed +=
+            comparison.repeated_timing.flat_scan.average_elapsed;
+        aggregate.total_fse_average_elapsed += comparison.repeated_timing.fse.average_elapsed;
         avoidance_ratio_sum += comparison.reconstruction_avoidance_ratio;
         candidate_ratio_sum += comparison.candidate_ratio;
         retained_leaf_ratio_sum += comparison.retained_leaf_ratio;
+        timing_ratio_sum += comparison.average_timing_ratio;
     }
 
     aggregate.average_reconstruction_avoidance_ratio =
@@ -148,6 +173,17 @@ pub fn aggregate_workload_metrics(
         aggregate.total_scan_evaluated_records,
     );
 
+    aggregate.mean_flat_scan_average_elapsed =
+        duration_div(aggregate.total_flat_scan_average_elapsed, workload_count);
+    aggregate.mean_fse_average_elapsed =
+        duration_div(aggregate.total_fse_average_elapsed, workload_count);
+
+    aggregate.mean_timing_ratio = timing_ratio_sum / workload_count as f64;
+    aggregate.weighted_timing_ratio = duration_ratio(
+        aggregate.total_flat_scan_average_elapsed,
+        aggregate.total_fse_average_elapsed,
+    );
+
     aggregate
 }
 
@@ -157,4 +193,12 @@ fn ratio_or_zero(numerator: usize, denominator: usize) -> Scalar {
     } else {
         numerator as Scalar / denominator as Scalar
     }
+}
+
+fn duration_div(duration: Duration, divisor: usize) -> Duration {
+    if divisor == 0 {
+        return Duration::ZERO;
+    }
+
+    Duration::from_secs_f64(duration.as_secs_f64() / divisor as f64)
 }

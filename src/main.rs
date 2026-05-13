@@ -1,5 +1,6 @@
 use fse_rust::benchmark::{
-    large_clustered_points_2d, large_clustered_workload_cases, run_benchmark_suite,
+    RepeatedTimingConfig, large_clustered_points_2d, large_clustered_workload_cases,
+    run_benchmark_suite_repeated,
 };
 use fse_rust::build::{BuildConfig, FSEBuilder};
 
@@ -13,7 +14,9 @@ fn main() {
     let validation = validated.validation;
 
     let workloads = large_clustered_workload_cases();
-    let report = run_benchmark_suite(&index, &points, &workloads);
+
+    let timing_config = RepeatedTimingConfig::new(10);
+    let report = run_benchmark_suite_repeated(&index, &points, &workloads, &timing_config);
 
     println!("FSE benchmark suite");
     println!("===================");
@@ -22,6 +25,11 @@ fn main() {
     println!("Dataset records: {}", points.len());
     println!("Index nodes: {}", index.node_count());
     println!("Workloads: {}", report.aggregate.workload_count);
+    println!("Timing iterations: {}", timing_config.iterations);
+    println!();
+
+    println!("Timing ratio meaning: flat scan elapsed / FSE elapsed");
+    println!("  above 1.0 means FSE measured faster for that run");
     println!();
 
     println!("Index validation: {}", validation.is_valid());
@@ -54,10 +62,26 @@ fn main() {
             comparison.timing.flat_scan_elapsed
         );
         println!(
+            "  flat scan average elapsed: {:?}",
+            comparison.repeated_timing.flat_scan.average_elapsed
+        );
+        println!(
             "  FSE visited nodes: {}",
             comparison.fse_stats.visited_nodes
         );
         println!("  FSE elapsed: {:?}", comparison.timing.fse_elapsed);
+        println!(
+            "  FSE average elapsed: {:?}",
+            comparison.repeated_timing.fse.average_elapsed
+        );
+        println!(
+            " single-run timing ratio: {:.2}",
+            comparison.single_run_timing_ratio
+        );
+        println!(
+            " average timing ratio: {:.2}",
+            comparison.average_timing_ratio
+        );
         println!(
             "  FSE retained leaves: {}",
             comparison.fse_stats.retained_leaves
@@ -142,5 +166,26 @@ fn main() {
     println!(
         "weighted candidate ratio: {:.2}",
         aggregate.weighted_candidate_ratio
+    );
+    println!(
+        "total flat scan average elapsed: {:?}",
+        aggregate.total_flat_scan_average_elapsed
+    );
+    println!(
+        "total FSE average elapsed: {:?}",
+        aggregate.total_fse_average_elapsed
+    );
+    println!(
+        "mean flat scan average elapsed: {:?}",
+        aggregate.mean_flat_scan_average_elapsed
+    );
+    println!(
+        "mean FSE average elapsed: {:?}",
+        aggregate.mean_fse_average_elapsed
+    );
+    println!("mean timing ratio: {:.2}", aggregate.mean_timing_ratio);
+    println!(
+        "weighted timing ratio: {:.2}",
+        aggregate.weighted_timing_ratio
     );
 }

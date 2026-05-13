@@ -1,4 +1,7 @@
-use crate::benchmark::{clustered_points_2d, clustered_workload_cases, run_benchmark_suite};
+use crate::benchmark::{
+    RepeatedTimingConfig, clustered_points_2d, clustered_workload_cases, run_benchmark_suite,
+    run_benchmark_suite_repeated,
+};
 use crate::build::{BuildConfig, FSEBuilder};
 
 #[test]
@@ -58,4 +61,23 @@ fn benchmark_runner_populates_aggregate_metrics() {
         report.aggregate.total_scan_evaluated_records,
         points.len() * workloads.len()
     );
+}
+
+#[test]
+fn benchmark_runner_repeated_uses_requested_timing_iterations() {
+    let points = clustered_points_2d();
+    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
+    let index = builder.build(&points);
+    let workloads = clustered_workload_cases();
+    let timing_config = RepeatedTimingConfig::new(3);
+
+    let report = run_benchmark_suite_repeated(&index, &points, &workloads, &timing_config);
+
+    for comparison in report.comparisons {
+        assert_eq!(
+            comparison.comparison.repeated_timing.flat_scan.iterations,
+            3
+        );
+        assert_eq!(comparison.comparison.repeated_timing.fse.iterations, 3);
+    }
 }
