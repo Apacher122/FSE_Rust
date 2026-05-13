@@ -61,11 +61,11 @@ fn main() {
         );
         println!(
             "  baseline elapsed: {:?}",
-            comparison.timing.flat_scan_elapsed
+            comparison.timing.baseline_elapsed
         );
         println!(
             "  baseline average elapsed: {:?}",
-            comparison.repeated_timing.flat_scan.average_elapsed
+            comparison.repeated_timing.baseline.average_elapsed
         );
         println!(
             "  FSE visited nodes: {}",
@@ -126,8 +126,8 @@ fn main() {
     println!("Aggregate workload metrics");
     println!("--------------------------");
     println!(
-        "total flat scan evaluated records: {}",
-        aggregate.total_scan_evaluated_records
+        "total baseline evaluated records: {}",
+        aggregate.total_baseline_evaluated_records
     );
     println!(
         "total FSE visited nodes: {}",
@@ -170,16 +170,16 @@ fn main() {
         aggregate.weighted_candidate_ratio
     );
     println!(
-        "total flat scan average elapsed: {:?}",
-        aggregate.total_flat_scan_average_elapsed
+        "total baseline average elapsed: {:?}",
+        aggregate.total_baseline_average_elapsed
     );
     println!(
         "total FSE average elapsed: {:?}",
         aggregate.total_fse_average_elapsed
     );
     println!(
-        "mean flat scan average elapsed: {:?}",
-        aggregate.mean_flat_scan_average_elapsed
+        "mean baseline average elapsed: {:?}",
+        aggregate.mean_baseline_average_elapsed
     );
     println!(
         "mean FSE average elapsed: {:?}",

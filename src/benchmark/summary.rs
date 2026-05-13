@@ -1,18 +1,19 @@
 //! Workload comparison summaries.
 
+use std::time::Duration;
+
 use crate::benchmark::{
     QueryComparisonReport, QueryWorkloadCase, compare_query_execution, duration_ratio,
 };
 use crate::math::{Scalar, Vector};
 use crate::storage::FSEIndex;
-use std::time::Duration;
 
 /// Comparison result for a named workload case.
 ///
 /// # Runtime Role
 ///
 /// `WorkloadComparisonSummary` pairs a workload name with the comparison report
-/// produced by running FSE and flat scan execution against the same query.
+/// produced by running FSE and baseline execution against the same query.
 #[derive(Clone, Debug, PartialEq)]
 pub struct WorkloadComparisonSummary {
     /// Human-readable workload name.
@@ -34,8 +35,8 @@ pub struct AggregateWorkloadMetrics {
     /// Number of workload cases included in the aggregate.
     pub workload_count: usize,
 
-    /// Total records evaluated by the flat scan baseline.
-    pub total_scan_evaluated_records: usize,
+    /// Total records evaluated by the baseline.
+    pub total_baseline_evaluated_records: usize,
 
     /// Total hierarchy nodes visited by FSE.
     pub total_fse_visited_nodes: usize,
@@ -67,14 +68,14 @@ pub struct AggregateWorkloadMetrics {
     /// Weighted candidate ratio across all workload records.
     pub weighted_candidate_ratio: Scalar,
 
-    /// Sum of per-workload flat scan average elapsed times.
-    pub total_flat_scan_average_elapsed: Duration,
+    /// Sum of per-workload baseline average elapsed times.
+    pub total_baseline_average_elapsed: Duration,
 
     /// Sum of per-workload FSE average elapsed times.
     pub total_fse_average_elapsed: Duration,
 
-    /// Mean flat scan average elapsed time per workload.
-    pub mean_flat_scan_average_elapsed: Duration,
+    /// Mean baseline average elapsed time per workload.
+    pub mean_baseline_average_elapsed: Duration,
 
     /// Mean FSE average elapsed time per workload.
     pub mean_fse_average_elapsed: Duration,
@@ -82,7 +83,7 @@ pub struct AggregateWorkloadMetrics {
     /// Arithmetic mean of per-workload average timing ratios.
     pub mean_timing_ratio: f64,
 
-    /// Timing ratio computed from aggregate average elapsed times.
+    /// Timing ratio computed from aggregate average elapsed totals.
     pub weighted_timing_ratio: f64,
 }
 
@@ -95,7 +96,7 @@ pub struct AggregateWorkloadMetrics {
 ///
 /// # Panics
 ///
-/// Panics if any FSE query result differs from the flat scan result.
+/// Panics if any FSE query result differs from the baseline result.
 pub fn summarize_workload_comparisons(
     index: &FSEIndex,
     points: &[Vector],
@@ -120,7 +121,7 @@ pub fn summarize_workload_comparisons(
 /// # Notes
 ///
 /// The average ratios are arithmetic means of the per-workload ratios.
-/// Weighted ratios are computed from aggregate record counts.
+/// Weighted ratios are computed from aggregate record counts or timing totals.
 pub fn aggregate_workload_metrics(
     summaries: &[WorkloadComparisonSummary],
 ) -> AggregateWorkloadMetrics {
@@ -143,15 +144,17 @@ pub fn aggregate_workload_metrics(
     for summary in summaries {
         let comparison = &summary.comparison;
 
-        aggregate.total_scan_evaluated_records += comparison.baseline_stats.evaluated_records;
+        aggregate.total_baseline_evaluated_records += comparison.baseline_stats.evaluated_records;
         aggregate.total_fse_visited_nodes += comparison.fse_stats.visited_nodes;
         aggregate.total_fse_retained_leaves += comparison.fse_stats.retained_leaves;
         aggregate.total_fse_reconstructed_records += comparison.fse_stats.reconstructed_records;
         aggregate.total_fse_matched_records += comparison.fse_stats.matched_records;
         aggregate.total_avoided_reconstructions += comparison.avoided_reconstructions;
-        aggregate.total_flat_scan_average_elapsed +=
-            comparison.repeated_timing.flat_scan.average_elapsed;
+
+        aggregate.total_baseline_average_elapsed +=
+            comparison.repeated_timing.baseline.average_elapsed;
         aggregate.total_fse_average_elapsed += comparison.repeated_timing.fse.average_elapsed;
+
         avoidance_ratio_sum += comparison.reconstruction_avoidance_ratio;
         candidate_ratio_sum += comparison.candidate_ratio;
         retained_leaf_ratio_sum += comparison.retained_leaf_ratio;
@@ -165,22 +168,22 @@ pub fn aggregate_workload_metrics(
 
     aggregate.weighted_reconstruction_avoidance_ratio = ratio_or_zero(
         aggregate.total_avoided_reconstructions,
-        aggregate.total_scan_evaluated_records,
+        aggregate.total_baseline_evaluated_records,
     );
 
     aggregate.weighted_candidate_ratio = ratio_or_zero(
         aggregate.total_fse_reconstructed_records,
-        aggregate.total_scan_evaluated_records,
+        aggregate.total_baseline_evaluated_records,
     );
 
-    aggregate.mean_flat_scan_average_elapsed =
-        duration_div(aggregate.total_flat_scan_average_elapsed, workload_count);
+    aggregate.mean_baseline_average_elapsed =
+        duration_div(aggregate.total_baseline_average_elapsed, workload_count);
     aggregate.mean_fse_average_elapsed =
         duration_div(aggregate.total_fse_average_elapsed, workload_count);
 
     aggregate.mean_timing_ratio = timing_ratio_sum / workload_count as f64;
     aggregate.weighted_timing_ratio = duration_ratio(
-        aggregate.total_flat_scan_average_elapsed,
+        aggregate.total_baseline_average_elapsed,
         aggregate.total_fse_average_elapsed,
     );
 
@@ -200,5 +203,6 @@ fn duration_div(duration: Duration, divisor: usize) -> Duration {
         return Duration::ZERO;
     }
 
+    // Keep duration averaging explicit to match the benchmark timing helper.
     Duration::from_secs_f64(duration.as_secs_f64() / divisor as f64)
 }

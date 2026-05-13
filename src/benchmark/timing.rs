@@ -6,13 +6,13 @@ use std::time::{Duration, Instant};
 ///
 /// # Runtime Role
 ///
-/// `TimingReport` records elapsed time for the baseline scan path and the FSE
+/// `TimingReport` records elapsed time for the baseline query path and the FSE
 /// query path. These measurements are intended for demos and early regression
 /// checks, not statistically rigorous benchmarking.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TimingReport {
-    /// Elapsed time spent executing the flat scan baseline.
-    pub flat_scan_elapsed: Duration,
+    /// Elapsed time spent executing the baseline query path.
+    pub baseline_elapsed: Duration,
 
     /// Elapsed time spent executing the FSE query path.
     pub fse_elapsed: Duration,
@@ -70,11 +70,11 @@ pub struct RepeatedTimingReport {
     pub average_elapsed: Duration,
 }
 
-/// Side-by-side repeated timing report for flat scan and FSE execution.
+/// Side-by-side repeated timing report for baseline and FSE execution.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RepeatedComparisonTimingReport {
-    /// Repeated timing report for flat scan execution.
-    pub flat_scan: RepeatedTimingReport,
+    /// Repeated timing report for baseline execution.
+    pub baseline: RepeatedTimingReport,
 
     /// Repeated timing report for FSE execution.
     pub fse: RepeatedTimingReport,
@@ -122,7 +122,7 @@ pub fn measure_repeated(
 ///
 /// # Runtime Role
 ///
-/// This is used to report timing ratios such as flat-scan elapsed time divided
+/// This is used to report timing ratios such as baseline elapsed time divided
 /// by FSE elapsed time.
 pub fn duration_ratio(numerator: Duration, denominator: Duration) -> f64 {
     if denominator == Duration::ZERO {
@@ -140,7 +140,6 @@ fn duration_div(duration: Duration, divisor: usize) -> Duration {
         return Duration::ZERO;
     }
 
-    // Duration division by u32 is not always the most ergonomic across versions,
-    // so keep the conversion explicit and easy to audit.
+    // Duration division is kept explicit so the averaging logic is easy to audit.
     Duration::from_secs_f64(duration.as_secs_f64() / divisor as f64)
 }

@@ -50,7 +50,7 @@ fn comparison_report_includes_timing_measurements() {
     let query = QueryRegion::new(vec![50.0, 50.0], vec![55.0, 55.0]);
     let report = compare_query_execution(&index, &points, &query);
 
-    assert!(report.timing.flat_scan_elapsed >= Duration::ZERO);
+    assert!(report.timing.baseline_elapsed >= Duration::ZERO);
     assert!(report.timing.fse_elapsed >= Duration::ZERO);
 }
 
@@ -65,7 +65,7 @@ fn repeated_comparison_report_uses_requested_iteration_count() {
 
     let report = compare_query_execution_repeated(&index, &points, &query, &timing_config);
 
-    assert_eq!(report.repeated_timing.flat_scan.iterations, 3);
+    assert_eq!(report.repeated_timing.baseline.iterations, 3);
     assert_eq!(report.repeated_timing.fse.iterations, 3);
 }
 

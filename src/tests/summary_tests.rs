@@ -70,7 +70,7 @@ fn aggregate_workload_metrics_counts_workloads() {
 }
 
 #[test]
-fn aggregate_workload_metrics_totals_scan_evaluations() {
+fn aggregate_workload_metrics_totals_baseline_evaluations() {
     let points = clustered_points_2d();
     let builder = FSEBuilder::new(BuildConfig::new(8, 8));
     let index = builder.build(&points);
@@ -80,7 +80,7 @@ fn aggregate_workload_metrics_totals_scan_evaluations() {
     let aggregate = aggregate_workload_metrics(&summaries);
 
     assert_eq!(
-        aggregate.total_scan_evaluated_records,
+        aggregate.total_baseline_evaluated_records,
         points.len() * workloads.len()
     );
 }
@@ -90,7 +90,7 @@ fn aggregate_workload_metrics_handles_empty_summary_list() {
     let aggregate = aggregate_workload_metrics(&[]);
 
     assert_eq!(aggregate.workload_count, 0);
-    assert_eq!(aggregate.total_scan_evaluated_records, 0);
+    assert_eq!(aggregate.total_baseline_evaluated_records, 0);
     assert_eq!(aggregate.total_fse_visited_nodes, 0);
     assert_eq!(aggregate.total_fse_retained_leaves, 0);
     assert_eq!(aggregate.total_fse_reconstructed_records, 0);
@@ -101,10 +101,10 @@ fn aggregate_workload_metrics_handles_empty_summary_list() {
     assert_eq!(aggregate.average_retained_leaf_ratio, 0.0);
     assert_eq!(aggregate.weighted_reconstruction_avoidance_ratio, 0.0);
     assert_eq!(aggregate.weighted_candidate_ratio, 0.0);
-    assert_eq!(aggregate.total_flat_scan_average_elapsed, Duration::ZERO);
+    assert_eq!(aggregate.total_baseline_average_elapsed, Duration::ZERO);
     assert_eq!(aggregate.total_fse_average_elapsed, Duration::ZERO);
-    assert_eq!(aggregate.mean_flat_scan_average_elapsed, Duration::ZERO);
-    assert_eq!(aggregate.mean_flat_scan_average_elapsed, Duration::ZERO);
+    assert_eq!(aggregate.mean_baseline_average_elapsed, Duration::ZERO);
+    assert_eq!(aggregate.mean_fse_average_elapsed, Duration::ZERO);
     assert_eq!(aggregate.mean_timing_ratio, 0.0);
     assert_eq!(aggregate.weighted_timing_ratio, 0.0);
 }
@@ -148,7 +148,7 @@ fn aggregate_workload_metrics_reports_weighted_reconstruction_avoidance_ratio() 
     let aggregate = aggregate_workload_metrics(&summaries);
 
     let expected = aggregate.total_avoided_reconstructions as f32
-        / aggregate.total_scan_evaluated_records as f32;
+        / aggregate.total_baseline_evaluated_records as f32;
 
     assert_eq!(aggregate.weighted_reconstruction_avoidance_ratio, expected);
 }
@@ -164,7 +164,7 @@ fn aggregate_workload_metrics_reports_weighted_candidate_ratio() {
     let aggregate = aggregate_workload_metrics(&summaries);
 
     let expected = aggregate.total_fse_reconstructed_records as f32
-        / aggregate.total_scan_evaluated_records as f32;
+        / aggregate.total_baseline_evaluated_records as f32;
 
     assert_eq!(aggregate.weighted_candidate_ratio, expected);
 }
@@ -179,8 +179,8 @@ fn aggregate_workload_metrics_derives_mean_timing_from_totals() {
     let summaries = summarize_workload_comparisons(&index, &points, &workloads);
     let aggregate = aggregate_workload_metrics(&summaries);
 
-    let expected_flat_scan_mean = Duration::from_secs_f64(
-        aggregate.total_flat_scan_average_elapsed.as_secs_f64() / aggregate.workload_count as f64,
+    let expected_baseline_mean = Duration::from_secs_f64(
+        aggregate.total_baseline_average_elapsed.as_secs_f64() / aggregate.workload_count as f64,
     );
 
     let expected_fse_mean = Duration::from_secs_f64(
@@ -188,9 +188,10 @@ fn aggregate_workload_metrics_derives_mean_timing_from_totals() {
     );
 
     assert_eq!(
-        aggregate.mean_flat_scan_average_elapsed,
-        expected_flat_scan_mean
+        aggregate.mean_baseline_average_elapsed,
+        expected_baseline_mean
     );
+
     assert_eq!(aggregate.mean_fse_average_elapsed, expected_fse_mean);
 }
 
@@ -205,7 +206,7 @@ fn aggregate_workload_metrics_derives_weighted_timing_ratio_from_totals() {
     let aggregate = aggregate_workload_metrics(&summaries);
 
     let expected = duration_ratio(
-        aggregate.total_flat_scan_average_elapsed,
+        aggregate.total_baseline_average_elapsed,
         aggregate.total_fse_average_elapsed,
     );
 

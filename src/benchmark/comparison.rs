@@ -123,7 +123,7 @@ pub fn compare_query_execution_with_baseline(
     );
 
     let repeated_timing = RepeatedComparisonTimingReport {
-        flat_scan: measure_repeated(timing_config, || {
+        baseline: measure_repeated(timing_config, || {
             let _ = baseline.execute(points, query);
         }),
         fse: measure_repeated(timing_config, || {
@@ -133,7 +133,7 @@ pub fn compare_query_execution_with_baseline(
 
     let single_run_timing_ratio = duration_ratio(baseline_elapsed, fse_elapsed);
     let average_timing_ratio = duration_ratio(
-        repeated_timing.flat_scan.average_elapsed,
+        repeated_timing.baseline.average_elapsed,
         repeated_timing.fse.average_elapsed,
     );
 
@@ -159,7 +159,7 @@ pub fn compare_query_execution_with_baseline(
         baseline_stats: baseline_report.stats,
         fse_stats: fse_report.stats,
         timing: TimingReport {
-            flat_scan_elapsed: baseline_elapsed,
+            baseline_elapsed,
             fse_elapsed,
         },
         repeated_timing,

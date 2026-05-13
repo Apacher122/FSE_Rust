@@ -58,7 +58,7 @@ fn benchmark_runner_populates_aggregate_metrics() {
 
     assert_eq!(report.aggregate.workload_count, workloads.len());
     assert_eq!(
-        report.aggregate.total_scan_evaluated_records,
+        report.aggregate.total_baseline_evaluated_records,
         points.len() * workloads.len()
     );
 }
@@ -74,10 +74,7 @@ fn benchmark_runner_repeated_uses_requested_timing_iterations() {
     let report = run_benchmark_suite_repeated(&index, &points, &workloads, &timing_config);
 
     for comparison in report.comparisons {
-        assert_eq!(
-            comparison.comparison.repeated_timing.flat_scan.iterations,
-            3
-        );
+        assert_eq!(comparison.comparison.repeated_timing.baseline.iterations, 3);
         assert_eq!(comparison.comparison.repeated_timing.fse.iterations, 3);
     }
 }
