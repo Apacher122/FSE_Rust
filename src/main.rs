@@ -1,21 +1,19 @@
-use fse_rust::benchmark::{
-    RepeatedTimingConfig, large_clustered_points_2d, large_clustered_workload_cases,
-    run_benchmark_suite_repeated,
-};
-use fse_rust::build::{BuildConfig, FSEBuilder};
+use fse_rust::benchmark::{BenchmarkSuiteConfig, run_benchmark_suite_repeated};
+use fse_rust::build::FSEBuilder;
 
 fn main() {
-    let points = large_clustered_points_2d();
+    let config = BenchmarkSuiteConfig::default();
 
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
+    let points = config.dataset();
+    let workloads = config.workloads();
+    let timing_config = config.timing_config();
+
+    let builder = FSEBuilder::new(config.build_config());
     let validated = builder.build_validated(&points);
 
     let index = validated.index;
     let validation = validated.validation;
 
-    let workloads = large_clustered_workload_cases();
-
-    let timing_config = RepeatedTimingConfig::new(10);
     let report = run_benchmark_suite_repeated(&index, &points, &workloads, &timing_config);
 
     println!("FSE benchmark suite");
@@ -26,6 +24,8 @@ fn main() {
     println!("Index nodes: {}", index.node_count());
     println!("Workloads: {}", report.aggregate.workload_count);
     println!("Timing iterations: {}", timing_config.iterations);
+    println!("Max leaf size: {}", config.max_leaf_size);
+    println!("Max build depth: {}", config.max_depth);
     println!();
 
     println!("Timing ratio meaning: flat scan elapsed / FSE elapsed");
@@ -52,17 +52,19 @@ fn main() {
         let pruning = &pruning_report.pruning;
 
         println!("Workload: {}", summary.workload_name);
+        println!("Comparison: {}", comparison.labels.comparison_label);
         println!("Stats:");
+        println!("  baseline: {}", comparison.labels.baseline_label);
         println!(
-            "  flat scan evaluated records: {}",
-            comparison.scan_stats.evaluated_records
+            "  baseline evaluated records: {}",
+            comparison.baseline_stats.evaluated_records
         );
         println!(
-            "  flat scan elapsed: {:?}",
+            "  baseline elapsed: {:?}",
             comparison.timing.flat_scan_elapsed
         );
         println!(
-            "  flat scan average elapsed: {:?}",
+            "  baseline average elapsed: {:?}",
             comparison.repeated_timing.flat_scan.average_elapsed
         );
         println!(

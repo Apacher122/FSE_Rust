@@ -1,7 +1,9 @@
+mod baseline_tests;
 mod benchmark_tests;
 mod build_tests;
 mod centroid_tests;
 mod comparison_tests;
+mod config_tests;
 mod correctness_tests;
 mod dataset_tests;
 mod math_tests;

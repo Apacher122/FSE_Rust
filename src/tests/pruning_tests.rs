@@ -46,7 +46,7 @@ fn pruning_efficiency_report_counts_baseline_and_reconstructed_records() {
 
     assert_eq!(
         pruning.baseline_records,
-        comparison.scan_stats.evaluated_records
+        comparison.baseline_stats.evaluated_records
     );
     assert_eq!(
         pruning.reconstructed_records,

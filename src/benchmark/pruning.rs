@@ -47,7 +47,7 @@ pub fn pruning_efficiency_report(comparison: &QueryComparisonReport) -> PruningE
     let retained_leaf_ratio = comparison.retained_leaf_ratio;
 
     PruningEfficiencyReport {
-        baseline_records: comparison.scan_stats.evaluated_records,
+        baseline_records: comparison.baseline_stats.evaluated_records,
         reconstructed_records: comparison.fse_stats.reconstructed_records,
         candidate_ratio,
         record_pruning_efficiency: complement_ratio(candidate_ratio),

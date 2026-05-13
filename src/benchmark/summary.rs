@@ -143,7 +143,7 @@ pub fn aggregate_workload_metrics(
     for summary in summaries {
         let comparison = &summary.comparison;
 
-        aggregate.total_scan_evaluated_records += comparison.scan_stats.evaluated_records;
+        aggregate.total_scan_evaluated_records += comparison.baseline_stats.evaluated_records;
         aggregate.total_fse_visited_nodes += comparison.fse_stats.visited_nodes;
         aggregate.total_fse_retained_leaves += comparison.fse_stats.retained_leaves;
         aggregate.total_fse_reconstructed_records += comparison.fse_stats.reconstructed_records;

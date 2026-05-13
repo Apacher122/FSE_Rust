@@ -3,7 +3,9 @@
 //! This module contains simple baseline implementations used to compare FSE
 //! query behavior against conventional scan-based execution.
 
+pub mod baseline;
 pub mod comparison;
+pub mod config;
 pub mod datasets;
 pub mod pruning;
 pub mod runner;
@@ -12,9 +14,15 @@ pub mod summary;
 pub mod timing;
 pub mod workload;
 
+pub use baseline::{
+    BaselineComparisonLabels, BaselineQueryReport, BaselineQueryStats, FlatScanBaseline,
+    RangeQueryBaseline, execute_range_baseline,
+};
+
 pub use comparison::{
     QueryComparisonReport, compare_query_execution, compare_query_execution_repeated,
 };
+pub use config::{BenchmarkDatasetKind, BenchmarkSuiteConfig};
 pub use datasets::{
     ClusteredDatasetConfig, clustered_points_2d, generate_clustered_points_2d,
     large_clustered_points_2d,

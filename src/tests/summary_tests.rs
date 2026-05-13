@@ -50,7 +50,7 @@ fn workload_summary_reports_flat_scan_record_count() {
 
     for summary in summaries {
         assert_eq!(
-            summary.comparison.scan_stats.evaluated_records,
+            summary.comparison.baseline_stats.evaluated_records,
             points.len()
         );
     }

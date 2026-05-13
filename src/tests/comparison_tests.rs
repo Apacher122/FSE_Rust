@@ -18,8 +18,12 @@ fn comparison_report_counts_avoided_reconstructions() {
     let query = QueryRegion::new(vec![0.0, 0.0], vec![1.0, 1.0]);
     let report = compare_query_execution(&index, &points, &query);
 
-    assert_eq!(report.scan_stats.evaluated_records, 4);
-    assert_eq!(report.scan_stats.matched_records, 2);
+    assert_eq!(report.baseline_name, "flat_scan");
+    assert_eq!(report.labels.baseline_label, "Flat Scan");
+    assert_eq!(report.labels.fse_label, "FSE");
+    assert_eq!(report.labels.comparison_label, "Flat Scan vs FSE");
+    assert_eq!(report.baseline_stats.evaluated_records, 4);
+    assert_eq!(report.baseline_stats.matched_records, 2);
 
     assert_eq!(report.fse_stats.retained_leaves, 1);
     assert_eq!(report.fse_stats.reconstructed_records, 2);
@@ -46,8 +50,8 @@ fn comparison_report_handles_full_range_query() {
     let query = QueryRegion::new(vec![-1.0, -1.0], vec![10.0, 10.0]);
     let report = compare_query_execution(&index, &points, &query);
 
-    assert_eq!(report.scan_stats.evaluated_records, 4);
-    assert_eq!(report.scan_stats.matched_records, 4);
+    assert_eq!(report.baseline_stats.evaluated_records, 4);
+    assert_eq!(report.baseline_stats.matched_records, 4);
 
     assert_eq!(report.fse_stats.retained_leaves, 2);
     assert_eq!(report.fse_stats.reconstructed_records, 4);
@@ -74,8 +78,8 @@ fn comparison_report_handles_empty_result_query() {
     let query = QueryRegion::new(vec![20.0, 20.0], vec![30.0, 30.0]);
     let report = compare_query_execution(&index, &points, &query);
 
-    assert_eq!(report.scan_stats.evaluated_records, 4);
-    assert_eq!(report.scan_stats.matched_records, 0);
+    assert_eq!(report.baseline_stats.evaluated_records, 4);
+    assert_eq!(report.baseline_stats.matched_records, 0);
 
     assert_eq!(report.fse_stats.retained_leaves, 0);
     assert_eq!(report.fse_stats.reconstructed_records, 0);

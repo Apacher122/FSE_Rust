@@ -1,24 +1,32 @@
 //! Comparison utilities for FSE and flat scan execution.
 
 use crate::benchmark::{
-    FlatScanStats, RepeatedComparisonTimingReport, RepeatedTimingConfig, TimingReport,
-    duration_ratio, flat_scan_with_stats, measure_elapsed, measure_repeated,
+    BaselineComparisonLabels, BaselineQueryStats, FlatScanBaseline, RangeQueryBaseline,
+    RepeatedComparisonTimingReport, RepeatedTimingConfig, TimingReport, duration_ratio,
+    measure_elapsed, measure_repeated,
 };
+
 use crate::math::{Scalar, Vector};
 use crate::query::{QueryExecutionStats, QueryRegion, execute_query_with_stats};
 use crate::storage::FSEIndex;
 
-/// Side-by-side report comparing FSE query execution with flat scan execution.
+/// Side-by-side report comparing FSE query execution with baseline execution.
 ///
 /// # Runtime Role
 ///
 /// `QueryComparisonReport` is intended for early correctness and performance
 /// analysis. It compares logical execution work and lightweight elapsed timing
-/// between the baseline scan path and the FSE query path.
+/// between a baseline query path and the FSE query path.
 #[derive(Clone, Debug, PartialEq)]
 pub struct QueryComparisonReport {
-    /// Statistics from the flat scan baseline.
-    pub scan_stats: FlatScanStats,
+    /// Human-readable labels for this comparison.
+    pub labels: BaselineComparisonLabels,
+
+    /// Human-readable baseline name.
+    pub baseline_name: String,
+
+    /// Statistics from the baseline execution path.
+    pub baseline_stats: BaselineQueryStats,
 
     /// Statistics from the FSE execution path.
     pub fse_stats: QueryExecutionStats,
@@ -29,7 +37,13 @@ pub struct QueryComparisonReport {
     /// Repeated timing measurements for both execution paths.
     pub repeated_timing: RepeatedComparisonTimingReport,
 
-    /// Number of records avoided by FSE reconstruction relative to flat scan evaluation.
+    /// Single-run timing ratio computed as baseline elapsed divided by FSE elapsed.
+    pub single_run_timing_ratio: f64,
+
+    /// Average timing ratio computed as baseline average elapsed divided by FSE average elapsed.
+    pub average_timing_ratio: f64,
+
+    /// Number of records avoided by FSE reconstruction relative to baseline evaluation.
     pub avoided_reconstructions: usize,
 
     /// Fraction of baseline record evaluations avoided by FSE reconstruction.
@@ -40,74 +54,90 @@ pub struct QueryComparisonReport {
 
     /// Fraction of leaf partitions retained by FSE.
     pub retained_leaf_ratio: Scalar,
-
-    /// Single-run timing ratio composed as flat scan elapsed divided by FSE elapsed.
-    pub single_run_timing_ratio: f64,
-
-    /// Average timing ratio computed as flat scan average divided by FSE average elapsed.
-    pub average_timing_ratio: f64,
 }
 
-/// Compares FSE query execution against flat scan execution.
+/// Compares FSE query execution against the default flat scan baseline.
 ///
 /// # Runtime Role
 ///
-/// This function runs both execution paths and verifies they produce the same
-/// exact result set before returning a comparison report.
-///
-/// # Panics
-///
-/// Panics when the FSE result set differs from the flat scan result set.
+/// This function preserves the existing flat-scan comparison API while routing
+/// through the baseline abstraction.
 pub fn compare_query_execution(
     index: &FSEIndex,
     points: &[Vector],
     query: &QueryRegion,
 ) -> QueryComparisonReport {
-    compare_query_execution_repeated(index, points, query, &RepeatedTimingConfig::default())
+    let baseline = FlatScanBaseline;
+
+    compare_query_execution_with_baseline(
+        index,
+        points,
+        query,
+        &baseline,
+        &RepeatedTimingConfig::default(),
+    )
 }
 
-/// Compares FSE query execution against flat scan execution with repeated timing.
-///
-/// # Runtime Role
-///
-/// This function preserves correctness validation while collecting averaged
-/// timing measurements over multiple iterations.
+/// Compares FSE query execution against the default flat scan baseline with repeated timing.
 pub fn compare_query_execution_repeated(
     index: &FSEIndex,
     points: &[Vector],
     query: &QueryRegion,
     timing_config: &RepeatedTimingConfig,
 ) -> QueryComparisonReport {
-    let (scan_report, flat_scan_elapsed) = measure_elapsed(|| flat_scan_with_stats(points, query));
+    let baseline = FlatScanBaseline;
+
+    compare_query_execution_with_baseline(index, points, query, &baseline, timing_config)
+}
+
+/// Compares FSE query execution against a supplied baseline.
+///
+/// # Runtime Role
+///
+/// This function is the extension point for future exact range-query baselines
+/// such as KD-tree and R-tree implementations.
+///
+/// # Panics
+///
+/// Panics when the FSE result set differs from the baseline result set.
+pub fn compare_query_execution_with_baseline(
+    index: &FSEIndex,
+    points: &[Vector],
+    query: &QueryRegion,
+    baseline: &impl RangeQueryBaseline,
+    timing_config: &RepeatedTimingConfig,
+) -> QueryComparisonReport {
+    let (baseline_report, baseline_elapsed) = measure_elapsed(|| baseline.execute(points, query));
+
     let (fse_report, fse_elapsed) = measure_elapsed(|| execute_query_with_stats(index, query));
 
-    let mut scan_results = scan_report.results;
+    let mut baseline_results = baseline_report.results;
     let mut fse_results = fse_report.results;
 
-    sort_points(&mut scan_results);
+    sort_points(&mut baseline_results);
     sort_points(&mut fse_results);
 
     assert_eq!(
-        fse_results, scan_results,
-        "FSE query results must match flat scan results"
+        fse_results, baseline_results,
+        "FSE query results must match baseline query results"
     );
 
     let repeated_timing = RepeatedComparisonTimingReport {
         flat_scan: measure_repeated(timing_config, || {
-            let _ = flat_scan_with_stats(points, query);
+            let _ = baseline.execute(points, query);
         }),
         fse: measure_repeated(timing_config, || {
             let _ = execute_query_with_stats(index, query);
         }),
     };
 
-    let single_run_timing_ratio = duration_ratio(flat_scan_elapsed, fse_elapsed);
+    let single_run_timing_ratio = duration_ratio(baseline_elapsed, fse_elapsed);
     let average_timing_ratio = duration_ratio(
         repeated_timing.flat_scan.average_elapsed,
         repeated_timing.fse.average_elapsed,
     );
 
-    let evaluated_records = scan_report.stats.evaluated_records;
+    let evaluated_records = baseline_report.stats.evaluated_records;
     let reconstructed_records = fse_report.stats.reconstructed_records;
 
     let avoided_reconstructions = evaluated_records.saturating_sub(reconstructed_records);
@@ -121,11 +151,15 @@ pub fn compare_query_execution_repeated(
     let candidate_ratio = fse_report.stats.candidate_ratio;
     let retained_leaf_ratio = fse_report.stats.retained_leaf_ratio;
 
+    let labels = baseline.labels();
+
     QueryComparisonReport {
-        scan_stats: scan_report.stats,
+        labels,
+        baseline_name: baseline_report.baseline_name,
+        baseline_stats: baseline_report.stats,
         fse_stats: fse_report.stats,
         timing: TimingReport {
-            flat_scan_elapsed,
+            flat_scan_elapsed: baseline_elapsed,
             fse_elapsed,
         },
         repeated_timing,
