@@ -4,6 +4,37 @@ use crate::benchmark::{FlatScanStats, flat_scan_with_stats};
 use crate::math::Vector;
 use crate::query::QueryRegion;
 
+/// Baseline implementation selected for a benchmark run.
+///
+/// # Runtime Role
+///
+/// `BaselineKind` provides a stable configuration-level identifier for choosing
+/// which baseline engine should be used during comparison.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BaselineKind {
+    /// Full linear scan over every record.
+    FlatScan,
+
+    /// Exact KD-tree range-query baseline.
+    KdTree,
+}
+
+impl BaselineKind {
+    /// Returns the stable baseline identifier.
+    pub fn name(&self) -> &'static str {
+        match self {
+            BaselineKind::FlatScan => "flat_scan",
+            BaselineKind::KdTree => "kd_tree",
+        }
+    }
+}
+
+impl Default for BaselineKind {
+    fn default() -> Self {
+        Self::FlatScan
+    }
+}
+
 /// Common statistics reported by exact range-query baselines.
 ///
 /// # Runtime Role
@@ -96,7 +127,7 @@ pub trait RangeQueryBaseline {
     }
 
     /// Executes the baseline query.
-    fn execute(&self, points: &[Vector], query: &QueryRegion) -> BaselineQueryReport;
+    fn execute(&self, query: &QueryRegion) -> BaselineQueryReport;
 }
 
 /// Flat scan baseline implementation
@@ -104,22 +135,58 @@ pub trait RangeQueryBaseline {
 /// # Runtime Role
 ///
 /// `FlatScanBaseline` represents the conventional full-record evaluation path.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct FlatScanBaseline;
+#[derive(Clone, Debug, PartialEq)]
+pub struct FlatScanBaseline {
+    points: Vec<Vector>,
+}
+
+impl FlatScanBaseline {
+    /// Creates a flat scan baseline from source points.
+    pub fn new(points: &[Vector]) -> Self {
+        Self {
+            points: points.to_vec(),
+        }
+    }
+}
 
 impl RangeQueryBaseline for FlatScanBaseline {
     fn name(&self) -> &'static str {
-        "flat_scan"
+        BaselineKind::FlatScan.name()
     }
 
-    fn execute(&self, points: &[Vector], query: &QueryRegion) -> BaselineQueryReport {
+    fn execute(&self, query: &QueryRegion) -> BaselineQueryReport {
         // Keep the first baseline intentionally simple: every record is evaluated.
-        let report = flat_scan_with_stats(points, query);
+        let report = flat_scan_with_stats(&self.points, query);
 
         BaselineQueryReport {
             baseline_name: self.name().to_string(),
             results: report.results,
             stats: report.stats.into(),
+        }
+    }
+}
+
+/// Registry for constructing benchmark baselines.
+///
+/// # Runtime Role
+///
+/// `BaselineRegistry` centralizes baseline selection so benchmark configuration
+/// can choose an implementation without hardcoding construction logic throughout
+/// the runner.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BaselineRegistry;
+
+impl BaselineRegistry {
+    /// Creates a baseline registry.
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Returns the baseline implementation for a configured baseline kind.
+    pub fn resolve(&self, kind: BaselineKind, points: &[Vector]) -> Box<dyn RangeQueryBaseline> {
+        match kind {
+            BaselineKind::FlatScan => Box::new(FlatScanBaseline::new(points)),
+            BaselineKind::KdTree => Box::new(crate::benchmark::KdTreeBaseline::new(points)),
         }
     }
 }
@@ -131,11 +198,10 @@ impl RangeQueryBaseline for FlatScanBaseline {
 /// This helper gives tests and benchmark runners a small common entrypoint for
 /// baseline execution.
 pub fn execute_range_baseline(
-    baseline: &impl RangeQueryBaseline,
-    points: &[Vector],
+    baseline: &dyn RangeQueryBaseline,
     query: &QueryRegion,
 ) -> BaselineQueryReport {
-    baseline.execute(points, query)
+    baseline.execute(query)
 }
 
 fn display_label_for_baseline(name: &str) -> String {

@@ -1,8 +1,8 @@
 //! Benchmark suite configuration
 
 use crate::benchmark::{
-    QueryWorkloadCase, RepeatedTimingConfig, clustered_points_2d, clustered_workload_cases,
-    large_clustered_points_2d, large_clustered_workload_cases,
+    BaselineKind, QueryWorkloadCase, RepeatedTimingConfig, clustered_points_2d,
+    clustered_workload_cases, large_clustered_points_2d, large_clustered_workload_cases,
 };
 use crate::build::BuildConfig;
 use crate::math::Vector;
@@ -41,6 +41,9 @@ pub struct BenchmarkSuiteConfig {
 
     /// Number of timing iterations used for repeated timing.
     pub timing_iterations: usize,
+
+    /// Baseline used for comparison.
+    pub baseline_kind: BaselineKind,
 }
 
 impl BenchmarkSuiteConfig {
@@ -51,6 +54,7 @@ impl BenchmarkSuiteConfig {
     /// Panics when `max_leaf_size` or `timing_iterations` is zero.
     pub fn new(
         dataset_kind: BenchmarkDatasetKind,
+        baseline_kind: BaselineKind,
         max_leaf_size: usize,
         max_depth: usize,
         timing_iterations: usize,
@@ -63,6 +67,7 @@ impl BenchmarkSuiteConfig {
 
         Self {
             dataset_kind,
+            baseline_kind,
             max_leaf_size,
             max_depth,
             timing_iterations,
@@ -98,6 +103,12 @@ impl BenchmarkSuiteConfig {
 
 impl Default for BenchmarkSuiteConfig {
     fn default() -> Self {
-        Self::new(BenchmarkDatasetKind::LargeClustered2D, 8, 8, 10)
+        Self {
+            dataset_kind: BenchmarkDatasetKind::LargeClustered2D,
+            baseline_kind: BaselineKind::FlatScan,
+            max_leaf_size: 8,
+            max_depth: 8,
+            timing_iterations: 10,
+        }
     }
 }

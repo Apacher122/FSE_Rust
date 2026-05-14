@@ -67,15 +67,9 @@ pub fn compare_query_execution(
     points: &[Vector],
     query: &QueryRegion,
 ) -> QueryComparisonReport {
-    let baseline = FlatScanBaseline;
+    let baseline = FlatScanBaseline::new(points);
 
-    compare_query_execution_with_baseline(
-        index,
-        points,
-        query,
-        &baseline,
-        &RepeatedTimingConfig::default(),
-    )
+    compare_query_execution_with_baseline(index, query, &baseline, &RepeatedTimingConfig::default())
 }
 
 /// Compares FSE query execution against the default flat scan baseline with repeated timing.
@@ -85,9 +79,9 @@ pub fn compare_query_execution_repeated(
     query: &QueryRegion,
     timing_config: &RepeatedTimingConfig,
 ) -> QueryComparisonReport {
-    let baseline = FlatScanBaseline;
+    let baseline = FlatScanBaseline::new(points);
 
-    compare_query_execution_with_baseline(index, points, query, &baseline, timing_config)
+    compare_query_execution_with_baseline(index, query, &baseline, timing_config)
 }
 
 /// Compares FSE query execution against a supplied baseline.
@@ -102,12 +96,11 @@ pub fn compare_query_execution_repeated(
 /// Panics when the FSE result set differs from the baseline result set.
 pub fn compare_query_execution_with_baseline(
     index: &FSEIndex,
-    points: &[Vector],
     query: &QueryRegion,
-    baseline: &impl RangeQueryBaseline,
+    baseline: &dyn RangeQueryBaseline,
     timing_config: &RepeatedTimingConfig,
 ) -> QueryComparisonReport {
-    let (baseline_report, baseline_elapsed) = measure_elapsed(|| baseline.execute(points, query));
+    let (baseline_report, baseline_elapsed) = measure_elapsed(|| baseline.execute(query));
 
     let (fse_report, fse_elapsed) = measure_elapsed(|| execute_query_with_stats(index, query));
 
@@ -124,7 +117,7 @@ pub fn compare_query_execution_with_baseline(
 
     let repeated_timing = RepeatedComparisonTimingReport {
         baseline: measure_repeated(timing_config, || {
-            let _ = baseline.execute(points, query);
+            let _ = baseline.execute(query);
         }),
         fse: measure_repeated(timing_config, || {
             let _ = execute_query_with_stats(index, query);

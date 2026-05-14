@@ -1,8 +1,16 @@
-use fse_rust::benchmark::{BenchmarkSuiteConfig, run_benchmark_suite_repeated};
+use fse_rust::benchmark::{
+    BaselineRegistry, BenchmarkSuiteConfig, run_benchmark_suite_with_registry,
+};
 use fse_rust::build::FSEBuilder;
 
 fn main() {
-    let config = BenchmarkSuiteConfig::default();
+    let config = BenchmarkSuiteConfig::new(
+        fse_rust::benchmark::BenchmarkDatasetKind::LargeClustered2D,
+        fse_rust::benchmark::BaselineKind::KdTree,
+        8,
+        8,
+        10,
+    );
 
     let points = config.dataset();
     let workloads = config.workloads();
@@ -14,7 +22,16 @@ fn main() {
     let index = validated.index;
     let validation = validated.validation;
 
-    let report = run_benchmark_suite_repeated(&index, &points, &workloads, &timing_config);
+    let registry = BaselineRegistry::new();
+
+    let report = run_benchmark_suite_with_registry(
+        &index,
+        &points,
+        &workloads,
+        &timing_config,
+        &registry,
+        config.baseline_kind,
+    );
 
     println!("FSE benchmark suite");
     println!("===================");
@@ -23,6 +40,7 @@ fn main() {
     println!("Dataset records: {}", points.len());
     println!("Index nodes: {}", index.node_count());
     println!("Workloads: {}", report.aggregate.workload_count);
+    println!("Baseline: {}", config.baseline_kind.name());
     println!("Timing iterations: {}", timing_config.iterations);
     println!("Max leaf size: {}", config.max_leaf_size);
     println!("Max build depth: {}", config.max_depth);

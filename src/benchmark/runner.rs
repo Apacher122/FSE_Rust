@@ -1,8 +1,9 @@
 //! Benchmark suite runner.
 
 use crate::benchmark::{
-    AggregateWorkloadMetrics, PruningEfficiencyReport, QueryWorkloadCase, RepeatedTimingConfig,
-    WorkloadComparisonSummary, aggregate_workload_metrics, compare_query_execution_repeated,
+    AggregateWorkloadMetrics, BaselineRegistry, PruningEfficiencyReport, QueryWorkloadCase,
+    RepeatedTimingConfig, WorkloadComparisonSummary, aggregate_workload_metrics,
+    compare_query_execution_repeated, compare_query_execution_with_baseline,
     pruning_efficiency_report,
 };
 use crate::math::Vector;
@@ -81,6 +82,37 @@ pub fn run_benchmark_suite_repeated(
         })
         .collect();
 
+    build_suite_report(comparisons)
+}
+
+/// Runs the benchmark suite with a configured baseline kind.
+pub fn run_benchmark_suite_with_registry(
+    index: &FSEIndex,
+    points: &[Vector],
+    workloads: &[QueryWorkloadCase],
+    timing_config: &RepeatedTimingConfig,
+    registry: &BaselineRegistry,
+    baseline_kind: crate::benchmark::BaselineKind,
+) -> BenchmarkSuiteReport {
+    let baseline = registry.resolve(baseline_kind, points);
+
+    let comparisons: Vec<WorkloadComparisonSummary> = workloads
+        .iter()
+        .map(|workload| WorkloadComparisonSummary {
+            workload_name: workload.name.clone(),
+            comparison: compare_query_execution_with_baseline(
+                index,
+                &workload.query,
+                baseline.as_ref(),
+                timing_config,
+            ),
+        })
+        .collect();
+
+    build_suite_report(comparisons)
+}
+
+fn build_suite_report(comparisons: Vec<WorkloadComparisonSummary>) -> BenchmarkSuiteReport {
     let aggregate = aggregate_workload_metrics(&comparisons);
 
     let pruning_reports = comparisons
