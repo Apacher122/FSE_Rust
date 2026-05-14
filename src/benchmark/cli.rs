@@ -2,6 +2,22 @@
 
 use crate::benchmark::{BaselineKind, BenchmarkDatasetKind, BenchmarkSuiteConfig};
 
+/// Parsed benchmark CLI configuration.
+///
+/// # Runtime Role
+///
+/// `BenchmarkCliConfig` separates the benchmark suite configuration from the
+/// selected baseline list. This allows the CLI to support both single-baseline
+/// and multi-baseline benchmark runs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BenchmarkCliConfig {
+    /// Benchmark suite configuration.
+    pub suite_config: BenchmarkSuiteConfig,
+
+    /// Baselines selected for this benchmark run.
+    pub baseline_kinds: Vec<BaselineKind>,
+}
+
 /// Parses benchmark configuration from command-line arguments.
 ///
 /// # Runtime Role
@@ -14,40 +30,63 @@ use crate::benchmark::{BaselineKind, BenchmarkDatasetKind, BenchmarkSuiteConfig}
 ///
 /// - `--baseline flat_scan`
 /// - `--baseline kd_tree`
+/// - `--baseline r_tree`
+/// - `--all-baselines`
 /// - `--dataset small`
 /// - `--dataset large`
 /// - `--iterations N`
 /// - `--max-leaf-size N`
 /// - `--max-depth N`
-pub fn parse_benchmark_config<I, S>(args: I) -> Result<BenchmarkSuiteConfig, String>
+pub fn parse_benchmark_cli_config<I, S>(args: I) -> Result<BenchmarkCliConfig, String>
 where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
-    let mut config = BenchmarkSuiteConfig::default();
+    let mut suite_config = BenchmarkSuiteConfig::default();
     let mut args = args.into_iter().map(Into::into).peekable();
+
+    let mut baseline_was_set = false;
+    let mut all_baselines = false;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--baseline" => {
+                if all_baselines {
+                    return Err(format!(
+                        "`--baseline` cannot be combined with `--all-baselines`\n\n{}",
+                        benchmark_usage()
+                    ));
+                }
+
                 let value = next_value(&mut args, "--baseline")?;
-                config.baseline_kind = parse_baseline_kind(&value)?;
+                suite_config.baseline_kind = parse_baseline_kind(&value)?;
+                baseline_was_set = true;
+            }
+            "--all-baselines" => {
+                if baseline_was_set {
+                    return Err(format!(
+                        "`--all-baselines` cannot be combined with `--baseline`\n\n{}",
+                        benchmark_usage()
+                    ));
+                }
+
+                all_baselines = true;
             }
             "--dataset" => {
                 let value = next_value(&mut args, "--dataset")?;
-                config.dataset_kind = parse_dataset_kind(&value)?;
+                suite_config.dataset_kind = parse_dataset_kind(&value)?;
             }
             "--iterations" => {
                 let value = next_value(&mut args, "--iterations")?;
-                config.timing_iterations = parse_positive_usize("--iterations", &value)?;
+                suite_config.timing_iterations = parse_positive_usize("--iterations", &value)?;
             }
             "--max-leaf-size" => {
                 let value = next_value(&mut args, "--max-leaf-size")?;
-                config.max_leaf_size = parse_positive_usize("--max-leaf-size", &value)?;
+                suite_config.max_leaf_size = parse_positive_usize("--max-leaf-size", &value)?;
             }
             "--max-depth" => {
                 let value = next_value(&mut args, "--max-depth")?;
-                config.max_depth = parse_usize("--max-depth", &value)?;
+                suite_config.max_depth = parse_usize("--max-depth", &value)?;
             }
             "--help" | "-h" => {
                 return Err(benchmark_usage());
@@ -62,7 +101,30 @@ where
         }
     }
 
-    Ok(config)
+    let baseline_kinds = if all_baselines {
+        exact_range_baselines()
+    } else {
+        vec![suite_config.baseline_kind]
+    };
+
+    Ok(BenchmarkCliConfig {
+        suite_config,
+        baseline_kinds,
+    })
+}
+
+/// Parses benchmark suite configuration from command-line arguments.
+///
+/// # Runtime Role
+///
+/// This preserves the original single-suite configuration parser for tests and
+/// callers that do not need multi-baseline selection.
+pub fn parse_benchmark_config<I, S>(args: I) -> Result<BenchmarkSuiteConfig, String>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    parse_benchmark_cli_config(args).map(|config| config.suite_config)
 }
 
 /// Returns benchmark CLI usage text.
@@ -72,13 +134,22 @@ pub fn benchmark_usage() -> String {
         "  cargo run --release -- [options]",
         "",
         "Options:",
-        "  --baseline <flat_scan|kd_tree>",
+        "  --baseline <flat_scan|kd_tree|r_tree>",
+        "  --all-baselines",
         "  --dataset <small|large>",
         "  --iterations <N>",
         "  --max-leaf-size <N>",
         "  --max-depth <N>",
     ]
     .join("\n")
+}
+
+fn exact_range_baselines() -> Vec<BaselineKind> {
+    vec![
+        BaselineKind::FlatScan,
+        BaselineKind::KdTree,
+        BaselineKind::RTree,
+    ]
 }
 
 fn next_value<I>(args: &mut std::iter::Peekable<I>, flag: &str) -> Result<String, String>

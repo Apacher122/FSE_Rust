@@ -1,7 +1,7 @@
 use crate::benchmark::{
     BaselineKind, BaselineRegistry, RepeatedTimingConfig, clustered_points_2d,
     clustered_workload_cases, run_benchmark_suite, run_benchmark_suite_repeated,
-    run_benchmark_suite_with_registry,
+    run_benchmark_suite_with_registry, run_multi_baseline_benchmark_suite,
 };
 use crate::build::{BuildConfig, FSEBuilder};
 
@@ -148,5 +148,136 @@ fn benchmark_runner_with_registry_can_use_r_tree_baseline() {
     for comparison in report.comparisons {
         assert_eq!(comparison.comparison.baseline_name, "r_tree");
         assert_eq!(comparison.comparison.labels.baseline_label, "R-Tree");
+    }
+}
+
+#[test]
+fn multi_baseline_runner_returns_one_report_per_baseline() {
+    let points = clustered_points_2d();
+    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
+    let index = builder.build(&points);
+    let workloads = clustered_workload_cases();
+    let timing_config = RepeatedTimingConfig::new(3);
+    let registry = BaselineRegistry::new();
+
+    let baseline_kinds = [
+        BaselineKind::FlatScan,
+        BaselineKind::KdTree,
+        BaselineKind::RTree,
+    ];
+
+    let report = run_multi_baseline_benchmark_suite(
+        &index,
+        &points,
+        &workloads,
+        &timing_config,
+        &registry,
+        &baseline_kinds,
+    );
+
+    assert_eq!(report.baseline_reports.len(), baseline_kinds.len());
+}
+
+#[test]
+fn multi_baseline_runner_preserves_baseline_order() {
+    let points = clustered_points_2d();
+    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
+    let index = builder.build(&points);
+    let workloads = clustered_workload_cases();
+    let timing_config = RepeatedTimingConfig::new(3);
+    let registry = BaselineRegistry::new();
+
+    let baseline_kinds = [
+        BaselineKind::FlatScan,
+        BaselineKind::KdTree,
+        BaselineKind::RTree,
+    ];
+
+    let report = run_multi_baseline_benchmark_suite(
+        &index,
+        &points,
+        &workloads,
+        &timing_config,
+        &registry,
+        &baseline_kinds,
+    );
+
+    let names: Vec<&str> = report
+        .baseline_reports
+        .iter()
+        .map(|baseline_report| baseline_report.baseline_name.as_str())
+        .collect();
+
+    assert_eq!(names, vec!["flat_scan", "kd_tree", "r_tree"]);
+}
+
+#[test]
+fn multi_baseline_runner_populates_each_baseline_report() {
+    let points = clustered_points_2d();
+    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
+    let index = builder.build(&points);
+    let workloads = clustered_workload_cases();
+    let timing_config = RepeatedTimingConfig::new(3);
+    let registry = BaselineRegistry::new();
+
+    let baseline_kinds = [
+        BaselineKind::FlatScan,
+        BaselineKind::KdTree,
+        BaselineKind::RTree,
+    ];
+
+    let report = run_multi_baseline_benchmark_suite(
+        &index,
+        &points,
+        &workloads,
+        &timing_config,
+        &registry,
+        &baseline_kinds,
+    );
+
+    for baseline_report in report.baseline_reports {
+        assert_eq!(baseline_report.report.comparisons.len(), workloads.len());
+        assert_eq!(
+            baseline_report.report.pruning_reports.len(),
+            workloads.len()
+        );
+        assert_eq!(
+            baseline_report.report.aggregate.workload_count,
+            workloads.len()
+        );
+    }
+}
+
+#[test]
+fn multi_baseline_runner_comparisons_use_matching_baseline_names() {
+    let points = clustered_points_2d();
+    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
+    let index = builder.build(&points);
+    let workloads = clustered_workload_cases();
+    let timing_config = RepeatedTimingConfig::new(3);
+    let registry = BaselineRegistry::new();
+
+    let baseline_kinds = [
+        BaselineKind::FlatScan,
+        BaselineKind::KdTree,
+        BaselineKind::RTree,
+    ];
+
+    let report = run_multi_baseline_benchmark_suite(
+        &index,
+        &points,
+        &workloads,
+        &timing_config,
+        &registry,
+        &baseline_kinds,
+    );
+
+    for baseline_report in report.baseline_reports {
+        for summary in baseline_report.report.comparisons {
+            assert_eq!(
+                summary.comparison.baseline_name,
+                baseline_report.baseline_name
+            );
+        }
     }
 }

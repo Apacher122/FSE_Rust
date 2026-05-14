@@ -1,8 +1,8 @@
 //! Benchmark suite runner.
 
 use crate::benchmark::{
-    AggregateWorkloadMetrics, BaselineRegistry, PruningEfficiencyReport, QueryWorkloadCase,
-    RepeatedTimingConfig, WorkloadComparisonSummary, aggregate_workload_metrics,
+    AggregateWorkloadMetrics, BaselineKind, BaselineRegistry, PruningEfficiencyReport,
+    QueryWorkloadCase, RepeatedTimingConfig, WorkloadComparisonSummary, aggregate_workload_metrics,
     compare_query_execution_repeated, compare_query_execution_with_baseline,
     pruning_efficiency_report,
 };
@@ -19,7 +19,7 @@ pub struct WorkloadPruningReport {
     pub pruning: PruningEfficiencyReport,
 }
 
-/// Complete benchmark suite report.
+/// Complete benchmark suite report for one selected baseline.
 ///
 /// # Runtime Role
 ///
@@ -28,7 +28,7 @@ pub struct WorkloadPruningReport {
 /// object.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BenchmarkSuiteReport {
-    /// Per-workload FSE versus flat-scan comparison summaries.
+    /// Per-workload FSE versus baseline comparison summaries.
     pub comparisons: Vec<WorkloadComparisonSummary>,
 
     /// Aggregate metrics across all workload comparisons.
@@ -36,6 +36,31 @@ pub struct BenchmarkSuiteReport {
 
     /// Per-workload pruning efficiency reports.
     pub pruning_reports: Vec<WorkloadPruningReport>,
+}
+
+/// Benchmark suite report associated with one baseline kind.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BaselineBenchmarkSuiteReport {
+    /// Baseline kind used for this suite report.
+    pub baseline_kind: BaselineKind,
+
+    /// Stable baseline identifier.
+    pub baseline_name: String,
+
+    /// Benchmark report for this baseline.
+    pub report: BenchmarkSuiteReport,
+}
+
+/// Complete benchmark report for multiple baselines.
+///
+/// # Runtime Role
+///
+/// `MultiBaselineBenchmarkSuiteReport` lets one benchmark run collect separate
+/// FSE comparison reports for multiple baseline implementations.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MultiBaselineBenchmarkSuiteReport {
+    /// Per-baseline benchmark reports.
+    pub baseline_reports: Vec<BaselineBenchmarkSuiteReport>,
 }
 
 /// Runs the current FSE benchmark suite against a workload set.
@@ -48,7 +73,7 @@ pub struct BenchmarkSuiteReport {
 ///
 /// # Panics
 ///
-/// Panics if any FSE query result differs from the flat scan result.
+/// Panics if any FSE query result differs from the baseline result.
 pub fn run_benchmark_suite(
     index: &FSEIndex,
     points: &[Vector],
@@ -92,7 +117,7 @@ pub fn run_benchmark_suite_with_registry(
     workloads: &[QueryWorkloadCase],
     timing_config: &RepeatedTimingConfig,
     registry: &BaselineRegistry,
-    baseline_kind: crate::benchmark::BaselineKind,
+    baseline_kind: BaselineKind,
 ) -> BenchmarkSuiteReport {
     let baseline = registry.resolve(baseline_kind, points);
 
@@ -110,6 +135,43 @@ pub fn run_benchmark_suite_with_registry(
         .collect();
 
     build_suite_report(comparisons)
+}
+
+/// Runs the benchmark suite for multiple baseline kinds.
+///
+/// # Runtime Role
+///
+/// This function is used when the same FSE index and workload set should be
+/// compared against several baseline implementations in one benchmark pass.
+pub fn run_multi_baseline_benchmark_suite(
+    index: &FSEIndex,
+    points: &[Vector],
+    workloads: &[QueryWorkloadCase],
+    timing_config: &RepeatedTimingConfig,
+    registry: &BaselineRegistry,
+    baseline_kinds: &[BaselineKind],
+) -> MultiBaselineBenchmarkSuiteReport {
+    let baseline_reports = baseline_kinds
+        .iter()
+        .map(|baseline_kind| {
+            let report = run_benchmark_suite_with_registry(
+                index,
+                points,
+                workloads,
+                timing_config,
+                registry,
+                *baseline_kind,
+            );
+
+            BaselineBenchmarkSuiteReport {
+                baseline_kind: *baseline_kind,
+                baseline_name: baseline_kind.name().to_string(),
+                report,
+            }
+        })
+        .collect();
+
+    MultiBaselineBenchmarkSuiteReport { baseline_reports }
 }
 
 fn build_suite_report(comparisons: Vec<WorkloadComparisonSummary>) -> BenchmarkSuiteReport {

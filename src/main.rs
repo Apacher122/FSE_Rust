@@ -1,11 +1,13 @@
 use fse_rust::benchmark::{
-    BaselineRegistry, benchmark_usage, parse_benchmark_config, run_benchmark_suite_with_registry,
+    BaselineRegistry, BenchmarkSuiteReport, MultiBaselineAggregateSummary, benchmark_usage,
+    parse_benchmark_cli_config, run_benchmark_suite_with_registry,
+    run_multi_baseline_benchmark_suite, summarize_multi_baseline_aggregates,
 };
 use fse_rust::build::FSEBuilder;
 use std::env;
 
 fn main() {
-    let config = match parse_benchmark_config(env::args().skip(1)) {
+    let cli_config = match parse_benchmark_cli_config(env::args().skip(1)) {
         Ok(config) => config,
         Err(message) => {
             eprintln!("{}", message);
@@ -19,6 +21,7 @@ fn main() {
         }
     };
 
+    let config = cli_config.suite_config;
     let points = config.dataset();
     let workloads = config.workloads();
     let timing_config = config.timing_config();
@@ -28,17 +31,13 @@ fn main() {
 
     let index = validated.index;
     let validation = validated.validation;
-
     let registry = BaselineRegistry::new();
 
-    let report = run_benchmark_suite_with_registry(
-        &index,
-        &points,
-        &workloads,
-        &timing_config,
-        &registry,
-        config.baseline_kind,
-    );
+    let baseline_names: Vec<&str> = cli_config
+        .baseline_kinds
+        .iter()
+        .map(|baseline| baseline.name())
+        .collect();
 
     println!("FSE benchmark suite");
     println!("===================");
@@ -46,14 +45,14 @@ fn main() {
 
     println!("Dataset records: {}", points.len());
     println!("Index nodes: {}", index.node_count());
-    println!("Workloads: {}", report.aggregate.workload_count);
-    println!("Baseline: {}", config.baseline_kind.name());
+    println!("Workloads: {}", workloads.len());
+    println!("Baselines: {}", baseline_names.join(", "));
     println!("Timing iterations: {}", timing_config.iterations);
     println!("Max leaf size: {}", config.max_leaf_size);
     println!("Max build depth: {}", config.max_depth);
     println!();
 
-    println!("Timing ratio meaning: flat scan elapsed / FSE elapsed");
+    println!("Timing ratio meaning: baseline elapsed / FSE elapsed");
     println!("  above 1.0 means FSE measured faster for that run");
     println!();
 
@@ -72,6 +71,40 @@ fn main() {
     );
     println!();
 
+    if cli_config.baseline_kinds.len() == 1 {
+        let report = run_benchmark_suite_with_registry(
+            &index,
+            &points,
+            &workloads,
+            &timing_config,
+            &registry,
+            cli_config.baseline_kinds[0],
+        );
+
+        print_suite_report(&report);
+    } else {
+        let report = run_multi_baseline_benchmark_suite(
+            &index,
+            &points,
+            &workloads,
+            &timing_config,
+            &registry,
+            &cli_config.baseline_kinds,
+        );
+
+        for baseline_report in &report.baseline_reports {
+            println!("Baseline suite: {}", baseline_report.baseline_name);
+            println!("----------------");
+            print_suite_report(&baseline_report.report);
+            println!();
+        }
+
+        let aggregate_summary = summarize_multi_baseline_aggregates(&report);
+        print_multi_baseline_summary(&aggregate_summary);
+    }
+}
+
+fn print_suite_report(report: &BenchmarkSuiteReport) {
     for (summary, pruning_report) in report.comparisons.iter().zip(&report.pruning_reports) {
         let comparison = &summary.comparison;
         let pruning = &pruning_report.pruning;
@@ -102,11 +135,11 @@ fn main() {
             comparison.repeated_timing.fse.average_elapsed
         );
         println!(
-            " single-run timing ratio: {:.2}",
+            "  single-run timing ratio: {:.2}",
             comparison.single_run_timing_ratio
         );
         println!(
-            " average timing ratio: {:.2}",
+            "  average timing ratio: {:.2}",
             comparison.average_timing_ratio
         );
         println!(
@@ -215,4 +248,52 @@ fn main() {
         "weighted timing ratio: {:.2}",
         aggregate.weighted_timing_ratio
     );
+}
+
+fn print_multi_baseline_summary(summary: &MultiBaselineAggregateSummary) {
+    println!("Multi-baseline aggregate summary");
+    println!("--------------------------------");
+
+    for baseline in &summary.baseline_summaries {
+        println!("Baseline: {}", baseline.baseline_label);
+        println!("Comparison: {}", baseline.comparison_label);
+        println!("  workloads: {}", baseline.workload_count);
+        println!(
+            "  total baseline evaluated records: {}",
+            baseline.total_baseline_evaluated_records
+        );
+        println!(
+            "  total FSE reconstructed records: {}",
+            baseline.total_fse_reconstructed_records
+        );
+        println!(
+            "  weighted reconstruction avoidance ratio: {:.2}",
+            baseline.weighted_reconstruction_avoidance_ratio
+        );
+        println!(
+            "  weighted candidate ratio: {:.2}",
+            baseline.weighted_candidate_ratio
+        );
+        println!("  mean timing ratio: {:.2}", baseline.mean_timing_ratio);
+        println!(
+            "  weighted timing ratio: {:.2}",
+            baseline.weighted_timing_ratio
+        );
+        println!(
+            "  total baseline average elapsed: {:?}",
+            baseline.total_baseline_average_elapsed
+        );
+        println!(
+            "  total FSE average elapsed: {:?}",
+            baseline.total_fse_average_elapsed
+        );
+        println!();
+    }
+
+    if let Some(highest) = summary.highest_weighted_timing_ratio() {
+        println!(
+            "Highest weighted timing ratio: {} ({:.2})",
+            highest.baseline_label, highest.weighted_timing_ratio
+        );
+    }
 }
