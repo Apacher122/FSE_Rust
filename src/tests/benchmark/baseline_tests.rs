@@ -1,6 +1,6 @@
 use crate::benchmark::{
     BaselineComparisonLabels, BaselineKind, BaselineRegistry, FlatScanBaseline, KdTreeBaseline,
-    RangeQueryBaseline, execute_range_baseline, flat_scan,
+    RTreeBaseline, RangeQueryBaseline, execute_range_baseline, flat_scan,
 };
 
 use crate::math::Vector;
@@ -105,4 +105,28 @@ fn kd_tree_baseline_reports_display_labels() {
     assert_eq!(labels.baseline_label, "KD-Tree");
     assert_eq!(labels.fse_label, "FSE");
     assert_eq!(labels.comparison_label, "KD-Tree vs FSE");
+}
+
+#[test]
+fn baseline_kind_reports_r_tree_name() {
+    assert_eq!(BaselineKind::RTree.name(), "r_tree");
+}
+
+#[test]
+fn baseline_registry_resolves_r_tree() {
+    let registry = BaselineRegistry::new();
+    let baseline = registry.resolve(BaselineKind::RTree, &[]);
+
+    assert_eq!(baseline.name(), "r_tree");
+}
+
+#[test]
+fn r_tree_baseline_reports_display_labels() {
+    let baseline = RTreeBaseline::new(&[]);
+    let labels = baseline.labels();
+
+    assert_eq!(labels.baseline_name, "r_tree");
+    assert_eq!(labels.baseline_label, "R-Tree");
+    assert_eq!(labels.fse_label, "FSE");
+    assert_eq!(labels.comparison_label, "R-Tree vs FSE");
 }

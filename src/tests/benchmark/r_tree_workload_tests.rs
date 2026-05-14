@@ -1,5 +1,5 @@
 use crate::benchmark::{
-    KdTreeBaseline, RangeQueryBaseline, clustered_points_2d, clustered_workload_cases, flat_scan,
+    RTreeBaseline, RangeQueryBaseline, clustered_points_2d, clustered_workload_cases, flat_scan,
     large_clustered_points_2d, large_clustered_workload_cases,
 };
 use crate::math::Vector;
@@ -19,45 +19,45 @@ fn sort_points(points: &mut [Vector]) {
     });
 }
 
-fn assert_kd_tree_matches_flat_scan(points: &[Vector], query: &QueryRegion) {
-    let kd_tree = KdTreeBaseline::new(points);
+fn assert_r_tree_matches_flat_scan(points: &[Vector], query: &QueryRegion) {
+    let r_tree = RTreeBaseline::new(points);
 
-    let kd_report = kd_tree.execute(query);
+    let r_tree_report = r_tree.execute(query);
     let scan_results = flat_scan(points, query);
 
-    let mut kd_results = kd_report.results;
+    let mut r_tree_results = r_tree_report.results;
     let mut expected_results = scan_results;
 
-    sort_points(&mut kd_results);
+    sort_points(&mut r_tree_results);
     sort_points(&mut expected_results);
 
-    assert_eq!(kd_results, expected_results);
-    assert_eq!(kd_report.stats.matched_records, expected_results.len());
-    assert!(kd_report.stats.evaluated_records <= points.len());
+    assert_eq!(r_tree_results, expected_results);
+    assert_eq!(r_tree_report.stats.matched_records, expected_results.len());
+    assert!(r_tree_report.stats.evaluated_records <= points.len());
 }
 
 #[test]
-fn kd_tree_matches_flat_scan_for_small_clustered_workloads() {
+fn r_tree_matches_flat_scan_for_small_clustered_workloads() {
     let points = clustered_points_2d();
     let workloads = clustered_workload_cases();
 
     for workload in workloads {
-        assert_kd_tree_matches_flat_scan(&points, &workload.query);
+        assert_r_tree_matches_flat_scan(&points, &workload.query);
     }
 }
 
 #[test]
-fn kd_tree_matches_flat_scan_for_large_clustered_workloads() {
+fn r_tree_matches_flat_scan_for_large_clustered_workloads() {
     let points = large_clustered_points_2d();
     let workloads = large_clustered_workload_cases();
 
     for workload in workloads {
-        assert_kd_tree_matches_flat_scan(&points, &workload.query);
+        assert_r_tree_matches_flat_scan(&points, &workload.query);
     }
 }
 
 #[test]
-fn kd_tree_matches_flat_scan_for_boundary_touching_query() {
+fn r_tree_matches_flat_scan_for_boundary_touching_query() {
     let points = vec![
         Vector::new(vec![0.0, 0.0]),
         Vector::new(vec![1.0, 1.0]),
@@ -67,11 +67,11 @@ fn kd_tree_matches_flat_scan_for_boundary_touching_query() {
 
     let query = QueryRegion::new(vec![1.0, 1.0], vec![2.0, 2.0]);
 
-    assert_kd_tree_matches_flat_scan(&points, &query);
+    assert_r_tree_matches_flat_scan(&points, &query);
 }
 
 #[test]
-fn kd_tree_matches_flat_scan_for_non_diagonal_query_region() {
+fn r_tree_matches_flat_scan_for_non_diagonal_query_region() {
     let points = vec![
         Vector::new(vec![0.0, 10.0]),
         Vector::new(vec![1.0, 9.0]),
@@ -82,5 +82,5 @@ fn kd_tree_matches_flat_scan_for_non_diagonal_query_region() {
 
     let query = QueryRegion::new(vec![1.0, 7.0], vec![3.0, 9.0]);
 
-    assert_kd_tree_matches_flat_scan(&points, &query);
+    assert_r_tree_matches_flat_scan(&points, &query);
 }

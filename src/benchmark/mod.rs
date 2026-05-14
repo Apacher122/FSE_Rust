@@ -4,11 +4,13 @@
 //! query behavior against conventional scan-based execution.
 
 pub mod baseline;
+pub mod cli;
 pub mod comparison;
 pub mod config;
 pub mod datasets;
 pub mod kd_tree;
 pub mod pruning;
+pub mod r_tree;
 pub mod runner;
 pub mod scan;
 pub mod summary;
@@ -19,6 +21,7 @@ pub use baseline::{
     BaselineComparisonLabels, BaselineKind, BaselineQueryReport, BaselineQueryStats,
     BaselineRegistry, FlatScanBaseline, RangeQueryBaseline, execute_range_baseline,
 };
+pub use cli::{benchmark_usage, parse_benchmark_config};
 pub use comparison::{
     QueryComparisonReport, compare_query_execution, compare_query_execution_repeated,
     compare_query_execution_with_baseline,
@@ -30,6 +33,7 @@ pub use datasets::{
 };
 pub use kd_tree::KdTreeBaseline;
 pub use pruning::{PruningEfficiencyReport, pruning_efficiency_report};
+pub use r_tree::RTreeBaseline;
 pub use runner::{
     BenchmarkSuiteReport, WorkloadPruningReport, run_benchmark_suite, run_benchmark_suite_repeated,
     run_benchmark_suite_with_registry,

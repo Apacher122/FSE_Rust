@@ -112,3 +112,16 @@ fn benchmark_suite_config_can_use_kd_tree_baseline() {
 
     assert_eq!(config.baseline_kind, BaselineKind::KdTree);
 }
+
+#[test]
+fn benchmark_suite_config_can_use_r_tree_baseline() {
+    let config = BenchmarkSuiteConfig::new(
+        BenchmarkDatasetKind::SmallClustered2D,
+        BaselineKind::RTree,
+        8,
+        8,
+        10,
+    );
+
+    assert_eq!(config.baseline_kind, BaselineKind::RTree);
+}

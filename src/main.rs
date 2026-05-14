@@ -1,16 +1,23 @@
 use fse_rust::benchmark::{
-    BaselineRegistry, BenchmarkSuiteConfig, run_benchmark_suite_with_registry,
+    BaselineRegistry, benchmark_usage, parse_benchmark_config, run_benchmark_suite_with_registry,
 };
 use fse_rust::build::FSEBuilder;
+use std::env;
 
 fn main() {
-    let config = BenchmarkSuiteConfig::new(
-        fse_rust::benchmark::BenchmarkDatasetKind::LargeClustered2D,
-        fse_rust::benchmark::BaselineKind::KdTree,
-        8,
-        8,
-        10,
-    );
+    let config = match parse_benchmark_config(env::args().skip(1)) {
+        Ok(config) => config,
+        Err(message) => {
+            eprintln!("{}", message);
+
+            if !message.contains("Usage:") {
+                eprintln!();
+                eprintln!("{}", benchmark_usage());
+            }
+
+            std::process::exit(1);
+        }
+    };
 
     let points = config.dataset();
     let workloads = config.workloads();

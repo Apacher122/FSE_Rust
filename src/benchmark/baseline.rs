@@ -17,6 +17,9 @@ pub enum BaselineKind {
 
     /// Exact KD-tree range-query baseline.
     KdTree,
+
+    /// Exact R-tree range-query baseline.
+    RTree,
 }
 
 impl BaselineKind {
@@ -25,6 +28,7 @@ impl BaselineKind {
         match self {
             BaselineKind::FlatScan => "flat_scan",
             BaselineKind::KdTree => "kd_tree",
+            BaselineKind::RTree => "r_tree",
         }
     }
 }
@@ -187,6 +191,7 @@ impl BaselineRegistry {
         match kind {
             BaselineKind::FlatScan => Box::new(FlatScanBaseline::new(points)),
             BaselineKind::KdTree => Box::new(crate::benchmark::KdTreeBaseline::new(points)),
+            BaselineKind::RTree => Box::new(crate::benchmark::RTreeBaseline::new(points)),
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::benchmark::{KdTreeBaseline, RangeQueryBaseline, flat_scan};
+use crate::benchmark::{RTreeBaseline, RangeQueryBaseline, flat_scan};
 use crate::math::Vector;
 use crate::query::QueryRegion;
 
@@ -17,7 +17,7 @@ fn sort_points(points: &mut [Vector]) {
 }
 
 #[test]
-fn kd_tree_baseline_matches_flat_scan_for_selective_query() {
+fn r_tree_baseline_matches_flat_scan_for_selective_query() {
     let points = vec![
         Vector::new(vec![0.0, 0.0]),
         Vector::new(vec![1.0, 1.0]),
@@ -27,19 +27,19 @@ fn kd_tree_baseline_matches_flat_scan_for_selective_query() {
     ];
 
     let query = QueryRegion::new(vec![1.0, 1.0], vec![2.0, 2.0]);
-    let kd_tree = KdTreeBaseline::new(&points);
+    let r_tree = RTreeBaseline::new(&points);
 
-    let mut kd_results = kd_tree.execute(&query).results;
+    let mut r_tree_results = r_tree.execute(&query).results;
     let mut scan_results = flat_scan(&points, &query);
 
-    sort_points(&mut kd_results);
+    sort_points(&mut r_tree_results);
     sort_points(&mut scan_results);
 
-    assert_eq!(kd_results, scan_results);
+    assert_eq!(r_tree_results, scan_results);
 }
 
 #[test]
-fn kd_tree_baseline_matches_flat_scan_for_empty_query() {
+fn r_tree_baseline_matches_flat_scan_for_empty_query() {
     let points = vec![
         Vector::new(vec![0.0, 0.0]),
         Vector::new(vec![1.0, 1.0]),
@@ -47,19 +47,19 @@ fn kd_tree_baseline_matches_flat_scan_for_empty_query() {
     ];
 
     let query = QueryRegion::new(vec![10.0, 10.0], vec![20.0, 20.0]);
-    let kd_tree = KdTreeBaseline::new(&points);
+    let r_tree = RTreeBaseline::new(&points);
 
-    let mut kd_results = kd_tree.execute(&query).results;
+    let mut r_tree_results = r_tree.execute(&query).results;
     let mut scan_results = flat_scan(&points, &query);
 
-    sort_points(&mut kd_results);
+    sort_points(&mut r_tree_results);
     sort_points(&mut scan_results);
 
-    assert_eq!(kd_results, scan_results);
+    assert_eq!(r_tree_results, scan_results);
 }
 
 #[test]
-fn kd_tree_baseline_matches_flat_scan_for_full_range_query() {
+fn r_tree_baseline_matches_flat_scan_for_full_range_query() {
     let points = vec![
         Vector::new(vec![0.0, 0.0]),
         Vector::new(vec![1.0, 1.0]),
@@ -69,19 +69,19 @@ fn kd_tree_baseline_matches_flat_scan_for_full_range_query() {
     ];
 
     let query = QueryRegion::new(vec![-1.0, -1.0], vec![10.0, 10.0]);
-    let kd_tree = KdTreeBaseline::new(&points);
+    let r_tree = RTreeBaseline::new(&points);
 
-    let mut kd_results = kd_tree.execute(&query).results;
+    let mut r_tree_results = r_tree.execute(&query).results;
     let mut scan_results = flat_scan(&points, &query);
 
-    sort_points(&mut kd_results);
+    sort_points(&mut r_tree_results);
     sort_points(&mut scan_results);
 
-    assert_eq!(kd_results, scan_results);
+    assert_eq!(r_tree_results, scan_results);
 }
 
 #[test]
-fn kd_tree_baseline_reports_common_stats() {
+fn r_tree_baseline_reports_common_stats() {
     let points = vec![
         Vector::new(vec![0.0, 0.0]),
         Vector::new(vec![1.0, 1.0]),
@@ -91,10 +91,10 @@ fn kd_tree_baseline_reports_common_stats() {
     ];
 
     let query = QueryRegion::new(vec![1.0, 1.0], vec![2.0, 2.0]);
-    let kd_tree = KdTreeBaseline::new(&points);
-    let report = kd_tree.execute(&query);
+    let r_tree = RTreeBaseline::new(&points);
+    let report = r_tree.execute(&query);
 
-    assert_eq!(report.baseline_name, "kd_tree");
+    assert_eq!(report.baseline_name, "r_tree");
     assert_eq!(report.stats.matched_records, 2);
     assert!(report.stats.evaluated_records <= points.len());
 }

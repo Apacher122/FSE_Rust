@@ -126,3 +126,27 @@ fn benchmark_runner_with_registry_can_use_kd_tree_baseline() {
         assert_eq!(comparison.comparison.labels.baseline_label, "KD-Tree");
     }
 }
+
+#[test]
+fn benchmark_runner_with_registry_can_use_r_tree_baseline() {
+    let points = clustered_points_2d();
+    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
+    let index = builder.build(&points);
+    let workloads = clustered_workload_cases();
+    let timing_config = RepeatedTimingConfig::new(3);
+    let registry = BaselineRegistry::new();
+
+    let report = run_benchmark_suite_with_registry(
+        &index,
+        &points,
+        &workloads,
+        &timing_config,
+        &registry,
+        BaselineKind::RTree,
+    );
+
+    for comparison in report.comparisons {
+        assert_eq!(comparison.comparison.baseline_name, "r_tree");
+        assert_eq!(comparison.comparison.labels.baseline_label, "R-Tree");
+    }
+}
