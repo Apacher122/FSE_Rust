@@ -2,20 +2,7 @@ use crate::benchmark::flat_scan;
 use crate::build::{BuildConfig, FSEBuilder};
 use crate::math::Vector;
 use crate::query::{QueryRegion, execute_query};
-
-fn sort_points(points: &mut [Vector]) {
-    points.sort_by(|left, right| {
-        for (left_value, right_value) in left.values.iter().zip(&right.values) {
-            match left_value.partial_cmp(right_value) {
-                Some(std::cmp::Ordering::Equal) => continue,
-                Some(ordering) => return ordering,
-                None => return std::cmp::Ordering::Equal,
-            }
-        }
-
-        left.values.len().cmp(&right.values.len())
-    });
-}
+use crate::tests::support::sort_points;
 
 #[test]
 fn fse_query_matches_linear_scan_for_selective_query() {

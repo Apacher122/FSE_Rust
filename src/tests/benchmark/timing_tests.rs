@@ -1,11 +1,16 @@
 use std::time::Duration;
 
 use crate::benchmark::{
-    RepeatedTimingConfig, clustered_points_2d, compare_query_execution,
-    compare_query_execution_repeated, duration_ratio, measure_elapsed, measure_repeated,
+    RepeatedTimingConfig, compare_query_execution, compare_query_execution_repeated,
+    duration_ratio, measure_elapsed, measure_repeated,
 };
-use crate::build::{BuildConfig, FSEBuilder};
 use crate::query::QueryRegion;
+
+use crate::tests::support::small_benchmark_fixture;
+
+fn middle_cluster_query() -> QueryRegion {
+    QueryRegion::new(vec![50.0, 50.0], vec![55.0, 55.0])
+}
 
 #[test]
 fn measure_elapsed_returns_operation_result() {
@@ -43,12 +48,10 @@ fn measure_repeated_reports_average_duration() {
 
 #[test]
 fn comparison_report_includes_timing_measurements() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
+    let fixture = small_benchmark_fixture();
+    let query = middle_cluster_query();
 
-    let query = QueryRegion::new(vec![50.0, 50.0], vec![55.0, 55.0]);
-    let report = compare_query_execution(&index, &points, &query);
+    let report = compare_query_execution(&fixture.index, &fixture.points, &query);
 
     assert!(report.timing.baseline_elapsed >= Duration::ZERO);
     assert!(report.timing.fse_elapsed >= Duration::ZERO);
@@ -56,14 +59,12 @@ fn comparison_report_includes_timing_measurements() {
 
 #[test]
 fn repeated_comparison_report_uses_requested_iteration_count() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-
-    let query = QueryRegion::new(vec![50.0, 50.0], vec![55.0, 55.0]);
+    let fixture = small_benchmark_fixture();
+    let query = middle_cluster_query();
     let timing_config = RepeatedTimingConfig::new(3);
 
-    let report = compare_query_execution_repeated(&index, &points, &query, &timing_config);
+    let report =
+        compare_query_execution_repeated(&fixture.index, &fixture.points, &query, &timing_config);
 
     assert_eq!(report.repeated_timing.baseline.iterations, 3);
     assert_eq!(report.repeated_timing.fse.iterations, 3);
@@ -84,14 +85,12 @@ fn duration_ratio_returns_zero_for_two_zero_durations() {
 
 #[test]
 fn repeated_comparison_report_includes_timing_ratios() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-
-    let query = QueryRegion::new(vec![50.0, 50.0], vec![55.0, 55.0]);
+    let fixture = small_benchmark_fixture();
+    let query = middle_cluster_query();
     let timing_config = RepeatedTimingConfig::new(3);
 
-    let report = compare_query_execution_repeated(&index, &points, &query, &timing_config);
+    let report =
+        compare_query_execution_repeated(&fixture.index, &fixture.points, &query, &timing_config);
 
     assert!(report.single_run_timing_ratio >= 0.0);
     assert!(report.average_timing_ratio >= 0.0);

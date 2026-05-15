@@ -1,4 +1,5 @@
 //! Benchmark tests.
+
 mod baseline_tests;
 mod benchmark_tests;
 mod cli_tests;
@@ -9,6 +10,7 @@ mod dataset_tests;
 mod kd_tree_tests;
 mod kd_workload_tests;
 mod multi_summary_tests;
+mod output_tests;
 mod pruning_tests;
 mod r_tree_tests;
 mod r_tree_workload_tests;

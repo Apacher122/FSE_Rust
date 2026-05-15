@@ -1,37 +1,33 @@
 use crate::benchmark::{
-    aggregate_workload_metrics, clustered_points_2d, clustered_workload_cases, duration_ratio,
-    summarize_workload_comparisons,
+    aggregate_workload_metrics, duration_ratio, summarize_workload_comparisons,
 };
-use crate::build::{BuildConfig, FSEBuilder};
+use crate::tests::support::small_benchmark_fixture;
 use std::time::Duration;
 
 #[test]
 fn workload_summary_returns_one_summary_per_workload() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
+    let fixture = small_benchmark_fixture();
 
-    let summaries = summarize_workload_comparisons(&index, &points, &workloads);
+    let summaries =
+        summarize_workload_comparisons(&fixture.index, &fixture.points, &fixture.workloads);
 
-    assert_eq!(summaries.len(), workloads.len());
+    assert_eq!(summaries.len(), fixture.workloads.len());
 }
 
 #[test]
 fn workload_summary_preserves_workload_names() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
+    let fixture = small_benchmark_fixture();
 
-    let summaries = summarize_workload_comparisons(&index, &points, &workloads);
+    let summaries =
+        summarize_workload_comparisons(&fixture.index, &fixture.points, &fixture.workloads);
 
     let summary_names: Vec<&str> = summaries
         .iter()
         .map(|summary| summary.workload_name.as_str())
         .collect();
 
-    let workload_names: Vec<&str> = workloads
+    let workload_names: Vec<&str> = fixture
+        .workloads
         .iter()
         .map(|workload| workload.name.as_str())
         .collect();
@@ -40,48 +36,44 @@ fn workload_summary_preserves_workload_names() {
 }
 
 #[test]
-fn workload_summary_reports_flat_scan_record_count() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
+fn workload_summary_reports_baseline_record_count() {
+    let fixture = small_benchmark_fixture();
 
-    let summaries = summarize_workload_comparisons(&index, &points, &workloads);
+    let summaries =
+        summarize_workload_comparisons(&fixture.index, &fixture.points, &fixture.workloads);
 
     for summary in summaries {
         assert_eq!(
             summary.comparison.baseline_stats.evaluated_records,
-            points.len()
+            fixture.points.len()
         );
     }
 }
 
 #[test]
 fn aggregate_workload_metrics_counts_workloads() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
+    let fixture = small_benchmark_fixture();
 
-    let summaries = summarize_workload_comparisons(&index, &points, &workloads);
+    let summaries =
+        summarize_workload_comparisons(&fixture.index, &fixture.points, &fixture.workloads);
+
     let aggregate = aggregate_workload_metrics(&summaries);
 
-    assert_eq!(aggregate.workload_count, workloads.len());
+    assert_eq!(aggregate.workload_count, fixture.workloads.len());
 }
 
 #[test]
 fn aggregate_workload_metrics_totals_baseline_evaluations() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
+    let fixture = small_benchmark_fixture();
 
-    let summaries = summarize_workload_comparisons(&index, &points, &workloads);
+    let summaries =
+        summarize_workload_comparisons(&fixture.index, &fixture.points, &fixture.workloads);
+
     let aggregate = aggregate_workload_metrics(&summaries);
 
     assert_eq!(
         aggregate.total_baseline_evaluated_records,
-        points.len() * workloads.len()
+        fixture.points.len() * fixture.workloads.len()
     );
 }
 
@@ -111,12 +103,11 @@ fn aggregate_workload_metrics_handles_empty_summary_list() {
 
 #[test]
 fn aggregate_workload_metrics_reports_average_candidate_ratio() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
+    let fixture = small_benchmark_fixture();
 
-    let summaries = summarize_workload_comparisons(&index, &points, &workloads);
+    let summaries =
+        summarize_workload_comparisons(&fixture.index, &fixture.points, &fixture.workloads);
+
     let aggregate = aggregate_workload_metrics(&summaries);
 
     assert!(aggregate.average_candidate_ratio >= 0.0);
@@ -125,12 +116,11 @@ fn aggregate_workload_metrics_reports_average_candidate_ratio() {
 
 #[test]
 fn aggregate_workload_metrics_reports_average_retained_leaf_ratio() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
+    let fixture = small_benchmark_fixture();
 
-    let summaries = summarize_workload_comparisons(&index, &points, &workloads);
+    let summaries =
+        summarize_workload_comparisons(&fixture.index, &fixture.points, &fixture.workloads);
+
     let aggregate = aggregate_workload_metrics(&summaries);
 
     assert!(aggregate.average_retained_leaf_ratio >= 0.0);
@@ -139,12 +129,11 @@ fn aggregate_workload_metrics_reports_average_retained_leaf_ratio() {
 
 #[test]
 fn aggregate_workload_metrics_reports_weighted_reconstruction_avoidance_ratio() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
+    let fixture = small_benchmark_fixture();
 
-    let summaries = summarize_workload_comparisons(&index, &points, &workloads);
+    let summaries =
+        summarize_workload_comparisons(&fixture.index, &fixture.points, &fixture.workloads);
+
     let aggregate = aggregate_workload_metrics(&summaries);
 
     let expected = aggregate.total_avoided_reconstructions as f32
@@ -155,12 +144,11 @@ fn aggregate_workload_metrics_reports_weighted_reconstruction_avoidance_ratio() 
 
 #[test]
 fn aggregate_workload_metrics_reports_weighted_candidate_ratio() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
+    let fixture = small_benchmark_fixture();
 
-    let summaries = summarize_workload_comparisons(&index, &points, &workloads);
+    let summaries =
+        summarize_workload_comparisons(&fixture.index, &fixture.points, &fixture.workloads);
+
     let aggregate = aggregate_workload_metrics(&summaries);
 
     let expected = aggregate.total_fse_reconstructed_records as f32
@@ -171,12 +159,11 @@ fn aggregate_workload_metrics_reports_weighted_candidate_ratio() {
 
 #[test]
 fn aggregate_workload_metrics_derives_mean_timing_from_totals() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
+    let fixture = small_benchmark_fixture();
 
-    let summaries = summarize_workload_comparisons(&index, &points, &workloads);
+    let summaries =
+        summarize_workload_comparisons(&fixture.index, &fixture.points, &fixture.workloads);
+
     let aggregate = aggregate_workload_metrics(&summaries);
 
     let expected_baseline_mean = Duration::from_secs_f64(
@@ -197,12 +184,11 @@ fn aggregate_workload_metrics_derives_mean_timing_from_totals() {
 
 #[test]
 fn aggregate_workload_metrics_derives_weighted_timing_ratio_from_totals() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
+    let fixture = small_benchmark_fixture();
 
-    let summaries = summarize_workload_comparisons(&index, &points, &workloads);
+    let summaries =
+        summarize_workload_comparisons(&fixture.index, &fixture.points, &fixture.workloads);
+
     let aggregate = aggregate_workload_metrics(&summaries);
 
     let expected = duration_ratio(
@@ -215,12 +201,11 @@ fn aggregate_workload_metrics_derives_weighted_timing_ratio_from_totals() {
 
 #[test]
 fn aggregate_workload_metrics_derives_mean_timing_ratio_from_workloads() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
+    let fixture = small_benchmark_fixture();
 
-    let summaries = summarize_workload_comparisons(&index, &points, &workloads);
+    let summaries =
+        summarize_workload_comparisons(&fixture.index, &fixture.points, &fixture.workloads);
+
     let aggregate = aggregate_workload_metrics(&summaries);
 
     let expected = summaries

@@ -1,44 +1,36 @@
 use crate::benchmark::{
-    BaselineKind, BaselineRegistry, RepeatedTimingConfig, clustered_points_2d,
-    clustered_workload_cases, run_benchmark_suite, run_benchmark_suite_repeated,
+    BaselineKind, run_benchmark_suite, run_benchmark_suite_repeated,
     run_benchmark_suite_with_registry, run_multi_baseline_benchmark_suite,
 };
-use crate::build::{BuildConfig, FSEBuilder};
+
+use crate::tests::support::small_benchmark_fixture;
 
 #[test]
 fn benchmark_runner_returns_one_comparison_per_workload() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
+    let fixture = small_benchmark_fixture();
 
-    let report = run_benchmark_suite(&index, &points, &workloads);
+    let report = run_benchmark_suite(&fixture.index, &fixture.points, &fixture.workloads);
 
-    assert_eq!(report.comparisons.len(), workloads.len());
+    assert_eq!(report.comparisons.len(), fixture.workloads.len());
 }
 
 #[test]
 fn benchmark_runner_returns_one_pruning_report_per_workload() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
+    let fixture = small_benchmark_fixture();
 
-    let report = run_benchmark_suite(&index, &points, &workloads);
+    let report = run_benchmark_suite(&fixture.index, &fixture.points, &fixture.workloads);
 
-    assert_eq!(report.pruning_reports.len(), workloads.len());
+    assert_eq!(report.pruning_reports.len(), fixture.workloads.len());
 }
 
 #[test]
 fn benchmark_runner_preserves_workload_names_across_reports() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
+    let fixture = small_benchmark_fixture();
 
-    let report = run_benchmark_suite(&index, &points, &workloads);
+    let report = run_benchmark_suite(&fixture.index, &fixture.points, &fixture.workloads);
 
-    for ((workload, comparison), pruning_report) in workloads
+    for ((workload, comparison), pruning_report) in fixture
+        .workloads
         .iter()
         .zip(&report.comparisons)
         .zip(&report.pruning_reports)
@@ -50,51 +42,50 @@ fn benchmark_runner_preserves_workload_names_across_reports() {
 
 #[test]
 fn benchmark_runner_populates_aggregate_metrics() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
+    let fixture = small_benchmark_fixture();
 
-    let report = run_benchmark_suite(&index, &points, &workloads);
+    let report = run_benchmark_suite(&fixture.index, &fixture.points, &fixture.workloads);
 
-    assert_eq!(report.aggregate.workload_count, workloads.len());
+    assert_eq!(report.aggregate.workload_count, fixture.workloads.len());
     assert_eq!(
         report.aggregate.total_baseline_evaluated_records,
-        points.len() * workloads.len()
+        fixture.points.len() * fixture.workloads.len()
     );
 }
 
 #[test]
 fn benchmark_runner_repeated_uses_requested_timing_iterations() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
-    let timing_config = RepeatedTimingConfig::new(3);
+    let fixture = small_benchmark_fixture();
 
-    let report = run_benchmark_suite_repeated(&index, &points, &workloads, &timing_config);
+    let report = run_benchmark_suite_repeated(
+        &fixture.index,
+        &fixture.points,
+        &fixture.workloads,
+        &fixture.timing_config,
+    );
 
     for comparison in report.comparisons {
-        assert_eq!(comparison.comparison.repeated_timing.baseline.iterations, 3);
-        assert_eq!(comparison.comparison.repeated_timing.fse.iterations, 3);
+        assert_eq!(
+            comparison.comparison.repeated_timing.baseline.iterations,
+            fixture.timing_config.iterations
+        );
+        assert_eq!(
+            comparison.comparison.repeated_timing.fse.iterations,
+            fixture.timing_config.iterations
+        );
     }
 }
 
 #[test]
 fn benchmark_runner_with_registry_uses_selected_baseline() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
-    let timing_config = RepeatedTimingConfig::new(3);
-    let registry = BaselineRegistry::new();
+    let fixture = small_benchmark_fixture();
 
     let report = run_benchmark_suite_with_registry(
-        &index,
-        &points,
-        &workloads,
-        &timing_config,
-        &registry,
+        &fixture.index,
+        &fixture.points,
+        &fixture.workloads,
+        &fixture.timing_config,
+        &fixture.registry,
         BaselineKind::FlatScan,
     );
 
@@ -105,19 +96,14 @@ fn benchmark_runner_with_registry_uses_selected_baseline() {
 
 #[test]
 fn benchmark_runner_with_registry_can_use_kd_tree_baseline() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
-    let timing_config = RepeatedTimingConfig::new(3);
-    let registry = BaselineRegistry::new();
+    let fixture = small_benchmark_fixture();
 
     let report = run_benchmark_suite_with_registry(
-        &index,
-        &points,
-        &workloads,
-        &timing_config,
-        &registry,
+        &fixture.index,
+        &fixture.points,
+        &fixture.workloads,
+        &fixture.timing_config,
+        &fixture.registry,
         BaselineKind::KdTree,
     );
 
@@ -129,19 +115,14 @@ fn benchmark_runner_with_registry_can_use_kd_tree_baseline() {
 
 #[test]
 fn benchmark_runner_with_registry_can_use_r_tree_baseline() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
-    let timing_config = RepeatedTimingConfig::new(3);
-    let registry = BaselineRegistry::new();
+    let fixture = small_benchmark_fixture();
 
     let report = run_benchmark_suite_with_registry(
-        &index,
-        &points,
-        &workloads,
-        &timing_config,
-        &registry,
+        &fixture.index,
+        &fixture.points,
+        &fixture.workloads,
+        &fixture.timing_config,
+        &fixture.registry,
         BaselineKind::RTree,
     );
 
@@ -153,12 +134,7 @@ fn benchmark_runner_with_registry_can_use_r_tree_baseline() {
 
 #[test]
 fn multi_baseline_runner_returns_one_report_per_baseline() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
-    let timing_config = RepeatedTimingConfig::new(3);
-    let registry = BaselineRegistry::new();
+    let fixture = small_benchmark_fixture();
 
     let baseline_kinds = [
         BaselineKind::FlatScan,
@@ -167,11 +143,11 @@ fn multi_baseline_runner_returns_one_report_per_baseline() {
     ];
 
     let report = run_multi_baseline_benchmark_suite(
-        &index,
-        &points,
-        &workloads,
-        &timing_config,
-        &registry,
+        &fixture.index,
+        &fixture.points,
+        &fixture.workloads,
+        &fixture.timing_config,
+        &fixture.registry,
         &baseline_kinds,
     );
 
@@ -180,12 +156,7 @@ fn multi_baseline_runner_returns_one_report_per_baseline() {
 
 #[test]
 fn multi_baseline_runner_preserves_baseline_order() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
-    let timing_config = RepeatedTimingConfig::new(3);
-    let registry = BaselineRegistry::new();
+    let fixture = small_benchmark_fixture();
 
     let baseline_kinds = [
         BaselineKind::FlatScan,
@@ -194,11 +165,11 @@ fn multi_baseline_runner_preserves_baseline_order() {
     ];
 
     let report = run_multi_baseline_benchmark_suite(
-        &index,
-        &points,
-        &workloads,
-        &timing_config,
-        &registry,
+        &fixture.index,
+        &fixture.points,
+        &fixture.workloads,
+        &fixture.timing_config,
+        &fixture.registry,
         &baseline_kinds,
     );
 
@@ -213,12 +184,7 @@ fn multi_baseline_runner_preserves_baseline_order() {
 
 #[test]
 fn multi_baseline_runner_populates_each_baseline_report() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
-    let timing_config = RepeatedTimingConfig::new(3);
-    let registry = BaselineRegistry::new();
+    let fixture = small_benchmark_fixture();
 
     let baseline_kinds = [
         BaselineKind::FlatScan,
@@ -227,35 +193,33 @@ fn multi_baseline_runner_populates_each_baseline_report() {
     ];
 
     let report = run_multi_baseline_benchmark_suite(
-        &index,
-        &points,
-        &workloads,
-        &timing_config,
-        &registry,
+        &fixture.index,
+        &fixture.points,
+        &fixture.workloads,
+        &fixture.timing_config,
+        &fixture.registry,
         &baseline_kinds,
     );
 
     for baseline_report in report.baseline_reports {
-        assert_eq!(baseline_report.report.comparisons.len(), workloads.len());
+        assert_eq!(
+            baseline_report.report.comparisons.len(),
+            fixture.workloads.len()
+        );
         assert_eq!(
             baseline_report.report.pruning_reports.len(),
-            workloads.len()
+            fixture.workloads.len()
         );
         assert_eq!(
             baseline_report.report.aggregate.workload_count,
-            workloads.len()
+            fixture.workloads.len()
         );
     }
 }
 
 #[test]
 fn multi_baseline_runner_comparisons_use_matching_baseline_names() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
-    let workloads = clustered_workload_cases();
-    let timing_config = RepeatedTimingConfig::new(3);
-    let registry = BaselineRegistry::new();
+    let fixture = small_benchmark_fixture();
 
     let baseline_kinds = [
         BaselineKind::FlatScan,
@@ -264,11 +228,11 @@ fn multi_baseline_runner_comparisons_use_matching_baseline_names() {
     ];
 
     let report = run_multi_baseline_benchmark_suite(
-        &index,
-        &points,
-        &workloads,
-        &timing_config,
-        &registry,
+        &fixture.index,
+        &fixture.points,
+        &fixture.workloads,
+        &fixture.timing_config,
+        &fixture.registry,
         &baseline_kinds,
     );
 

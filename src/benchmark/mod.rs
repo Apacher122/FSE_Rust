@@ -11,6 +11,7 @@ pub mod csv;
 pub mod datasets;
 pub mod kd_tree;
 pub mod multi_summary;
+pub mod output;
 pub mod pruning;
 pub mod r_tree;
 pub mod runner;
@@ -39,6 +40,10 @@ pub use datasets::{
 pub use kd_tree::KdTreeBaseline;
 pub use multi_summary::{
     BaselineAggregateSummary, MultiBaselineAggregateSummary, summarize_multi_baseline_aggregates,
+};
+pub use output::{
+    BenchmarkRunOverview, render_benchmark_overview, render_multi_baseline_summary,
+    render_named_baseline_suite_report, render_suite_report,
 };
 pub use pruning::{PruningEfficiencyReport, pruning_efficiency_report};
 pub use r_tree::RTreeBaseline;

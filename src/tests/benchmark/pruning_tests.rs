@@ -1,15 +1,17 @@
-use crate::benchmark::{clustered_points_2d, compare_query_execution, pruning_efficiency_report};
-use crate::build::{BuildConfig, FSEBuilder};
+use crate::benchmark::{compare_query_execution, pruning_efficiency_report};
 use crate::query::QueryRegion;
+use crate::tests::support::small_benchmark_fixture;
+
+fn middle_cluster_query() -> QueryRegion {
+    QueryRegion::new(vec![50.0, 50.0], vec![55.0, 55.0])
+}
 
 #[test]
 fn pruning_efficiency_report_matches_candidate_complement() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
+    let fixture = small_benchmark_fixture();
+    let query = middle_cluster_query();
 
-    let query = QueryRegion::new(vec![50.0, 50.0], vec![55.0, 55.0]);
-    let comparison = compare_query_execution(&index, &points, &query);
+    let comparison = compare_query_execution(&fixture.index, &fixture.points, &query);
     let pruning = pruning_efficiency_report(&comparison);
 
     assert_eq!(
@@ -20,12 +22,10 @@ fn pruning_efficiency_report_matches_candidate_complement() {
 
 #[test]
 fn pruning_efficiency_report_matches_retained_leaf_complement() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
+    let fixture = small_benchmark_fixture();
+    let query = middle_cluster_query();
 
-    let query = QueryRegion::new(vec![50.0, 50.0], vec![55.0, 55.0]);
-    let comparison = compare_query_execution(&index, &points, &query);
+    let comparison = compare_query_execution(&fixture.index, &fixture.points, &query);
     let pruning = pruning_efficiency_report(&comparison);
 
     assert_eq!(
@@ -36,12 +36,10 @@ fn pruning_efficiency_report_matches_retained_leaf_complement() {
 
 #[test]
 fn pruning_efficiency_report_counts_baseline_and_reconstructed_records() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
+    let fixture = small_benchmark_fixture();
+    let query = middle_cluster_query();
 
-    let query = QueryRegion::new(vec![50.0, 50.0], vec![55.0, 55.0]);
-    let comparison = compare_query_execution(&index, &points, &query);
+    let comparison = compare_query_execution(&fixture.index, &fixture.points, &query);
     let pruning = pruning_efficiency_report(&comparison);
 
     assert_eq!(
@@ -56,12 +54,10 @@ fn pruning_efficiency_report_counts_baseline_and_reconstructed_records() {
 
 #[test]
 fn pruning_efficiency_report_counts_leaf_retention() {
-    let points = clustered_points_2d();
-    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
-    let index = builder.build(&points);
+    let fixture = small_benchmark_fixture();
+    let query = middle_cluster_query();
 
-    let query = QueryRegion::new(vec![50.0, 50.0], vec![55.0, 55.0]);
-    let comparison = compare_query_execution(&index, &points, &query);
+    let comparison = compare_query_execution(&fixture.index, &fixture.points, &query);
     let pruning = pruning_efficiency_report(&comparison);
 
     assert_eq!(pruning.total_leaves, comparison.fse_stats.total_leaves);

@@ -1,6 +1,44 @@
-use crate::benchmark::{RangeQueryBaseline, flat_scan};
+use crate::benchmark::{
+    BaselineRegistry, QueryWorkloadCase, RangeQueryBaseline, RepeatedTimingConfig,
+    clustered_points_2d, clustered_workload_cases, flat_scan,
+};
+use crate::build::{BuildConfig, FSEBuilder};
 use crate::math::Vector;
 use crate::query::QueryRegion;
+use crate::storage::FSEIndex;
+
+/// Shared benchmark fixture used by benchmark-oriented tests.
+pub struct BenchmarkTestFixture {
+    pub points: Vec<Vector>,
+    pub index: FSEIndex,
+    pub workloads: Vec<QueryWorkloadCase>,
+    pub timing_config: RepeatedTimingConfig,
+    pub registry: BaselineRegistry,
+}
+
+/// Builds the standard small benchmark fixture used by unit tests.
+pub fn small_benchmark_fixture() -> BenchmarkTestFixture {
+    let points = clustered_points_2d();
+    let index = build_test_index(&points);
+    let workloads = clustered_workload_cases();
+    let timing_config = RepeatedTimingConfig::new(3);
+    let registry = BaselineRegistry::new();
+
+    BenchmarkTestFixture {
+        points,
+        index,
+        workloads,
+        timing_config,
+        registry,
+    }
+}
+
+/// Builds an FSE index using the standard test build configuration.
+pub fn build_test_index(points: &[Vector]) -> FSEIndex {
+    let builder = FSEBuilder::new(BuildConfig::new(8, 8));
+
+    builder.build(points)
+}
 
 /// Sorts points lexicographically for order-independent result comparison.
 pub fn sort_points(points: &mut [Vector]) {
