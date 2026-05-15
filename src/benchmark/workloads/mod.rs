@@ -10,7 +10,6 @@ pub use datasets::{
     ClusteredDatasetConfig, clustered_points_2d, generate_clustered_points_2d,
     large_clustered_points_2d,
 };
-
 pub use workload::{
     QueryWorkloadCase, RangeWorkloadConfig, clustered_workload_cases,
     generate_range_workload_cases, large_clustered_workload_cases,

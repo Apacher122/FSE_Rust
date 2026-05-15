@@ -6,6 +6,7 @@
 
 pub mod comparison;
 pub mod csv;
+pub mod csv_output;
 pub mod multi_summary;
 pub mod ordering;
 pub mod output;
@@ -18,13 +19,17 @@ pub use comparison::{
     compare_query_execution_with_baseline,
 };
 pub use csv::{
-    BenchmarkCsvMetadata, multi_baseline_aggregate_summary_to_csv,
+    BenchmarkCsvMetadata, BenchmarkCsvOutputConfig, multi_baseline_aggregate_summary_to_csv,
     multi_baseline_aggregate_summary_to_csv_with_metadata, multi_baseline_workload_report_to_csv,
     multi_baseline_workload_report_to_csv_with_metadata,
     write_multi_baseline_aggregate_summary_csv,
     write_multi_baseline_aggregate_summary_csv_with_metadata,
     write_multi_baseline_workload_report_csv,
     write_multi_baseline_workload_report_csv_with_metadata,
+};
+pub use csv_output::{
+    BenchmarkCsvOutputKind, BenchmarkCsvWriteError, BenchmarkCsvWriteReport,
+    write_benchmark_csv_outputs,
 };
 pub use multi_summary::{
     BaselineAggregateSummary, MultiBaselineAggregateSummary, summarize_multi_baseline_aggregates,

@@ -1,12 +1,12 @@
+use std::env;
+
 use fse_rust::benchmark::{
     BaselineRegistry, BenchmarkCsvMetadata, BenchmarkRunOverview, benchmark_usage,
     parse_benchmark_cli_config, render_benchmark_overview, render_multi_baseline_summary,
     render_named_baseline_suite_report, render_suite_report, run_multi_baseline_benchmark_suite,
-    summarize_multi_baseline_aggregates, write_multi_baseline_aggregate_summary_csv_with_metadata,
-    write_multi_baseline_workload_report_csv_with_metadata,
+    summarize_multi_baseline_aggregates, write_benchmark_csv_outputs,
 };
 use fse_rust::build::FSEBuilder;
-use std::env;
 
 fn main() {
     let cli_config = match parse_benchmark_cli_config(env::args().skip(1)) {
@@ -83,27 +83,21 @@ fn main() {
 
     let metadata = BenchmarkCsvMetadata::from_overview(&overview);
 
-    if let Some(path) = &cli_config.csv_summary_path {
-        if let Err(error) = write_multi_baseline_aggregate_summary_csv_with_metadata(
-            path,
-            &metadata,
-            &aggregate_summary,
-        ) {
-            eprintln!("failed to write CSV summary to `{}`: {}", path, error);
+    let csv_write_report = match write_benchmark_csv_outputs(
+        &cli_config.csv_output,
+        &metadata,
+        &aggregate_summary,
+        &report,
+    ) {
+        Ok(report) => report,
+        Err(error) => {
+            eprintln!("{}", error);
             std::process::exit(1);
         }
+    };
 
-        println!("CSV summary written: {}", path);
-    }
-
-    if let Some(path) = &cli_config.csv_workloads_path {
-        if let Err(error) =
-            write_multi_baseline_workload_report_csv_with_metadata(path, &metadata, &report)
-        {
-            eprintln!("failed to write workload CSV to `{}`: {}", path, error);
-            std::process::exit(1);
-        }
-
-        println!("Workload CSV written: {}", path);
+    // main just prints the sucess lines now reporting owns the file details
+    for status_line in csv_write_report.status_lines() {
+        println!("{}", status_line);
     }
 }

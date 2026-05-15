@@ -6,6 +6,7 @@ mod cli_tests;
 mod comparison_tests;
 mod config_tests;
 mod cross_baseline_tests;
+mod csv_output_tests;
 mod csv_tests;
 mod dataset_tests;
 mod kd_tree_tests;

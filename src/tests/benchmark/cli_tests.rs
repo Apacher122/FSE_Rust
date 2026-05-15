@@ -142,6 +142,15 @@ fn parse_benchmark_cli_config_uses_single_default_baseline() {
 }
 
 #[test]
+fn parse_benchmark_cli_config_uses_empty_csv_output_by_default() {
+    let config = parse_benchmark_cli_config(Vec::<String>::new()).unwrap();
+
+    assert!(config.csv_output.is_empty());
+    assert!(!config.csv_output.has_summary_output());
+    assert!(!config.csv_output.has_workload_output());
+}
+
+#[test]
 fn parse_benchmark_cli_config_selects_single_baseline() {
     let config = parse_benchmark_cli_config(["--baseline", "kd_tree"]).unwrap();
 
@@ -220,14 +229,21 @@ fn parse_benchmark_cli_config_rejects_all_baselines_then_repeated_baseline() {
 fn parse_benchmark_cli_config_parses_csv_summary_path() {
     let config = parse_benchmark_cli_config(["--csv-summary", "summary.csv"]).unwrap();
 
-    assert_eq!(config.csv_summary_path, Some("summary.csv".to_string()));
+    assert_eq!(
+        config.csv_output.summary_path,
+        Some("summary.csv".to_string())
+    );
+    assert!(config.csv_output.has_summary_output());
 }
 
 #[test]
 fn parse_benchmark_cli_config_parses_csv_alias_path() {
     let config = parse_benchmark_cli_config(["--csv", "summary.csv"]).unwrap();
 
-    assert_eq!(config.csv_summary_path, Some("summary.csv".to_string()));
+    assert_eq!(
+        config.csv_output.summary_path,
+        Some("summary.csv".to_string())
+    );
 }
 
 #[test]
@@ -236,7 +252,10 @@ fn parse_benchmark_cli_config_uses_last_csv_summary_path() {
         parse_benchmark_cli_config(["--csv-summary", "first.csv", "--csv-summary", "second.csv"])
             .unwrap();
 
-    assert_eq!(config.csv_summary_path, Some("second.csv".to_string()));
+    assert_eq!(
+        config.csv_output.summary_path,
+        Some("second.csv".to_string())
+    );
 }
 
 #[test]
@@ -245,7 +264,10 @@ fn parse_benchmark_cli_config_uses_last_csv_alias_or_summary_path() {
         parse_benchmark_cli_config(["--csv", "first.csv", "--csv-summary", "second.csv"]).unwrap();
 
     // csv and csv-summary share the same slot
-    assert_eq!(config.csv_summary_path, Some("second.csv".to_string()));
+    assert_eq!(
+        config.csv_output.summary_path,
+        Some("second.csv".to_string())
+    );
 }
 
 #[test]
@@ -254,7 +276,10 @@ fn parse_benchmark_cli_config_uses_last_csv_summary_or_alias_path() {
         parse_benchmark_cli_config(["--csv-summary", "first.csv", "--csv", "second.csv"]).unwrap();
 
     // same as above but flipped so the alias does not get weird later
-    assert_eq!(config.csv_summary_path, Some("second.csv".to_string()));
+    assert_eq!(
+        config.csv_output.summary_path,
+        Some("second.csv".to_string())
+    );
 }
 
 #[test]
@@ -268,7 +293,11 @@ fn parse_benchmark_cli_config_rejects_missing_csv_summary_value() {
 fn parse_benchmark_cli_config_parses_csv_workloads_path() {
     let config = parse_benchmark_cli_config(["--csv-workloads", "workloads.csv"]).unwrap();
 
-    assert_eq!(config.csv_workloads_path, Some("workloads.csv".to_string()));
+    assert_eq!(
+        config.csv_output.workloads_path,
+        Some("workloads.csv".to_string())
+    );
+    assert!(config.csv_output.has_workload_output());
 }
 
 #[test]
@@ -282,7 +311,10 @@ fn parse_benchmark_cli_config_uses_last_csv_workloads_path() {
     .unwrap();
 
     // last one wins here too no special merge behvior
-    assert_eq!(config.csv_workloads_path, Some("second.csv".to_string()));
+    assert_eq!(
+        config.csv_output.workloads_path,
+        Some("second.csv".to_string())
+    );
 }
 
 #[test]

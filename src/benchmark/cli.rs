@@ -1,7 +1,8 @@
 //! Command-line parsing for benchmark configuration.
 
 use crate::benchmark::{
-    BaselineKind, BenchmarkBaselineSet, BenchmarkDatasetKind, BenchmarkSuiteConfig,
+    BaselineKind, BenchmarkBaselineSet, BenchmarkCsvOutputConfig, BenchmarkDatasetKind,
+    BenchmarkSuiteConfig,
 };
 
 /// Parsed benchmark CLI configuration.
@@ -22,11 +23,8 @@ pub struct BenchmarkCliConfig {
     /// Baselines selected for this benchmark run.
     pub baseline_kinds: Vec<BaselineKind>,
 
-    /// Optional path for writing the aggregate summary CSV.
-    pub csv_summary_path: Option<String>,
-
-    /// Optional path for writing per-workload CSV rows.
-    pub csv_workloads_path: Option<String>,
+    /// CSV output paths selected for this benchmark run.
+    pub csv_output: BenchmarkCsvOutputConfig,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -85,8 +83,7 @@ impl Default for BaselineSelectionState {
 struct BenchmarkCliParseState {
     suite_config: BenchmarkSuiteConfig,
     baseline_selection: BaselineSelectionState,
-    csv_summary_path: Option<String>,
-    csv_workloads_path: Option<String>,
+    csv_output: BenchmarkCsvOutputConfig,
 }
 
 impl BenchmarkCliParseState {
@@ -128,11 +125,11 @@ impl BenchmarkCliParseState {
     }
 
     fn set_csv_summary_path(&mut self, value: String) {
-        self.csv_summary_path = Some(value);
+        self.csv_output.set_summary_path(value);
     }
 
     fn set_csv_workloads_path(&mut self, value: String) {
-        self.csv_workloads_path = Some(value);
+        self.csv_output.set_workloads_path(value);
     }
 
     fn finish(self) -> BenchmarkCliConfig {
@@ -147,8 +144,7 @@ impl BenchmarkCliParseState {
             suite_config: self.suite_config,
             baseline_set,
             baseline_kinds,
-            csv_summary_path: self.csv_summary_path,
-            csv_workloads_path: self.csv_workloads_path,
+            csv_output: self.csv_output,
         }
     }
 }

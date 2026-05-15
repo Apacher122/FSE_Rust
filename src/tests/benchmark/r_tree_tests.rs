@@ -1,7 +1,6 @@
 use crate::benchmark::{RTreeBaseline, RangeQueryBaseline, flat_scan};
 use crate::math::Vector;
 use crate::query::QueryRegion;
-
 use crate::tests::support::sort_points;
 
 #[test]
