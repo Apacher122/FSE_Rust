@@ -1,11 +1,12 @@
-//! Comparison utilities for FSE and flat scan execution.
+//! Comparison utilities for FSE and baseline execution.
 
-use crate::benchmark::{
-    BaselineComparisonLabels, BaselineQueryStats, FlatScanBaseline, RangeQueryBaseline,
+use super::timing::{
     RepeatedComparisonTimingReport, RepeatedTimingConfig, TimingReport, duration_ratio,
     measure_elapsed, measure_repeated,
 };
-
+use crate::benchmark::baselines::{
+    BaselineComparisonLabels, BaselineQueryStats, FlatScanBaseline, RangeQueryBaseline,
+};
 use crate::math::{Scalar, Vector};
 use crate::query::{QueryExecutionStats, QueryRegion, execute_query_with_stats};
 use crate::storage::FSEIndex;
@@ -88,8 +89,8 @@ pub fn compare_query_execution_repeated(
 ///
 /// # Runtime Role
 ///
-/// This function is the extension point for future exact range-query baselines
-/// such as KD-tree and R-tree implementations.
+/// This function is the extension point for exact range-query baselines such as
+/// flat scan, KD-tree, and R-tree implementations.
 ///
 /// # Panics
 ///
@@ -101,7 +102,6 @@ pub fn compare_query_execution_with_baseline(
     timing_config: &RepeatedTimingConfig,
 ) -> QueryComparisonReport {
     let (baseline_report, baseline_elapsed) = measure_elapsed(|| baseline.execute(query));
-
     let (fse_report, fse_elapsed) = measure_elapsed(|| execute_query_with_stats(index, query));
 
     let mut baseline_results = baseline_report.results;
@@ -143,7 +143,6 @@ pub fn compare_query_execution_with_baseline(
 
     let candidate_ratio = fse_report.stats.candidate_ratio;
     let retained_leaf_ratio = fse_report.stats.retained_leaf_ratio;
-
     let labels = baseline.labels();
 
     QueryComparisonReport {

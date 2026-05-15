@@ -1,11 +1,12 @@
 //! Benchmark suite runner.
 
-use crate::benchmark::{
-    AggregateWorkloadMetrics, BaselineKind, BaselineRegistry, PruningEfficiencyReport,
-    QueryWorkloadCase, RepeatedTimingConfig, WorkloadComparisonSummary, aggregate_workload_metrics,
-    compare_query_execution_repeated, compare_query_execution_with_baseline,
-    pruning_efficiency_report,
+use crate::benchmark::baselines::{BaselineKind, BaselineRegistry};
+use crate::benchmark::reports::{
+    AggregateWorkloadMetrics, PruningEfficiencyReport, RepeatedTimingConfig,
+    WorkloadComparisonSummary, aggregate_workload_metrics, compare_query_execution_repeated,
+    compare_query_execution_with_baseline, pruning_efficiency_report,
 };
+use crate::benchmark::workloads::QueryWorkloadCase;
 use crate::math::Vector;
 use crate::storage::FSEIndex;
 

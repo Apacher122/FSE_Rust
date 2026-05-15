@@ -2,6 +2,7 @@
 /target
 **/*.rs.bk
 /dev_notes
+*.csv
 
 # VS Code
 .vscode/*

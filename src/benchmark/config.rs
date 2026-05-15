@@ -1,8 +1,10 @@
-//! Benchmark suite configuration
+//! Benchmark suite configuration.
 
-use crate::benchmark::{
-    BaselineKind, QueryWorkloadCase, RepeatedTimingConfig, clustered_points_2d,
-    clustered_workload_cases, large_clustered_points_2d, large_clustered_workload_cases,
+use crate::benchmark::baselines::BaselineKind;
+use crate::benchmark::reports::RepeatedTimingConfig;
+use crate::benchmark::workloads::{
+    QueryWorkloadCase, clustered_points_2d, clustered_workload_cases, large_clustered_points_2d,
+    large_clustered_workload_cases,
 };
 use crate::build::BuildConfig;
 use crate::math::Vector;
@@ -11,7 +13,7 @@ use crate::math::Vector;
 ///
 /// # Runtime Role
 ///
-/// `BenchmarkDatasetKind` lets demos and benchmark switch between
+/// `BenchmarkDatasetKind` lets demos and benchmark runners switch between
 /// small readable datasets and larger timing-oriented datasets.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BenchmarkDatasetKind {
@@ -26,12 +28,16 @@ pub enum BenchmarkDatasetKind {
 ///
 /// # Runtime Role
 ///
-/// `BenchmarkSuiteConfig` keeps dataset, build, workload, and timing choices
-/// in one place so benchmarks can be reproduced and adjusted consistently.
+/// `BenchmarkSuiteConfig` keeps dataset, build, workload, baseline, and timing
+/// choices in one place so benchmark runs can be reproduced and adjusted
+/// consistently.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BenchmarkSuiteConfig {
     /// Dataset used for the benchmark run.
     pub dataset_kind: BenchmarkDatasetKind,
+
+    /// Baseline used for comparison.
+    pub baseline_kind: BaselineKind,
 
     /// Maximum number of records stored in each FSE leaf.
     pub max_leaf_size: usize,
@@ -41,9 +47,6 @@ pub struct BenchmarkSuiteConfig {
 
     /// Number of timing iterations used for repeated timing.
     pub timing_iterations: usize,
-
-    /// Baseline used for comparison.
-    pub baseline_kind: BaselineKind,
 }
 
 impl BenchmarkSuiteConfig {
@@ -79,7 +82,7 @@ impl BenchmarkSuiteConfig {
         BuildConfig::new(self.max_leaf_size, self.max_depth)
     }
 
-    /// Returns the repeated timing configurations for this benchmark run.
+    /// Returns the repeated timing configuration for this benchmark run.
     pub fn timing_config(&self) -> RepeatedTimingConfig {
         RepeatedTimingConfig::new(self.timing_iterations)
     }

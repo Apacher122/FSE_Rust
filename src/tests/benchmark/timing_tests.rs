@@ -1,12 +1,10 @@
-use std::time::Duration;
-
-use crate::benchmark::{
+use crate::benchmark::reports::{
     RepeatedTimingConfig, compare_query_execution, compare_query_execution_repeated,
     duration_ratio, measure_elapsed, measure_repeated,
 };
 use crate::query::QueryRegion;
-
 use crate::tests::support::small_benchmark_fixture;
+use std::time::Duration;
 
 fn middle_cluster_query() -> QueryRegion {
     QueryRegion::new(vec![50.0, 50.0], vec![55.0, 55.0])

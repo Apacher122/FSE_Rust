@@ -1,6 +1,8 @@
-use crate::benchmark::{
-    BaselineRegistry, QueryWorkloadCase, RangeQueryBaseline, RepeatedTimingConfig,
-    clustered_points_2d, clustered_workload_cases, flat_scan,
+use crate::benchmark::baselines::scan::flat_scan;
+use crate::benchmark::baselines::{BaselineRegistry, RangeQueryBaseline};
+use crate::benchmark::reports::RepeatedTimingConfig;
+use crate::benchmark::workloads::{
+    QueryWorkloadCase, clustered_points_2d, clustered_workload_cases,
 };
 use crate::build::{BuildConfig, FSEBuilder};
 use crate::math::Vector;

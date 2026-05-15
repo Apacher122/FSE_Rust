@@ -1,67 +1,47 @@
 //! Benchmarking and baseline utilities.
 //!
-//! This module contains simple baseline implementations used to compare FSE
-//! query behavior against conventional scan-based execution.
+//! This module contains baseline implementations, workload generators, benchmark
+//! runners, and reporting utilities used to compare FSE query behavior against
+//! conventional exact range-query execution paths.
 
-pub mod baseline;
+pub mod baselines;
 pub mod cli;
-pub mod comparison;
 pub mod config;
-pub mod csv;
-pub mod datasets;
-pub mod kd_tree;
-pub mod multi_summary;
-pub mod output;
-pub mod pruning;
-pub mod r_tree;
+pub mod reports;
 pub mod runner;
-pub mod scan;
-pub mod summary;
-pub mod timing;
-pub mod workload;
+pub mod workloads;
 
-pub use baseline::{
+pub use baselines::{
     BaselineComparisonLabels, BaselineKind, BaselineQueryReport, BaselineQueryStats,
-    BaselineRegistry, FlatScanBaseline, RangeQueryBaseline, execute_range_baseline,
+    BaselineRegistry, FlatScanBaseline, FlatScanReport, FlatScanStats, KdTreeBaseline,
+    RTreeBaseline, RangeQueryBaseline, execute_range_baseline, flat_scan, flat_scan_with_stats,
 };
 pub use cli::{
     BenchmarkCliConfig, benchmark_usage, parse_benchmark_cli_config, parse_benchmark_config,
 };
-pub use comparison::{
-    QueryComparisonReport, compare_query_execution, compare_query_execution_repeated,
-    compare_query_execution_with_baseline,
-};
 pub use config::{BenchmarkDatasetKind, BenchmarkSuiteConfig};
-pub use csv::multi_baseline_aggregate_summary_to_csv;
-pub use datasets::{
-    ClusteredDatasetConfig, clustered_points_2d, generate_clustered_points_2d,
-    large_clustered_points_2d,
+pub use reports::{
+    AggregateWorkloadMetrics, BaselineAggregateSummary, BenchmarkCsvMetadata, BenchmarkRunOverview,
+    MultiBaselineAggregateSummary, PruningEfficiencyReport, QueryComparisonReport,
+    WorkloadComparisonSummary, aggregate_workload_metrics, compare_query_execution,
+    compare_query_execution_repeated, compare_query_execution_with_baseline, duration_ratio,
+    measure_elapsed, measure_repeated, multi_baseline_aggregate_summary_to_csv,
+    multi_baseline_aggregate_summary_to_csv_with_metadata, multi_baseline_workload_report_to_csv,
+    multi_baseline_workload_report_to_csv_with_metadata, pruning_efficiency_report,
+    render_benchmark_overview, render_multi_baseline_summary, render_named_baseline_suite_report,
+    render_suite_report, summarize_multi_baseline_aggregates, summarize_workload_comparisons,
+    write_multi_baseline_aggregate_summary_csv,
+    write_multi_baseline_aggregate_summary_csv_with_metadata,
+    write_multi_baseline_workload_report_csv,
+    write_multi_baseline_workload_report_csv_with_metadata,
 };
-pub use kd_tree::KdTreeBaseline;
-pub use multi_summary::{
-    BaselineAggregateSummary, MultiBaselineAggregateSummary, summarize_multi_baseline_aggregates,
-};
-pub use output::{
-    BenchmarkRunOverview, render_benchmark_overview, render_multi_baseline_summary,
-    render_named_baseline_suite_report, render_suite_report,
-};
-pub use pruning::{PruningEfficiencyReport, pruning_efficiency_report};
-pub use r_tree::RTreeBaseline;
 pub use runner::{
     BaselineBenchmarkSuiteReport, BenchmarkSuiteReport, MultiBaselineBenchmarkSuiteReport,
     WorkloadPruningReport, run_benchmark_suite, run_benchmark_suite_repeated,
     run_benchmark_suite_with_registry, run_multi_baseline_benchmark_suite,
 };
-pub use scan::{FlatScanReport, FlatScanStats, flat_scan, flat_scan_with_stats};
-pub use summary::{
-    AggregateWorkloadMetrics, WorkloadComparisonSummary, aggregate_workload_metrics,
-    summarize_workload_comparisons,
-};
-pub use timing::{
-    RepeatedComparisonTimingReport, RepeatedTimingConfig, RepeatedTimingReport, TimingReport,
-    duration_ratio, measure_elapsed, measure_repeated,
-};
-pub use workload::{
-    QueryWorkloadCase, RangeWorkloadConfig, clustered_workload_cases,
-    generate_range_workload_cases, large_clustered_workload_cases,
+pub use workloads::{
+    ClusteredDatasetConfig, QueryWorkloadCase, RangeWorkloadConfig, clustered_points_2d,
+    clustered_workload_cases, generate_clustered_points_2d, generate_range_workload_cases,
+    large_clustered_points_2d, large_clustered_workload_cases,
 };

@@ -1,8 +1,9 @@
 use fse_rust::benchmark::{
-    BaselineRegistry, BenchmarkRunOverview, benchmark_usage, parse_benchmark_cli_config,
-    render_benchmark_overview, render_multi_baseline_summary, render_named_baseline_suite_report,
-    render_suite_report, run_benchmark_suite_with_registry, run_multi_baseline_benchmark_suite,
-    summarize_multi_baseline_aggregates,
+    BaselineRegistry, BenchmarkCsvMetadata, BenchmarkRunOverview, benchmark_usage,
+    parse_benchmark_cli_config, render_benchmark_overview, render_multi_baseline_summary,
+    render_named_baseline_suite_report, render_suite_report, run_multi_baseline_benchmark_suite,
+    summarize_multi_baseline_aggregates, write_multi_baseline_aggregate_summary_csv_with_metadata,
+    write_multi_baseline_workload_report_csv_with_metadata,
 };
 use fse_rust::build::FSEBuilder;
 use std::env;
@@ -53,27 +54,21 @@ fn main() {
 
     print!("{}", render_benchmark_overview(&overview));
 
+    let report = run_multi_baseline_benchmark_suite(
+        &index,
+        &points,
+        &workloads,
+        &timing_config,
+        &registry,
+        &cli_config.baseline_kinds,
+    );
+
     if cli_config.baseline_kinds.len() == 1 {
-        let report = run_benchmark_suite_with_registry(
-            &index,
-            &points,
-            &workloads,
-            &timing_config,
-            &registry,
-            cli_config.baseline_kinds[0],
+        print!(
+            "{}",
+            render_suite_report(&report.baseline_reports[0].report)
         );
-
-        print!("{}", render_suite_report(&report));
     } else {
-        let report = run_multi_baseline_benchmark_suite(
-            &index,
-            &points,
-            &workloads,
-            &timing_config,
-            &registry,
-            &cli_config.baseline_kinds,
-        );
-
         for baseline_report in &report.baseline_reports {
             print!(
                 "{}",
@@ -83,8 +78,37 @@ fn main() {
                 )
             );
         }
+    }
 
-        let aggregate_summary = summarize_multi_baseline_aggregates(&report);
+    let aggregate_summary = summarize_multi_baseline_aggregates(&report);
+
+    if cli_config.baseline_kinds.len() > 1 {
         print!("{}", render_multi_baseline_summary(&aggregate_summary));
+    }
+
+    let metadata = BenchmarkCsvMetadata::from_overview(&overview);
+
+    if let Some(path) = &cli_config.csv_summary_path {
+        if let Err(error) = write_multi_baseline_aggregate_summary_csv_with_metadata(
+            path,
+            &metadata,
+            &aggregate_summary,
+        ) {
+            eprintln!("failed to write CSV summary to `{}`: {}", path, error);
+            std::process::exit(1);
+        }
+
+        println!("CSV summary written: {}", path);
+    }
+
+    if let Some(path) = &cli_config.csv_workloads_path {
+        if let Err(error) =
+            write_multi_baseline_workload_report_csv_with_metadata(path, &metadata, &report)
+        {
+            eprintln!("failed to write workload CSV to `{}`: {}", path, error);
+            std::process::exit(1);
+        }
+
+        println!("Workload CSV written: {}", path);
     }
 }

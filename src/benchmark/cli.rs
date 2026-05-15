@@ -16,6 +16,12 @@ pub struct BenchmarkCliConfig {
 
     /// Baselines selected for this benchmark run.
     pub baseline_kinds: Vec<BaselineKind>,
+
+    /// Optional path for writing the aggregate summary CSV.
+    pub csv_summary_path: Option<String>,
+
+    /// Optional path for writing per-workload CSV rows.
+    pub csv_workloads_path: Option<String>,
 }
 
 /// Parses benchmark configuration from command-line arguments.
@@ -37,6 +43,9 @@ pub struct BenchmarkCliConfig {
 /// - `--iterations N`
 /// - `--max-leaf-size N`
 /// - `--max-depth N`
+/// - `--csv-summary PATH`
+/// - `--csv PATH`
+/// - `--csv-workloads PATH`
 pub fn parse_benchmark_cli_config<I, S>(args: I) -> Result<BenchmarkCliConfig, String>
 where
     I: IntoIterator<Item = S>,
@@ -47,6 +56,8 @@ where
 
     let mut baseline_was_set = false;
     let mut all_baselines = false;
+    let mut csv_summary_path = None;
+    let mut csv_workloads_path = None;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -88,6 +99,14 @@ where
                 let value = next_value(&mut args, "--max-depth")?;
                 suite_config.max_depth = parse_usize("--max-depth", &value)?;
             }
+            "--csv-summary" | "--csv" => {
+                let value = next_value(&mut args, arg.as_str())?;
+                csv_summary_path = Some(value);
+            }
+            "--csv-workloads" => {
+                let value = next_value(&mut args, "--csv-workloads")?;
+                csv_workloads_path = Some(value);
+            }
             "--help" | "-h" => {
                 return Err(benchmark_usage());
             }
@@ -110,6 +129,8 @@ where
     Ok(BenchmarkCliConfig {
         suite_config,
         baseline_kinds,
+        csv_summary_path,
+        csv_workloads_path,
     })
 }
 
@@ -140,6 +161,9 @@ pub fn benchmark_usage() -> String {
         "  --iterations <N>",
         "  --max-leaf-size <N>",
         "  --max-depth <N>",
+        "  --csv-summary <PATH>",
+        "  --csv <PATH>",
+        "  --csv-workloads <PATH>",
     ]
     .join("\n")
 }
