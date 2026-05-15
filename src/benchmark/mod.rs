@@ -13,8 +13,11 @@ pub mod workloads;
 
 pub use baselines::{
     BaselineComparisonLabels, BaselineKind, BaselineQueryReport, BaselineQueryStats,
-    BaselineRegistry, FlatScanBaseline, FlatScanReport, FlatScanStats, KdTreeBaseline,
-    RTreeBaseline, RangeQueryBaseline, execute_range_baseline, flat_scan, flat_scan_with_stats,
+    BaselineRegistry, BenchmarkBaselineSet, EXACT_RANGE_BASELINE_KINDS, FlatScanBaseline,
+    FlatScanReport, FlatScanStats, KdTreeBaseline, RTreeBaseline, RangeQueryBaseline,
+    baseline_kind_name_list, baseline_kind_names, exact_range_baseline_kinds,
+    exact_range_baseline_vec, execute_range_baseline, flat_scan, flat_scan_with_stats,
+    has_multiple_baselines,
 };
 pub use cli::{
     BenchmarkCliConfig, benchmark_usage, parse_benchmark_cli_config, parse_benchmark_config,
@@ -23,13 +26,14 @@ pub use config::{BenchmarkDatasetKind, BenchmarkSuiteConfig};
 pub use reports::{
     AggregateWorkloadMetrics, BaselineAggregateSummary, BenchmarkCsvMetadata, BenchmarkRunOverview,
     MultiBaselineAggregateSummary, PruningEfficiencyReport, QueryComparisonReport,
-    WorkloadComparisonSummary, aggregate_workload_metrics, compare_query_execution,
-    compare_query_execution_repeated, compare_query_execution_with_baseline, duration_ratio,
-    measure_elapsed, measure_repeated, multi_baseline_aggregate_summary_to_csv,
-    multi_baseline_aggregate_summary_to_csv_with_metadata, multi_baseline_workload_report_to_csv,
-    multi_baseline_workload_report_to_csv_with_metadata, pruning_efficiency_report,
-    render_benchmark_overview, render_multi_baseline_summary, render_named_baseline_suite_report,
-    render_suite_report, summarize_multi_baseline_aggregates, summarize_workload_comparisons,
+    WorkloadComparisonSummary, aggregate_workload_metrics, compare_points_lexicographically,
+    compare_query_execution, compare_query_execution_repeated,
+    compare_query_execution_with_baseline, duration_ratio, measure_elapsed, measure_repeated,
+    multi_baseline_aggregate_summary_to_csv, multi_baseline_aggregate_summary_to_csv_with_metadata,
+    multi_baseline_workload_report_to_csv, multi_baseline_workload_report_to_csv_with_metadata,
+    pruning_efficiency_report, render_benchmark_overview, render_multi_baseline_summary,
+    render_named_baseline_suite_report, render_suite_report, sort_points_lexicographically,
+    summarize_multi_baseline_aggregates, summarize_workload_comparisons,
     write_multi_baseline_aggregate_summary_csv,
     write_multi_baseline_aggregate_summary_csv_with_metadata,
     write_multi_baseline_workload_report_csv,

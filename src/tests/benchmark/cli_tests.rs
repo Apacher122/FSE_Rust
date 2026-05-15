@@ -1,6 +1,6 @@
 use crate::benchmark::{
-    BaselineKind, BenchmarkDatasetKind, BenchmarkSuiteConfig, parse_benchmark_cli_config,
-    parse_benchmark_config,
+    BaselineKind, BenchmarkBaselineSet, BenchmarkDatasetKind, BenchmarkSuiteConfig,
+    exact_range_baseline_vec, parse_benchmark_cli_config, parse_benchmark_config,
 };
 
 #[test]
@@ -92,6 +92,10 @@ fn parse_benchmark_config_rejects_zero_iterations() {
 fn parse_benchmark_cli_config_uses_single_default_baseline() {
     let config = parse_benchmark_cli_config(Vec::<String>::new()).unwrap();
 
+    assert_eq!(
+        config.baseline_set,
+        BenchmarkBaselineSet::Single(BaselineKind::FlatScan)
+    );
     assert_eq!(config.baseline_kinds, vec![BaselineKind::FlatScan]);
 }
 
@@ -99,6 +103,10 @@ fn parse_benchmark_cli_config_uses_single_default_baseline() {
 fn parse_benchmark_cli_config_selects_single_baseline() {
     let config = parse_benchmark_cli_config(["--baseline", "kd_tree"]).unwrap();
 
+    assert_eq!(
+        config.baseline_set,
+        BenchmarkBaselineSet::Single(BaselineKind::KdTree)
+    );
     assert_eq!(config.baseline_kinds, vec![BaselineKind::KdTree]);
     assert_eq!(config.suite_config.baseline_kind, BaselineKind::KdTree);
 }
@@ -107,14 +115,9 @@ fn parse_benchmark_cli_config_selects_single_baseline() {
 fn parse_benchmark_cli_config_selects_all_baselines() {
     let config = parse_benchmark_cli_config(["--all-baselines"]).unwrap();
 
-    assert_eq!(
-        config.baseline_kinds,
-        vec![
-            BaselineKind::FlatScan,
-            BaselineKind::KdTree,
-            BaselineKind::RTree,
-        ]
-    );
+    // keep the cli test tied to the same list the runtime uses
+    assert_eq!(config.baseline_set, BenchmarkBaselineSet::AllExact);
+    assert_eq!(config.baseline_kinds, exact_range_baseline_vec());
 }
 
 #[test]

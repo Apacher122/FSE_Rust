@@ -34,18 +34,13 @@ fn main() {
     let index = validated.index;
     let validation = validated.validation;
     let registry = BaselineRegistry::new();
-
-    let baseline_names: Vec<&str> = cli_config
-        .baseline_kinds
-        .iter()
-        .map(|baseline| baseline.name())
-        .collect();
+    let run_has_multiple_baselines = cli_config.baseline_set.is_multi_baseline();
 
     let overview = BenchmarkRunOverview {
         dataset_records: points.len(),
         index_nodes: index.node_count(),
         workloads: workloads.len(),
-        baselines: baseline_names.join(", "),
+        baselines: cli_config.baseline_set.selected_name_list(),
         timing_iterations: timing_config.iterations,
         max_leaf_size: config.max_leaf_size,
         max_depth: config.max_depth,
@@ -63,12 +58,7 @@ fn main() {
         &cli_config.baseline_kinds,
     );
 
-    if cli_config.baseline_kinds.len() == 1 {
-        print!(
-            "{}",
-            render_suite_report(&report.baseline_reports[0].report)
-        );
-    } else {
+    if run_has_multiple_baselines {
         for baseline_report in &report.baseline_reports {
             print!(
                 "{}",
@@ -78,11 +68,16 @@ fn main() {
                 )
             );
         }
+    } else {
+        print!(
+            "{}",
+            render_suite_report(&report.baseline_reports[0].report)
+        );
     }
 
     let aggregate_summary = summarize_multi_baseline_aggregates(&report);
 
-    if cli_config.baseline_kinds.len() > 1 {
+    if run_has_multiple_baselines {
         print!("{}", render_multi_baseline_summary(&aggregate_summary));
     }
 

@@ -1,5 +1,6 @@
 //! Comparison utilities for FSE and baseline execution.
 
+use super::ordering::sort_points_lexicographically;
 use super::timing::{
     RepeatedComparisonTimingReport, RepeatedTimingConfig, TimingReport, duration_ratio,
     measure_elapsed, measure_repeated,
@@ -107,8 +108,8 @@ pub fn compare_query_execution_with_baseline(
     let mut baseline_results = baseline_report.results;
     let mut fse_results = fse_report.results;
 
-    sort_points(&mut baseline_results);
-    sort_points(&mut fse_results);
+    sort_points_lexicographically(&mut baseline_results);
+    sort_points_lexicographically(&mut fse_results);
 
     assert_eq!(
         fse_results, baseline_results,
@@ -162,18 +163,4 @@ pub fn compare_query_execution_with_baseline(
         candidate_ratio,
         retained_leaf_ratio,
     }
-}
-
-fn sort_points(points: &mut [Vector]) {
-    points.sort_by(|left, right| {
-        for (left_value, right_value) in left.values.iter().zip(&right.values) {
-            match left_value.partial_cmp(right_value) {
-                Some(std::cmp::Ordering::Equal) => continue,
-                Some(ordering) => return ordering,
-                None => return std::cmp::Ordering::Equal,
-            }
-        }
-
-        left.values.len().cmp(&right.values.len())
-    });
 }

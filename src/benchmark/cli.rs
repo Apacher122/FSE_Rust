@@ -1,6 +1,8 @@
 //! Command-line parsing for benchmark configuration.
 
-use crate::benchmark::{BaselineKind, BenchmarkDatasetKind, BenchmarkSuiteConfig};
+use crate::benchmark::{
+    BaselineKind, BenchmarkBaselineSet, BenchmarkDatasetKind, BenchmarkSuiteConfig,
+};
 
 /// Parsed benchmark CLI configuration.
 ///
@@ -13,6 +15,9 @@ use crate::benchmark::{BaselineKind, BenchmarkDatasetKind, BenchmarkSuiteConfig}
 pub struct BenchmarkCliConfig {
     /// Benchmark suite configuration.
     pub suite_config: BenchmarkSuiteConfig,
+
+    /// Named baseline selection requested by the CLI.
+    pub baseline_set: BenchmarkBaselineSet,
 
     /// Baselines selected for this benchmark run.
     pub baseline_kinds: Vec<BaselineKind>,
@@ -120,14 +125,18 @@ where
         }
     }
 
-    let baseline_kinds = if all_baselines {
-        exact_range_baselines()
+    let baseline_set = if all_baselines {
+        BenchmarkBaselineSet::AllExact
     } else {
-        vec![suite_config.baseline_kind]
+        BenchmarkBaselineSet::Single(suite_config.baseline_kind)
     };
+
+    // yes this allocates but the cli config needs to own the run list
+    let baseline_kinds = baseline_set.selected_kinds();
 
     Ok(BenchmarkCliConfig {
         suite_config,
+        baseline_set,
         baseline_kinds,
         csv_summary_path,
         csv_workloads_path,
@@ -166,14 +175,6 @@ pub fn benchmark_usage() -> String {
         "  --csv-workloads <PATH>",
     ]
     .join("\n")
-}
-
-fn exact_range_baselines() -> Vec<BaselineKind> {
-    vec![
-        BaselineKind::FlatScan,
-        BaselineKind::KdTree,
-        BaselineKind::RTree,
-    ]
 }
 
 fn next_value<I>(args: &mut std::iter::Peekable<I>, flag: &str) -> Result<String, String>

@@ -10,7 +10,9 @@ pub mod scan;
 
 pub use baseline::{
     BaselineComparisonLabels, BaselineKind, BaselineQueryReport, BaselineQueryStats,
-    BaselineRegistry, FlatScanBaseline, RangeQueryBaseline, execute_range_baseline,
+    BaselineRegistry, BenchmarkBaselineSet, EXACT_RANGE_BASELINE_KINDS, FlatScanBaseline,
+    RangeQueryBaseline, baseline_kind_name_list, baseline_kind_names, exact_range_baseline_kinds,
+    exact_range_baseline_vec, execute_range_baseline, has_multiple_baselines,
 };
 
 pub use kd_tree::KdTreeBaseline;

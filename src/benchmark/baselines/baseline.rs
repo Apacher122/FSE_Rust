@@ -22,6 +22,18 @@ pub enum BaselineKind {
     RTree,
 }
 
+/// Baselines that provide exact range-query semantics.
+///
+/// # Runtime Role
+///
+/// This list is the shared source of truth for benchmark paths that need every
+/// exact baseline currently implemented by the crate.
+pub const EXACT_RANGE_BASELINE_KINDS: [BaselineKind; 3] = [
+    BaselineKind::FlatScan,
+    BaselineKind::KdTree,
+    BaselineKind::RTree,
+];
+
 impl BaselineKind {
     /// Returns the stable baseline identifier.
     pub fn name(&self) -> &'static str {
@@ -39,6 +51,101 @@ impl Default for BaselineKind {
     }
 }
 
+/// Named baseline selection used by benchmark configuration.
+///
+/// # Runtime Role
+///
+/// `BenchmarkBaselineSet` captures the user's selection intent separately from
+/// the concrete baseline list executed by the runner.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BenchmarkBaselineSet {
+    /// Run one explicitly selected baseline.
+    Single(BaselineKind),
+
+    /// Run every exact range-query baseline currently implemented.
+    AllExact,
+}
+
+impl BenchmarkBaselineSet {
+    /// Returns the stable name for this baseline set.
+    pub fn name(&self) -> &'static str {
+        match self {
+            BenchmarkBaselineSet::Single(baseline_kind) => baseline_kind.name(),
+            BenchmarkBaselineSet::AllExact => "all_exact",
+        }
+    }
+
+    /// Returns the baseline kinds selected by this set.
+    pub fn selected_kinds(&self) -> Vec<BaselineKind> {
+        match self {
+            BenchmarkBaselineSet::Single(baseline_kind) => vec![*baseline_kind],
+            BenchmarkBaselineSet::AllExact => exact_range_baseline_vec(),
+        }
+    }
+
+    /// Returns the selected baseline names.
+    pub fn selected_names(&self) -> Vec<&'static str> {
+        baseline_kind_names(&self.selected_kinds())
+    }
+
+    /// Returns a comma-separated list of selected baseline names.
+    pub fn selected_name_list(&self) -> String {
+        // keep this formatting in one place so overview and csv stay boring
+        baseline_kind_name_list(&self.selected_kinds())
+    }
+
+    /// Returns whether this set represents a multi-baseline run.
+    pub fn is_multi_baseline(&self) -> bool {
+        self.selected_kinds().len() > 1
+    }
+}
+
+impl Default for BenchmarkBaselineSet {
+    fn default() -> Self {
+        Self::Single(BaselineKind::default())
+    }
+}
+
+/// Returns every exact range-query baseline kind.
+///
+/// # Runtime Role
+///
+/// This function gives callers a borrowed view over the canonical exact
+/// baseline list. Use this when callers only need to iterate.
+pub fn exact_range_baseline_kinds() -> &'static [BaselineKind] {
+    // this is the one spot to add exact haselines later
+    &EXACT_RANGE_BASELINE_KINDS
+}
+
+/// Returns every exact range-query baseline kind as an owned vector.
+///
+/// # Runtime Role
+///
+/// This function is useful for configuration paths that need ownership of the
+/// selected baseline list.
+pub fn exact_range_baseline_vec() -> Vec<BaselineKind> {
+    // clone here so callers can own the run list without touching the constant
+    exact_range_baseline_kinds().to_vec()
+}
+
+/// Returns stable baseline names for a selected baseline list.
+pub fn baseline_kind_names(baseline_kinds: &[BaselineKind]) -> Vec<&'static str> {
+    baseline_kinds
+        .iter()
+        .map(BaselineKind::name)
+        .collect::<Vec<&'static str>>()
+}
+
+/// Returns a comma-separated list of stable baseline names.
+pub fn baseline_kind_name_list(baseline_kinds: &[BaselineKind]) -> String {
+    baseline_kind_names(baseline_kinds).join(", ")
+}
+
+/// Returns whether a selected baseline list contains multiple baselines.
+pub fn has_multiple_baselines(baseline_kinds: &[BaselineKind]) -> bool {
+    baseline_kinds.len() > 1
+}
+
 /// Common statistics reported by exact range-query baselines.
 ///
 /// # Runtime Role
@@ -48,10 +155,10 @@ impl Default for BaselineKind {
 /// while still reporting those common comparison fields.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BaselineQueryStats {
-    /// number of records evaluated by the baseline
+    /// Number of records evaluated by the baseline.
     pub evaluated_records: usize,
 
-    /// number of records returned by the baseline
+    /// Number of records returned by the baseline.
     pub matched_records: usize,
 }
 
@@ -102,7 +209,7 @@ impl BaselineComparisonLabels {
     }
 }
 
-/// Result returned by a benchmark baseline
+/// Result returned by a benchmark baseline.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BaselineQueryReport {
     /// Human-readable baseline name.
@@ -122,7 +229,7 @@ pub struct BaselineQueryReport {
 /// `RangeQueryBaseline` lets the benchmark layer compare FSE against different
 /// exact query engines without hardcoding each engine into the comparison path.
 pub trait RangeQueryBaseline {
-    /// Returns the stable baseline name
+    /// Returns the stable baseline name.
     fn name(&self) -> &'static str;
 
     /// Returns display labels for this baseline comparison.
@@ -134,7 +241,7 @@ pub trait RangeQueryBaseline {
     fn execute(&self, query: &QueryRegion) -> BaselineQueryReport;
 }
 
-/// Flat scan baseline implementation
+/// Flat scan baseline implementation.
 ///
 /// # Runtime Role
 ///
@@ -159,7 +266,7 @@ impl RangeQueryBaseline for FlatScanBaseline {
     }
 
     fn execute(&self, query: &QueryRegion) -> BaselineQueryReport {
-        // Keep the first baseline intentionally simple: every record is evaluated.
+        // keep the first baseline intentionally boring every record gets checked
         let report = flat_scan_with_stats(&self.points, query);
 
         BaselineQueryReport {

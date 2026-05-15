@@ -1,11 +1,13 @@
 //! Benchmark reporting and measurement utilities.
 //!
 //! This module contains comparison reports, aggregate summaries, timing helpers,
-//! pruning reports, terminal output rendering, and CSV export utilities.
+//! pruning reports, terminal output rendering, CSV export utilities, and shared
+//! result ordering helpers.
 
 pub mod comparison;
 pub mod csv;
 pub mod multi_summary;
+pub mod ordering;
 pub mod output;
 pub mod pruning;
 pub mod summary;
@@ -27,6 +29,7 @@ pub use csv::{
 pub use multi_summary::{
     BaselineAggregateSummary, MultiBaselineAggregateSummary, summarize_multi_baseline_aggregates,
 };
+pub use ordering::{compare_points_lexicographically, sort_points_lexicographically};
 pub use output::{
     BenchmarkRunOverview, render_benchmark_overview, render_multi_baseline_summary,
     render_named_baseline_suite_report, render_suite_report,

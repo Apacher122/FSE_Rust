@@ -1,6 +1,8 @@
 use crate::benchmark::{
-    BaselineComparisonLabels, BaselineKind, BaselineRegistry, FlatScanBaseline, KdTreeBaseline,
-    RTreeBaseline, RangeQueryBaseline, execute_range_baseline, flat_scan,
+    BaselineComparisonLabels, BaselineKind, BaselineRegistry, BenchmarkBaselineSet,
+    EXACT_RANGE_BASELINE_KINDS, FlatScanBaseline, KdTreeBaseline, RTreeBaseline,
+    RangeQueryBaseline, baseline_kind_name_list, baseline_kind_names, exact_range_baseline_kinds,
+    exact_range_baseline_vec, execute_range_baseline, flat_scan, has_multiple_baselines,
 };
 
 use crate::math::Vector;
@@ -129,4 +131,82 @@ fn r_tree_baseline_reports_display_labels() {
     assert_eq!(labels.baseline_label, "R-Tree");
     assert_eq!(labels.fse_label, "FSE");
     assert_eq!(labels.comparison_label, "R-Tree vs FSE");
+}
+
+#[test]
+fn exact_range_baseline_kinds_returns_canonical_baseline_list() {
+    assert_eq!(
+        exact_range_baseline_kinds(),
+        &[
+            BaselineKind::FlatScan,
+            BaselineKind::KdTree,
+            BaselineKind::RTree,
+        ]
+    );
+}
+
+#[test]
+fn exact_range_baseline_kinds_uses_shared_constant() {
+    assert_eq!(exact_range_baseline_kinds(), &EXACT_RANGE_BASELINE_KINDS);
+}
+
+#[test]
+fn exact_range_baseline_vec_returns_owned_baseline_list() {
+    let baselines = exact_range_baseline_vec();
+
+    assert_eq!(
+        baselines,
+        vec![
+            BaselineKind::FlatScan,
+            BaselineKind::KdTree,
+            BaselineKind::RTree,
+        ]
+    );
+}
+
+#[test]
+fn baseline_kind_names_returns_stable_names() {
+    let names = baseline_kind_names(&[BaselineKind::FlatScan, BaselineKind::RTree]);
+
+    assert_eq!(names, vec!["flat_scan", "r_tree"]);
+}
+
+#[test]
+fn baseline_kind_name_list_joins_stable_names() {
+    let names = baseline_kind_name_list(&[BaselineKind::FlatScan, BaselineKind::KdTree]);
+
+    assert_eq!(names, "flat_scan, kd_tree");
+}
+
+#[test]
+fn has_multiple_baselines_detects_multi_baseline_runs() {
+    assert!(!has_multiple_baselines(&[BaselineKind::FlatScan]));
+    assert!(has_multiple_baselines(&[
+        BaselineKind::FlatScan,
+        BaselineKind::KdTree
+    ]));
+}
+
+#[test]
+fn single_baseline_set_returns_one_selected_kind() {
+    let baseline_set = BenchmarkBaselineSet::Single(BaselineKind::KdTree);
+
+    assert_eq!(baseline_set.name(), "kd_tree");
+    assert_eq!(baseline_set.selected_kinds(), vec![BaselineKind::KdTree]);
+    assert_eq!(baseline_set.selected_names(), vec!["kd_tree"]);
+    assert_eq!(baseline_set.selected_name_list(), "kd_tree");
+    assert!(!baseline_set.is_multi_baseline());
+}
+
+#[test]
+fn all_exact_baseline_set_returns_canonical_exact_baselines() {
+    let baseline_set = BenchmarkBaselineSet::AllExact;
+
+    assert_eq!(baseline_set.name(), "all_exact");
+    assert_eq!(baseline_set.selected_kinds(), exact_range_baseline_vec());
+    assert_eq!(
+        baseline_set.selected_name_list(),
+        "flat_scan, kd_tree, r_tree"
+    );
+    assert!(baseline_set.is_multi_baseline());
 }
