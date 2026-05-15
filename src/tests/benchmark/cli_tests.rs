@@ -32,6 +32,15 @@ fn parse_benchmark_config_parses_r_tree_baseline() {
 }
 
 #[test]
+fn parse_benchmark_config_allows_repeated_baseline_flags_with_last_value() {
+    let config =
+        parse_benchmark_config(["--baseline", "flat_scan", "--baseline", "r_tree"]).unwrap();
+
+    // last one wins this was the old parser behavior
+    assert_eq!(config.baseline_kind, BaselineKind::RTree);
+}
+
+#[test]
 fn parse_benchmark_config_parses_small_dataset() {
     let config = parse_benchmark_config(["--dataset", "small"]).unwrap();
 
@@ -46,6 +55,14 @@ fn parse_benchmark_config_parses_large_dataset() {
 }
 
 #[test]
+fn parse_benchmark_config_allows_repeated_dataset_flags_with_last_value() {
+    let config = parse_benchmark_config(["--dataset", "small", "--dataset", "large"]).unwrap();
+
+    // same rule as the other simple value flags
+    assert_eq!(config.dataset_kind, BenchmarkDatasetKind::LargeClustered2D);
+}
+
+#[test]
 fn parse_benchmark_config_parses_iterations() {
     let config = parse_benchmark_config(["--iterations", "25"]).unwrap();
 
@@ -53,8 +70,33 @@ fn parse_benchmark_config_parses_iterations() {
 }
 
 #[test]
+fn parse_benchmark_config_allows_repeated_iterations_with_last_value() {
+    let config = parse_benchmark_config(["--iterations", "5", "--iterations", "25"]).unwrap();
+
+    assert_eq!(config.timing_iterations, 25);
+}
+
+#[test]
 fn parse_benchmark_config_parses_leaf_size_and_depth() {
     let config = parse_benchmark_config(["--max-leaf-size", "16", "--max-depth", "12"]).unwrap();
+
+    assert_eq!(config.max_leaf_size, 16);
+    assert_eq!(config.max_depth, 12);
+}
+
+#[test]
+fn parse_benchmark_config_allows_repeated_leaf_size_and_depth_with_last_value() {
+    let config = parse_benchmark_config([
+        "--max-leaf-size",
+        "8",
+        "--max-leaf-size",
+        "16",
+        "--max-depth",
+        "4",
+        "--max-depth",
+        "12",
+    ])
+    .unwrap();
 
     assert_eq!(config.max_leaf_size, 16);
     assert_eq!(config.max_depth, 12);
@@ -112,6 +154,20 @@ fn parse_benchmark_cli_config_selects_single_baseline() {
 }
 
 #[test]
+fn parse_benchmark_cli_config_allows_repeated_single_baselines_with_last_value() {
+    let config =
+        parse_benchmark_cli_config(["--baseline", "flat_scan", "--baseline", "kd_tree"]).unwrap();
+
+    // this protects the parser state refactor from getting too strict
+    assert_eq!(
+        config.baseline_set,
+        BenchmarkBaselineSet::Single(BaselineKind::KdTree)
+    );
+    assert_eq!(config.baseline_kinds, vec![BaselineKind::KdTree]);
+    assert_eq!(config.suite_config.baseline_kind, BaselineKind::KdTree);
+}
+
+#[test]
 fn parse_benchmark_cli_config_selects_all_baselines() {
     let config = parse_benchmark_cli_config(["--all-baselines"]).unwrap();
 
@@ -135,6 +191,32 @@ fn parse_benchmark_cli_config_rejects_all_baselines_with_baseline() {
 }
 
 #[test]
+fn parse_benchmark_cli_config_rejects_repeated_baseline_then_all_baselines() {
+    let result = parse_benchmark_cli_config([
+        "--baseline",
+        "flat_scan",
+        "--baseline",
+        "r_tree",
+        "--all-baselines",
+    ]);
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn parse_benchmark_cli_config_rejects_all_baselines_then_repeated_baseline() {
+    let result = parse_benchmark_cli_config([
+        "--all-baselines",
+        "--baseline",
+        "flat_scan",
+        "--baseline",
+        "r_tree",
+    ]);
+
+    assert!(result.is_err());
+}
+
+#[test]
 fn parse_benchmark_cli_config_parses_csv_summary_path() {
     let config = parse_benchmark_cli_config(["--csv-summary", "summary.csv"]).unwrap();
 
@@ -149,6 +231,33 @@ fn parse_benchmark_cli_config_parses_csv_alias_path() {
 }
 
 #[test]
+fn parse_benchmark_cli_config_uses_last_csv_summary_path() {
+    let config =
+        parse_benchmark_cli_config(["--csv-summary", "first.csv", "--csv-summary", "second.csv"])
+            .unwrap();
+
+    assert_eq!(config.csv_summary_path, Some("second.csv".to_string()));
+}
+
+#[test]
+fn parse_benchmark_cli_config_uses_last_csv_alias_or_summary_path() {
+    let config =
+        parse_benchmark_cli_config(["--csv", "first.csv", "--csv-summary", "second.csv"]).unwrap();
+
+    // csv and csv-summary share the same slot
+    assert_eq!(config.csv_summary_path, Some("second.csv".to_string()));
+}
+
+#[test]
+fn parse_benchmark_cli_config_uses_last_csv_summary_or_alias_path() {
+    let config =
+        parse_benchmark_cli_config(["--csv-summary", "first.csv", "--csv", "second.csv"]).unwrap();
+
+    // same as above but flipped so the alias does not get weird later
+    assert_eq!(config.csv_summary_path, Some("second.csv".to_string()));
+}
+
+#[test]
 fn parse_benchmark_cli_config_rejects_missing_csv_summary_value() {
     let result = parse_benchmark_cli_config(["--csv-summary"]);
 
@@ -160,6 +269,20 @@ fn parse_benchmark_cli_config_parses_csv_workloads_path() {
     let config = parse_benchmark_cli_config(["--csv-workloads", "workloads.csv"]).unwrap();
 
     assert_eq!(config.csv_workloads_path, Some("workloads.csv".to_string()));
+}
+
+#[test]
+fn parse_benchmark_cli_config_uses_last_csv_workloads_path() {
+    let config = parse_benchmark_cli_config([
+        "--csv-workloads",
+        "first.csv",
+        "--csv-workloads",
+        "second.csv",
+    ])
+    .unwrap();
+
+    // last one wins here too no special merge behvior
+    assert_eq!(config.csv_workloads_path, Some("second.csv".to_string()));
 }
 
 #[test]

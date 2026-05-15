@@ -29,6 +29,130 @@ pub struct BenchmarkCliConfig {
     pub csv_workloads_path: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BaselineSelectionState {
+    Default,
+    Single(BaselineKind),
+    AllExact,
+}
+
+impl BaselineSelectionState {
+    fn select_single(&mut self, baseline_kind: BaselineKind) -> Result<(), String> {
+        if matches!(self, BaselineSelectionState::AllExact) {
+            return Err(format!(
+                "`--baseline` cannot be combined with `--all-baselines`\n\n{}",
+                benchmark_usage()
+            ));
+        }
+
+        // last baseline wins same as before just keep the rule contained
+        *self = BaselineSelectionState::Single(baseline_kind);
+
+        Ok(())
+    }
+
+    fn select_all_exact(&mut self) -> Result<(), String> {
+        if matches!(self, BaselineSelectionState::Single(_)) {
+            return Err(format!(
+                "`--all-baselines` cannot be combined with `--baseline`\n\n{}",
+                benchmark_usage()
+            ));
+        }
+
+        *self = BaselineSelectionState::AllExact;
+
+        Ok(())
+    }
+
+    fn into_baseline_set(self, default_baseline: BaselineKind) -> BenchmarkBaselineSet {
+        match self {
+            BaselineSelectionState::Default => BenchmarkBaselineSet::Single(default_baseline),
+            BaselineSelectionState::Single(baseline_kind) => {
+                BenchmarkBaselineSet::Single(baseline_kind)
+            }
+            BaselineSelectionState::AllExact => BenchmarkBaselineSet::AllExact,
+        }
+    }
+}
+
+impl Default for BaselineSelectionState {
+    fn default() -> Self {
+        Self::Default
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct BenchmarkCliParseState {
+    suite_config: BenchmarkSuiteConfig,
+    baseline_selection: BaselineSelectionState,
+    csv_summary_path: Option<String>,
+    csv_workloads_path: Option<String>,
+}
+
+impl BenchmarkCliParseState {
+    fn select_baseline(&mut self, value: &str) -> Result<(), String> {
+        let baseline_kind = parse_baseline_kind(value)?;
+
+        self.baseline_selection.select_single(baseline_kind)?;
+        self.suite_config.baseline_kind = baseline_kind;
+
+        Ok(())
+    }
+
+    fn select_all_baselines(&mut self) -> Result<(), String> {
+        self.baseline_selection.select_all_exact()
+    }
+
+    fn set_dataset_kind(&mut self, value: &str) -> Result<(), String> {
+        self.suite_config.dataset_kind = parse_dataset_kind(value)?;
+
+        Ok(())
+    }
+
+    fn set_timing_iterations(&mut self, value: &str) -> Result<(), String> {
+        self.suite_config.timing_iterations = parse_positive_usize("--iterations", value)?;
+
+        Ok(())
+    }
+
+    fn set_max_leaf_size(&mut self, value: &str) -> Result<(), String> {
+        self.suite_config.max_leaf_size = parse_positive_usize("--max-leaf-size", value)?;
+
+        Ok(())
+    }
+
+    fn set_max_depth(&mut self, value: &str) -> Result<(), String> {
+        self.suite_config.max_depth = parse_usize("--max-depth", value)?;
+
+        Ok(())
+    }
+
+    fn set_csv_summary_path(&mut self, value: String) {
+        self.csv_summary_path = Some(value);
+    }
+
+    fn set_csv_workloads_path(&mut self, value: String) {
+        self.csv_workloads_path = Some(value);
+    }
+
+    fn finish(self) -> BenchmarkCliConfig {
+        let baseline_set = self
+            .baseline_selection
+            .into_baseline_set(self.suite_config.baseline_kind);
+
+        // build this once at the edge so the parser state does not leak out
+        let baseline_kinds = baseline_set.selected_kinds();
+
+        BenchmarkCliConfig {
+            suite_config: self.suite_config,
+            baseline_set,
+            baseline_kinds,
+            csv_summary_path: self.csv_summary_path,
+            csv_workloads_path: self.csv_workloads_path,
+        }
+    }
+}
+
 /// Parses benchmark configuration from command-line arguments.
 ///
 /// # Runtime Role
@@ -56,61 +180,41 @@ where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
-    let mut suite_config = BenchmarkSuiteConfig::default();
+    let mut state = BenchmarkCliParseState::default();
     let mut args = args.into_iter().map(Into::into).peekable();
-
-    let mut baseline_was_set = false;
-    let mut all_baselines = false;
-    let mut csv_summary_path = None;
-    let mut csv_workloads_path = None;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--baseline" => {
-                if all_baselines {
-                    return Err(format!(
-                        "`--baseline` cannot be combined with `--all-baselines`\n\n{}",
-                        benchmark_usage()
-                    ));
-                }
-
                 let value = next_value(&mut args, "--baseline")?;
-                suite_config.baseline_kind = parse_baseline_kind(&value)?;
-                baseline_was_set = true;
+                state.select_baseline(&value)?;
             }
             "--all-baselines" => {
-                if baseline_was_set {
-                    return Err(format!(
-                        "`--all-baselines` cannot be combined with `--baseline`\n\n{}",
-                        benchmark_usage()
-                    ));
-                }
-
-                all_baselines = true;
+                state.select_all_baselines()?;
             }
             "--dataset" => {
                 let value = next_value(&mut args, "--dataset")?;
-                suite_config.dataset_kind = parse_dataset_kind(&value)?;
+                state.set_dataset_kind(&value)?;
             }
             "--iterations" => {
                 let value = next_value(&mut args, "--iterations")?;
-                suite_config.timing_iterations = parse_positive_usize("--iterations", &value)?;
+                state.set_timing_iterations(&value)?;
             }
             "--max-leaf-size" => {
                 let value = next_value(&mut args, "--max-leaf-size")?;
-                suite_config.max_leaf_size = parse_positive_usize("--max-leaf-size", &value)?;
+                state.set_max_leaf_size(&value)?;
             }
             "--max-depth" => {
                 let value = next_value(&mut args, "--max-depth")?;
-                suite_config.max_depth = parse_usize("--max-depth", &value)?;
+                state.set_max_depth(&value)?;
             }
             "--csv-summary" | "--csv" => {
                 let value = next_value(&mut args, arg.as_str())?;
-                csv_summary_path = Some(value);
+                state.set_csv_summary_path(value);
             }
             "--csv-workloads" => {
                 let value = next_value(&mut args, "--csv-workloads")?;
-                csv_workloads_path = Some(value);
+                state.set_csv_workloads_path(value);
             }
             "--help" | "-h" => {
                 return Err(benchmark_usage());
@@ -125,22 +229,7 @@ where
         }
     }
 
-    let baseline_set = if all_baselines {
-        BenchmarkBaselineSet::AllExact
-    } else {
-        BenchmarkBaselineSet::Single(suite_config.baseline_kind)
-    };
-
-    // yes this allocates but the cli config needs to own the run list
-    let baseline_kinds = baseline_set.selected_kinds();
-
-    Ok(BenchmarkCliConfig {
-        suite_config,
-        baseline_set,
-        baseline_kinds,
-        csv_summary_path,
-        csv_workloads_path,
-    })
+    Ok(state.finish())
 }
 
 /// Parses benchmark suite configuration from command-line arguments.
