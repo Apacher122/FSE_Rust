@@ -4,6 +4,7 @@
 //! runners, and reporting utilities used to compare FSE query behavior against
 //! conventional exact range-query execution paths.
 
+pub mod app;
 pub mod baselines;
 pub mod cli;
 pub mod config;
@@ -11,6 +12,12 @@ pub mod reports;
 pub mod runner;
 pub mod workloads;
 
+pub use app::{
+    BenchmarkApplicationContext, BenchmarkApplicationError, BenchmarkApplicationOutput,
+    BenchmarkApplicationOutputWriter, BenchmarkApplicationRenderer,
+    BenchmarkApplicationResultBundle, render_benchmark_application_terminal_output,
+    run_benchmark_application,
+};
 pub use baselines::{
     BaselineComparisonLabels, BaselineKind, BaselineQueryReport, BaselineQueryStats,
     BaselineRegistry, BenchmarkBaselineSet, EXACT_RANGE_BASELINE_KINDS, FlatScanBaseline,

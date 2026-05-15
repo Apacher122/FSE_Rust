@@ -1,0 +1,52 @@
+//! Benchmark application orchestration.
+//!
+//! This module connects CLI configuration, index construction, benchmark
+//! execution, terminal rendering, aggregate summaries, and optional CSV output.
+
+pub mod context;
+pub mod error;
+pub mod output;
+pub mod renderer;
+pub mod result_bundle;
+
+pub use context::BenchmarkApplicationContext;
+pub use error::BenchmarkApplicationError;
+pub use output::{BenchmarkApplicationOutput, BenchmarkApplicationOutputWriter};
+pub use renderer::{BenchmarkApplicationRenderer, render_benchmark_application_terminal_output};
+pub use result_bundle::BenchmarkApplicationResultBundle;
+
+use crate::benchmark::cli::BenchmarkCliConfig;
+use crate::benchmark::reports::write_benchmark_csv_outputs;
+
+/// Runs a benchmark from parsed CLI configuration.
+///
+/// # Runtime Role
+///
+/// This function is the high-level application boundary for benchmark execution.
+/// It owns the build, run, render, summary, and CSV-output sequence so the binary
+/// entrypoint does not need to duplicate benchmark workflow details.
+pub fn run_benchmark_application(
+    cli_config: BenchmarkCliConfig,
+) -> Result<BenchmarkApplicationOutput, BenchmarkApplicationError> {
+    let context = BenchmarkApplicationContext::from_cli_config(cli_config);
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    // app.rs stays as the flow now the details live in the submodules
+    let terminal_output = renderer.render_terminal_output(&context, &result_bundle);
+
+    let csv_write_report = write_benchmark_csv_outputs(
+        &context.csv_output,
+        &result_bundle.metadata,
+        &result_bundle.aggregate_summary,
+        &result_bundle.report,
+    )?;
+
+    // keep status text owned by reporting so output stays consistent
+    let csv_status_lines = csv_write_report.status_lines();
+
+    Ok(BenchmarkApplicationOutput::new(
+        terminal_output,
+        csv_status_lines,
+    ))
+}
