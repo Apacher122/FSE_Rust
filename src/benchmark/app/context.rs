@@ -1,10 +1,11 @@
 //! Benchmark application setup context.
 
 use crate::benchmark::baselines::{BaselineKind, BaselineRegistry, BenchmarkBaselineSet};
-use crate::benchmark::cli::BenchmarkCliConfig;
+use crate::benchmark::cli::{BenchmarkCliConfig, BenchmarkTerminalOutputMode};
 use crate::benchmark::config::BenchmarkSuiteConfig;
-use crate::benchmark::reports::BenchmarkRunOverview;
-use crate::benchmark::reports::RepeatedTimingConfig;
+use crate::benchmark::reports::{
+    BenchmarkCsvOutputConfig, BenchmarkRunOverview, RepeatedTimingConfig,
+};
 use crate::benchmark::runner::{
     MultiBaselineBenchmarkSuiteReport, run_multi_baseline_benchmark_suite,
 };
@@ -18,8 +19,8 @@ use crate::storage::FSEIndex;
 /// # Runtime Role
 ///
 /// `BenchmarkApplicationContext` owns the configured dataset, workloads,
-/// constructed FSE index, validation report, timing configuration, and selected
-/// baselines needed for one benchmark application run.
+/// constructed FSE index, validation report, timing configuration, selected
+/// baselines, and output mode needed for one benchmark application run.
 #[derive(Clone, Debug)]
 pub struct BenchmarkApplicationContext {
     /// Benchmark suite configuration.
@@ -32,7 +33,10 @@ pub struct BenchmarkApplicationContext {
     pub baseline_kinds: Vec<BaselineKind>,
 
     /// CSV output paths selected for this benchmark run.
-    pub csv_output: crate::benchmark::reports::BenchmarkCsvOutputConfig,
+    pub csv_output: BenchmarkCsvOutputConfig,
+
+    /// Terminal output mode selected for this benchmark run.
+    pub terminal_output_mode: BenchmarkTerminalOutputMode,
 
     /// Dataset records used by the benchmark run.
     pub points: Vec<Vector>,
@@ -67,6 +71,7 @@ impl BenchmarkApplicationContext {
             baseline_set,
             baseline_kinds,
             csv_output,
+            terminal_output_mode,
         } = cli_config;
 
         let points = suite_config.dataset();
@@ -82,6 +87,7 @@ impl BenchmarkApplicationContext {
             baseline_set,
             baseline_kinds,
             csv_output,
+            terminal_output_mode,
             points,
             workloads,
             timing_config,
@@ -94,6 +100,11 @@ impl BenchmarkApplicationContext {
     /// Returns whether this context represents a multi-baseline run.
     pub fn has_multiple_baselines(&self) -> bool {
         self.baseline_set.is_multi_baseline()
+    }
+
+    /// Returns whether the detailed per-workload report should be printed.
+    pub fn uses_debug_report(&self) -> bool {
+        self.terminal_output_mode.is_debug_report()
     }
 
     /// Builds the terminal and CSV metadata overview for this benchmark run.

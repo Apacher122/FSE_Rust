@@ -1,6 +1,7 @@
 use crate::benchmark::{
     BaselineKind, BenchmarkBaselineSet, BenchmarkDatasetKind, BenchmarkSuiteConfig,
-    exact_range_baseline_vec, parse_benchmark_cli_config, parse_benchmark_config,
+    BenchmarkTerminalOutputMode, exact_range_baseline_vec, parse_benchmark_cli_config,
+    parse_benchmark_config,
 };
 
 #[test]
@@ -322,4 +323,25 @@ fn parse_benchmark_cli_config_rejects_missing_csv_workloads_value() {
     let result = parse_benchmark_cli_config(["--csv-workloads"]);
 
     assert!(result.is_err());
+}
+
+#[test]
+fn parse_benchmark_cli_config_uses_summary_output_by_default() {
+    let config = parse_benchmark_cli_config(Vec::<String>::new()).unwrap();
+
+    assert_eq!(
+        config.terminal_output_mode,
+        BenchmarkTerminalOutputMode::Summary
+    );
+}
+
+#[test]
+fn parse_benchmark_cli_config_parses_debug_report_output_mode() {
+    let config = parse_benchmark_cli_config(["--debug-report"]).unwrap();
+
+    assert_eq!(
+        config.terminal_output_mode,
+        BenchmarkTerminalOutputMode::DebugReport
+    );
+    assert!(config.terminal_output_mode.is_debug_report());
 }

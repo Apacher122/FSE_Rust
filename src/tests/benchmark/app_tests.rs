@@ -5,7 +5,8 @@ use crate::benchmark::{
     BenchmarkApplicationOutputWriter, BenchmarkApplicationRenderer,
     BenchmarkApplicationResultBundle, BenchmarkBaselineSet, BenchmarkCliConfig,
     BenchmarkCsvOutputConfig, BenchmarkDatasetKind, BenchmarkSuiteConfig,
-    render_benchmark_application_terminal_output, run_benchmark_application,
+    BenchmarkTerminalOutputMode, render_benchmark_application_terminal_output,
+    run_benchmark_application,
 };
 
 #[test]
@@ -107,11 +108,28 @@ fn benchmark_application_context_builds_single_baseline_context() {
         BenchmarkBaselineSet::Single(BaselineKind::FlatScan)
     );
     assert_eq!(context.baseline_kinds, vec![BaselineKind::FlatScan]);
+    assert_eq!(
+        context.terminal_output_mode,
+        BenchmarkTerminalOutputMode::Summary
+    );
     assert!(!context.points.is_empty());
     assert!(!context.workloads.is_empty());
     assert!(context.index.node_count() > 0);
     assert!(context.validation.is_valid());
     assert!(!context.has_multiple_baselines());
+    assert!(!context.uses_debug_report());
+}
+
+#[test]
+fn benchmark_application_context_builds_debug_report_context() {
+    let context =
+        BenchmarkApplicationContext::from_cli_config(all_exact_baselines_debug_cli_config());
+
+    assert_eq!(
+        context.terminal_output_mode,
+        BenchmarkTerminalOutputMode::DebugReport
+    );
+    assert!(context.uses_debug_report());
 }
 
 #[test]
@@ -183,7 +201,41 @@ fn benchmark_application_result_bundle_keeps_all_exact_baseline_reports() {
 }
 
 #[test]
-fn benchmark_application_renderer_renders_single_baseline_terminal_output() {
+fn benchmark_application_renderer_uses_compact_summary_by_default() {
+    let context = BenchmarkApplicationContext::from_cli_config(all_exact_baselines_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert!(output.contains("FSE Benchmark Summary"));
+    assert!(output.contains("Result"));
+    assert!(output.contains("Best relative result"));
+    assert!(output.contains("Diagnosis"));
+    assert!(output.contains("Next target"));
+    assert!(output.contains("flat_scan"));
+    assert!(output.contains("kd_tree"));
+    assert!(output.contains("r_tree"));
+    assert!(!output.contains("Workload: cluster_range_000"));
+    assert!(!output.contains("Selectivity Bucket Summary"));
+}
+
+#[test]
+fn benchmark_application_renderer_uses_detailed_output_for_debug_report() {
+    let context =
+        BenchmarkApplicationContext::from_cli_config(all_exact_baselines_debug_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert!(output.contains("FSE benchmark suite"));
+    assert!(output.contains("Workload: cluster_range_000"));
+    assert!(output.contains("Selectivity Bucket Summary"));
+}
+
+#[test]
+fn benchmark_application_renderer_renders_single_baseline_summary_output() {
     let context = BenchmarkApplicationContext::from_cli_config(single_baseline_cli_config());
     let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
     let renderer = BenchmarkApplicationRenderer::new();
@@ -191,21 +243,35 @@ fn benchmark_application_renderer_renders_single_baseline_terminal_output() {
     let output = renderer.render_terminal_output(&context, &result_bundle);
 
     assert!(!output.is_empty());
+    assert!(output.contains("FSE Benchmark Summary"));
     assert!(output.contains("flat_scan"));
+    assert!(!output.contains("Workload: cluster_range_000"));
+    assert!(!output.contains("Selectivity Bucket Summary"));
 }
 
 #[test]
-fn benchmark_application_renderer_renders_all_exact_baseline_terminal_output() {
-    let context = BenchmarkApplicationContext::from_cli_config(all_exact_baselines_cli_config());
+fn benchmark_application_renderer_renders_debug_selectivity_summary() {
+    let context = BenchmarkApplicationContext::from_cli_config(single_baseline_debug_cli_config());
     let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
     let renderer = BenchmarkApplicationRenderer::new();
 
     let output = renderer.render_terminal_output(&context, &result_bundle);
 
-    assert!(!output.is_empty());
-    assert!(output.contains("flat_scan"));
-    assert!(output.contains("kd_tree"));
-    assert!(output.contains("r_tree"));
+    assert!(output.contains("Selectivity Bucket Summary"));
+    assert!(output.contains("empty |"));
+    assert!(output.contains("full |"));
+}
+
+#[test]
+fn benchmark_application_renderer_renders_debug_selectivity_summary_for_each_exact_baseline() {
+    let context =
+        BenchmarkApplicationContext::from_cli_config(all_exact_baselines_debug_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert_eq!(output.matches("Selectivity Bucket Summary").count(), 3);
 }
 
 #[test]
@@ -225,6 +291,7 @@ fn benchmark_application_runs_single_baseline_configuration() {
     let output = run_benchmark_application(single_baseline_cli_config()).unwrap();
 
     assert!(!output.terminal_output.is_empty());
+    assert!(output.terminal_output.contains("FSE Benchmark Summary"));
     assert!(output.terminal_output.contains("flat_scan"));
     assert!(output.csv_status_lines.is_empty());
 }
@@ -234,9 +301,29 @@ fn benchmark_application_runs_all_exact_baselines_configuration() {
     let output = run_benchmark_application(all_exact_baselines_cli_config()).unwrap();
 
     assert!(!output.terminal_output.is_empty());
+    assert!(output.terminal_output.contains("FSE Benchmark Summary"));
     assert!(output.terminal_output.contains("flat_scan"));
     assert!(output.terminal_output.contains("kd_tree"));
     assert!(output.terminal_output.contains("r_tree"));
+    assert!(output.csv_status_lines.is_empty());
+}
+
+#[test]
+fn benchmark_application_runs_debug_report_configuration() {
+    let output = run_benchmark_application(all_exact_baselines_debug_cli_config()).unwrap();
+
+    assert!(!output.terminal_output.is_empty());
+    assert!(output.terminal_output.contains("FSE benchmark suite"));
+    assert!(
+        output
+            .terminal_output
+            .contains("Workload: cluster_range_000")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("Selectivity Bucket Summary")
+    );
     assert!(output.csv_status_lines.is_empty());
 }
 
@@ -291,26 +378,36 @@ impl Write for ByteLimitedWriter {
 }
 
 fn single_baseline_cli_config() -> BenchmarkCliConfig {
-    let suite_config = small_fast_suite_config();
-    let baseline_set = BenchmarkBaselineSet::Single(BaselineKind::FlatScan);
+    benchmark_cli_config(BenchmarkBaselineSet::Single(BaselineKind::FlatScan))
+}
 
-    BenchmarkCliConfig {
-        suite_config,
-        baseline_set,
-        baseline_kinds: baseline_set.selected_kinds(),
-        csv_output: BenchmarkCsvOutputConfig::default(),
-    }
+fn single_baseline_debug_cli_config() -> BenchmarkCliConfig {
+    let mut config = benchmark_cli_config(BenchmarkBaselineSet::Single(BaselineKind::FlatScan));
+
+    config.terminal_output_mode = BenchmarkTerminalOutputMode::DebugReport;
+
+    config
 }
 
 fn all_exact_baselines_cli_config() -> BenchmarkCliConfig {
-    let suite_config = small_fast_suite_config();
-    let baseline_set = BenchmarkBaselineSet::AllExact;
+    benchmark_cli_config(BenchmarkBaselineSet::AllExact)
+}
 
+fn all_exact_baselines_debug_cli_config() -> BenchmarkCliConfig {
+    let mut config = benchmark_cli_config(BenchmarkBaselineSet::AllExact);
+
+    config.terminal_output_mode = BenchmarkTerminalOutputMode::DebugReport;
+
+    config
+}
+
+fn benchmark_cli_config(baseline_set: BenchmarkBaselineSet) -> BenchmarkCliConfig {
     BenchmarkCliConfig {
-        suite_config,
+        suite_config: small_fast_suite_config(),
         baseline_set,
         baseline_kinds: baseline_set.selected_kinds(),
         csv_output: BenchmarkCsvOutputConfig::default(),
+        terminal_output_mode: BenchmarkTerminalOutputMode::Summary,
     }
 }
 

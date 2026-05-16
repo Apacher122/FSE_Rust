@@ -5,6 +5,34 @@ use crate::benchmark::{
     BenchmarkSuiteConfig,
 };
 
+/// Terminal output mode selected for a benchmark run.
+///
+/// # Runtime Role
+///
+/// `BenchmarkTerminalOutputMode` controls whether the benchmark application
+/// prints a compact scoreboard or the full per-workload debug report.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BenchmarkTerminalOutputMode {
+    /// Print the compact benchmark scoreboard.
+    Summary,
+
+    /// Print the full per-workload debug report.
+    DebugReport,
+}
+
+impl BenchmarkTerminalOutputMode {
+    /// Returns whether detailed per-workload output should be rendered.
+    pub fn is_debug_report(&self) -> bool {
+        matches!(self, Self::DebugReport)
+    }
+}
+
+impl Default for BenchmarkTerminalOutputMode {
+    fn default() -> Self {
+        Self::Summary
+    }
+}
+
 /// Parsed benchmark CLI configuration.
 ///
 /// # Runtime Role
@@ -25,6 +53,9 @@ pub struct BenchmarkCliConfig {
 
     /// CSV output paths selected for this benchmark run.
     pub csv_output: BenchmarkCsvOutputConfig,
+
+    /// Terminal output mode selected for this benchmark run.
+    pub terminal_output_mode: BenchmarkTerminalOutputMode,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -84,6 +115,7 @@ struct BenchmarkCliParseState {
     suite_config: BenchmarkSuiteConfig,
     baseline_selection: BaselineSelectionState,
     csv_output: BenchmarkCsvOutputConfig,
+    terminal_output_mode: BenchmarkTerminalOutputMode,
 }
 
 impl BenchmarkCliParseState {
@@ -132,6 +164,10 @@ impl BenchmarkCliParseState {
         self.csv_output.set_workloads_path(value);
     }
 
+    fn enable_debug_report(&mut self) {
+        self.terminal_output_mode = BenchmarkTerminalOutputMode::DebugReport;
+    }
+
     fn finish(self) -> BenchmarkCliConfig {
         let baseline_set = self
             .baseline_selection
@@ -145,6 +181,7 @@ impl BenchmarkCliParseState {
             baseline_set,
             baseline_kinds,
             csv_output: self.csv_output,
+            terminal_output_mode: self.terminal_output_mode,
         }
     }
 }
@@ -171,6 +208,7 @@ impl BenchmarkCliParseState {
 /// - `--csv-summary PATH`
 /// - `--csv PATH`
 /// - `--csv-workloads PATH`
+/// - `--debug-report`
 pub fn parse_benchmark_cli_config<I, S>(args: I) -> Result<BenchmarkCliConfig, String>
 where
     I: IntoIterator<Item = S>,
@@ -211,6 +249,9 @@ where
             "--csv-workloads" => {
                 let value = next_value(&mut args, "--csv-workloads")?;
                 state.set_csv_workloads_path(value);
+            }
+            "--debug-report" => {
+                state.enable_debug_report();
             }
             "--help" | "-h" => {
                 return Err(benchmark_usage());
@@ -258,6 +299,7 @@ pub fn benchmark_usage() -> String {
         "  --csv-summary <PATH>",
         "  --csv <PATH>",
         "  --csv-workloads <PATH>",
+        "  --debug-report",
     ]
     .join("\n")
 }

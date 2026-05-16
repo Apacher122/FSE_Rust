@@ -11,6 +11,7 @@ pub mod multi_summary;
 pub mod ordering;
 pub mod output;
 pub mod pruning;
+pub mod selectivity;
 pub mod summary;
 pub mod timing;
 
@@ -40,6 +41,10 @@ pub use output::{
     render_named_baseline_suite_report, render_suite_report,
 };
 pub use pruning::{PruningEfficiencyReport, pruning_efficiency_report};
+pub use selectivity::{
+    SelectivityBucket, SelectivityBucketSummary, SelectivityBucketedWorkloadSummary,
+    render_selectivity_bucketed_workload_summary, summarize_workloads_by_selectivity,
+};
 pub use summary::{
     AggregateWorkloadMetrics, WorkloadComparisonSummary, aggregate_workload_metrics,
     summarize_workload_comparisons,
