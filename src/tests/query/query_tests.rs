@@ -1,7 +1,7 @@
 use crate::math::{BoundingBox, ResidualBlock, Vector};
 use crate::query::{
     QueryRegion, evaluate_query, execute_query, execute_query_with_stats, reconstruct_partition,
-    traverse,
+    reconstruct_row_into, traverse,
 };
 use crate::storage::{FSEIndex, PartitionNode};
 
@@ -16,6 +16,14 @@ fn query_region_contains_points_inside_its_bounds() {
 }
 
 #[test]
+fn query_region_contains_raw_coordinate_values_inside_its_bounds() {
+    let query = QueryRegion::new(vec![0.0, 0.0], vec![2.0, 2.0]);
+
+    assert!(query.contains_values(&[1.0, 1.5]));
+    assert!(!query.contains_values(&[3.0, 1.5]));
+}
+
+#[test]
 fn traversal_retains_single_leaf_when_query_intersects_bounds() {
     let points = vec![Vector::new(vec![0.0, 0.0]), Vector::new(vec![2.0, 2.0])];
     let root = PartitionNode::from_points(0, &points);
@@ -23,6 +31,7 @@ fn traversal_retains_single_leaf_when_query_intersects_bounds() {
 
     let query = QueryRegion::new(vec![1.0, 1.0], vec![3.0, 3.0]);
     let retained = traverse(&index, &query);
+
     assert_eq!(retained, vec![0]);
 }
 
@@ -34,6 +43,7 @@ fn traversal_prunes_single_leaf_when_query_is_disjoint() {
 
     let query = QueryRegion::new(vec![3.0, 3.0], vec![4.0, 4.0]);
     let retained = traverse(&index, &query);
+
     assert!(retained.is_empty());
 }
 
@@ -47,10 +57,12 @@ fn traversal_descends_into_intersecting_children_only() {
         vec![1, 2],
         false,
     );
+
     let left_child = PartitionNode::from_points(
         1,
         &[Vector::new(vec![0.0, 0.0]), Vector::new(vec![2.0, 2.0])],
     );
+
     let right_child = PartitionNode::from_points(
         2,
         &[Vector::new(vec![8.0, 8.0]), Vector::new(vec![10.0, 10.0])],
@@ -76,6 +88,24 @@ fn reconstruction_restores_original_points_from_partition_residuals() {
     let reconstructed = reconstruct_partition(&node);
 
     assert_eq!(reconstructed, points);
+}
+
+#[test]
+fn reconstruction_can_write_single_row_into_reusable_buffer() {
+    let points = vec![
+        Vector::new(vec![2.0, 4.0]),
+        Vector::new(vec![4.0, 8.0]),
+        Vector::new(vec![6.0, 12.0]),
+    ];
+
+    let node = PartitionNode::from_points(0, &points);
+    let mut values = vec![999.0, 999.0];
+
+    reconstruct_row_into(&node, 1, &mut values);
+    assert_eq!(values, vec![4.0, 8.0]);
+
+    reconstruct_row_into(&node, 2, &mut values);
+    assert_eq!(values, vec![6.0, 12.0]);
 }
 
 #[test]

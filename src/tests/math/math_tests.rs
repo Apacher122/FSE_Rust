@@ -7,10 +7,13 @@ fn bounding_box_contains_points_used_to_build_it() {
         Vector::new(vec![3.0, 4.0]),
         Vector::new(vec![2.0, 1.0]),
     ];
+
     let bounds = BoundingBox::from_points(&points);
+
     for point in &points {
         assert!(bounds.contains_point(point));
     }
+
     assert_eq!(bounds.min, vec![1.0, 1.0]);
     assert_eq!(bounds.max, vec![3.0, 4.0]);
 }
@@ -19,6 +22,7 @@ fn bounding_box_contains_points_used_to_build_it() {
 fn bounding_boxes_intersect_when_ranges_overlap() {
     let left = BoundingBox::new(vec![0.0, 0.0], vec![2.0, 2.0]);
     let right = BoundingBox::new(vec![1.0, 1.0], vec![3.0, 3.0]);
+
     assert!(left.intersects(&right));
 }
 
@@ -26,6 +30,7 @@ fn bounding_boxes_intersect_when_ranges_overlap() {
 fn bounding_boxes_do_not_intersect_when_any_dimension_is_disjoint() {
     let left = BoundingBox::new(vec![0.0, 0.0], vec![1.0, 1.0]);
     let right = BoundingBox::new(vec![2.0, 0.5], vec![3.0, 0.75]);
+
     assert!(!left.intersects(&right));
 }
 
@@ -40,6 +45,33 @@ fn residual_block_encodes_points_relative_to_centroid() {
     assert_eq!(residuals.cardinality(), 2);
     assert_eq!(residuals.dimensions[0], vec![-1.0, 1.0]);
     assert_eq!(residuals.dimensions[1], vec![-2.0, 2.0]);
+}
+
+#[test]
+fn residual_block_accepts_dimensions_with_matching_row_counts() {
+    let residuals = ResidualBlock::new(vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
+
+    assert_eq!(residuals.dimensions(), 2);
+    assert_eq!(residuals.cardinality(), 2);
+    assert!(residuals.has_consistent_shape());
+    assert_eq!(residuals.dimension_lengths(), vec![2, 2]);
+}
+
+#[test]
+fn residual_block_accepts_empty_internal_node_dimensions() {
+    let residuals = ResidualBlock::new(vec![Vec::new(), Vec::new()]);
+
+    assert_eq!(residuals.dimensions(), 2);
+    assert_eq!(residuals.cardinality(), 0);
+    assert!(residuals.is_empty());
+    assert!(residuals.has_consistent_shape());
+    assert_eq!(residuals.dimension_lengths(), vec![0, 0]);
+}
+
+#[test]
+#[should_panic(expected = "residual dimension 1 has 1 rows but expected 2")]
+fn residual_block_rejects_uneven_dimension_lengths() {
+    let _residuals = ResidualBlock::new(vec![vec![1.0, 2.0], vec![3.0]]);
 }
 
 #[test]

@@ -1,7 +1,7 @@
 //! End-to-end query execution.
 
 use crate::math::{Scalar, Vector};
-use crate::query::{QueryRegion, evaluate_query, reconstruct_partition};
+use crate::query::{QueryRegion, reconstruct_row_into};
 use crate::storage::FSEIndex;
 
 /// Runtime statistics collected during query execution.
@@ -20,18 +20,25 @@ use crate::storage::FSEIndex;
 pub struct QueryExecutionStats {
     /// Number of hierarchy nodes whose metadata was visited.
     pub visited_nodes: usize,
+
     /// Number of leaf partitions in the index.
     pub total_leaves: usize,
+
     /// Number of leaf partitions retained after metadata pruning.
     pub retained_leaves: usize,
+
     /// Fraction of leaf partitions retained after metadata pruning.
     pub retained_leaf_ratio: Scalar,
+
     /// Number of records represented by the index.
     pub total_records: usize,
-    /// Number of records reconstructed after pruning.
+
+    /// Number of records logically reconstructed after pruning.
     pub reconstructed_records: usize,
+
     /// Number of records returned after exact predicate evaluation.
     pub matched_records: usize,
+
     /// Fraction of total records reconstructed after pruning.
     pub candidate_ratio: Scalar,
 }
@@ -41,6 +48,7 @@ pub struct QueryExecutionStats {
 pub struct QueryExecutionReport {
     /// Exact query matches.
     pub results: Vec<Vector>,
+
     /// Runtime statistics for the query.
     pub stats: QueryExecutionStats,
 }
@@ -75,6 +83,16 @@ pub fn execute_query(index: &FSEIndex, query: &QueryRegion) -> Vec<Vector> {
 /// This provides an instrumented execution path for correctness validation,
 /// benchmarking, and future optimization work.
 ///
+/// Candidate rows are reconstructed into a reusable coordinate buffer and then
+/// evaluated immediately. An owned `Vector` is allocated only when the row
+/// satisfies the exact query predicate.
+///
+/// # Formal Reference
+///
+/// This preserves the required execution order:
+///
+/// `Geometry -> Reconstruction -> Logic`.
+///
 /// # Panics
 ///
 /// Panics when the query dimensionality does not match the index dimensionality.
@@ -94,12 +112,14 @@ pub fn execute_query_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryE
     };
 
     let mut results = Vec::new();
+    let mut reconstructed_values = Vec::with_capacity(index.dimensions);
 
     let query_bounds = query.as_bounds();
     let mut stack = vec![index.root];
 
     while let Some(node_id) = stack.pop() {
         stats.visited_nodes += 1;
+
         let node = &index.nodes[node_id];
 
         if !node.bounds.intersects(&query_bounds) {
@@ -108,13 +128,20 @@ pub fn execute_query_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryE
 
         if node.is_leaf {
             stats.retained_leaves += 1;
-            let reconstructed = reconstruct_partition(node);
-            stats.reconstructed_records += reconstructed.len();
 
-            let matches = evaluate_query(&reconstructed, query);
-            stats.matched_records += matches.len();
+            let row_count = node.residuals.cardinality();
+            stats.reconstructed_records += row_count;
 
-            results.extend(matches);
+            // this is the point of the commit
+            // dont materialize a whole temp vec if the final query only keeps a few rows
+            for row in 0..row_count {
+                reconstruct_row_into(node, row, &mut reconstructed_values);
+
+                if query.contains_values(&reconstructed_values) {
+                    stats.matched_records += 1;
+                    results.push(Vector::new(reconstructed_values.clone()));
+                }
+            }
         } else {
             for child in node.children.iter().rev() {
                 stack.push(*child);

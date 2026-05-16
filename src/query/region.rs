@@ -7,7 +7,8 @@ use crate::math::{BoundingBox, Scalar, Vector};
 /// # Runtime Role
 ///
 /// `QueryRegion` represents an admissible query region that can be evaluated
-/// against partition bounding boxes during metadata traversal.
+/// against partition bounding boxes during metadata traversal and against
+/// reconstructed coordinate values during exact predicate evaluation.
 ///
 /// # Formal Reference
 ///
@@ -26,7 +27,8 @@ impl QueryRegion {
     ///
     /// # Panics
     ///
-    /// Panics when minimum and maximum vectors have different dimensionality.
+    /// Panics when minimum and maximum vectors have different dimensionality or
+    /// when no dimensions are provided.
     pub fn new(min: Vec<Scalar>, max: Vec<Scalar>) -> Self {
         assert_eq!(
             min.len(),
@@ -37,6 +39,7 @@ impl QueryRegion {
             !min.is_empty(),
             "query region must have at least one dimension"
         );
+
         Self { min, max }
     }
 
@@ -55,19 +58,34 @@ impl QueryRegion {
         BoundingBox::new(self.min.clone(), self.max.clone())
     }
 
-    /// Returns true when the point lies inside the query region.
+    /// Returns true when a coordinate slice lies inside the query region.
     ///
     /// Boundary values are treated as contained.
-    pub fn contains_point(&self, point: &Vector) -> bool {
-        if point.dimensions() != self.dimensions() {
+    ///
+    /// # Runtime Role
+    ///
+    /// This method supports allocation-conscious query execution because callers
+    /// can evaluate coordinates held in a reusable reconstruction buffer.
+    pub fn contains_values(&self, values: &[Scalar]) -> bool {
+        if values.len() != self.dimensions() {
             return false;
         }
+
         for dimension in 0..self.dimensions() {
-            let value = point.values[dimension];
+            let value = values[dimension];
+
             if value < self.min[dimension] || value > self.max[dimension] {
                 return false;
             }
         }
+
         true
+    }
+
+    /// Returns true when the point lies inside the query region.
+    ///
+    /// Boundary values are treated as contained.
+    pub fn contains_point(&self, point: &Vector) -> bool {
+        self.contains_values(&point.values)
     }
 }

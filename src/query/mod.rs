@@ -13,6 +13,6 @@ pub use evaluator::evaluate_query;
 pub use execution::{
     QueryExecutionReport, QueryExecutionStats, execute_query, execute_query_with_stats,
 };
-pub use reconstruction::reconstruct_partition;
+pub use reconstruction::{reconstruct_partition, reconstruct_point, reconstruct_row_into};
 pub use region::QueryRegion;
 pub use traversal::traverse;

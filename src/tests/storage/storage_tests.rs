@@ -1,4 +1,4 @@
-use crate::math::Vector;
+use crate::math::{BoundingBox, ResidualBlock, Vector};
 use crate::storage::{FSEIndex, PartitionNode};
 
 #[test]
@@ -52,4 +52,49 @@ fn internal_partition_tracks_subtree_cardinality_without_stored_residuals() {
     assert_eq!(node.stored_cardinality(), 0);
     assert!(!node.is_leaf);
     assert_eq!(node.children, vec![1, 2]);
+}
+
+#[test]
+fn internal_partition_can_store_fewer_residual_rows_than_subtree_cardinality() {
+    let node = PartitionNode::with_cardinality(
+        0,
+        vec![1.0, 1.0],
+        BoundingBox::new(vec![0.0, 0.0], vec![2.0, 2.0]),
+        ResidualBlock::new(vec![vec![0.0], vec![0.0]]),
+        4,
+        vec![1, 2],
+        false,
+    );
+
+    assert_eq!(node.cardinality, 4);
+    assert_eq!(node.stored_cardinality(), 1);
+    assert!(!node.is_leaf);
+}
+
+#[test]
+#[should_panic(expected = "leaf partition cardinality must match stored residual row count")]
+fn leaf_partition_rejects_cardinality_that_does_not_match_stored_rows() {
+    let _node = PartitionNode::with_cardinality(
+        0,
+        vec![1.0, 1.0],
+        BoundingBox::new(vec![0.0, 0.0], vec![2.0, 2.0]),
+        ResidualBlock::new(vec![vec![0.0], vec![0.0]]),
+        2,
+        Vec::new(),
+        true,
+    );
+}
+
+#[test]
+#[should_panic(expected = "stored residual rows must not exceed partition cardinality")]
+fn internal_partition_rejects_more_stored_rows_than_declared_cardinality() {
+    let _node = PartitionNode::with_cardinality(
+        0,
+        vec![1.0, 1.0],
+        BoundingBox::new(vec![0.0, 0.0], vec![2.0, 2.0]),
+        ResidualBlock::new(vec![vec![0.0, 1.0], vec![0.0, 1.0]]),
+        1,
+        vec![1, 2],
+        false,
+    );
 }

@@ -20,17 +20,20 @@ use crate::math::{BoundingBox, ResidualBlock, Scalar, Vector, compute_centroid};
 pub struct PartitionNode {
     /// A stable, unique identifier for the node within the index.
     pub id: usize,
+
     /// The geometric center of the partition.
     pub centroid: Vec<Scalar>,
+
     /// The axis-aligned bounded support region for the partition.
     pub bounds: BoundingBox,
+
     /// The centroid-relative residual representation of the contained data.
     pub residuals: ResidualBlock,
+
     /// The total number of records represented by this node or its entire subtree.
     pub cardinality: usize,
 
-    // Vec<usize> means a heap allocation per node for children.
-    // Keeping it as a Vec for V1 flexibility.
+    // vec is fine for now because split fanout may change later
     pub children: Vec<usize>,
 
     /// A flag indicating whether this node is a terminal leaf partition.
@@ -54,6 +57,7 @@ impl PartitionNode {
         is_leaf: bool,
     ) -> Self {
         let cardinality = residuals.cardinality();
+
         Self::with_cardinality(
             id,
             centroid,
@@ -73,7 +77,9 @@ impl PartitionNode {
     /// # Panics
     ///
     /// Panics if the dimensionality of the centroid, bounds, or residual block
-    /// is inconsistent, or if the centroid is empty.
+    /// is inconsistent, if the centroid is empty, if a leaf node has a cardinality
+    /// different from its stored residual row count, or if stored residual rows
+    /// exceed the declared subtree cardinality.
     pub fn with_cardinality(
         id: usize,
         centroid: Vec<Scalar>,
@@ -84,17 +90,36 @@ impl PartitionNode {
         is_leaf: bool,
     ) -> Self {
         let dimensions = centroid.len();
+
         assert!(dimensions > 0, "partition centroid must not be empty");
+
         assert_eq!(
             bounds.dimensions(),
             dimensions,
             "partition bounds must match centroid dimensionality"
         );
+
         assert_eq!(
             residuals.dimensions(),
             dimensions,
             "partition residuals must match centroid dimensionality"
         );
+
+        let stored_cardinality = residuals.cardinality();
+
+        if is_leaf {
+            // leaves are the only nodes that must physically hold every row
+            assert_eq!(
+                stored_cardinality, cardinality,
+                "leaf partition cardinality must match stored residual row count"
+            );
+        } else {
+            // internal nodes can count records without storing them here
+            assert!(
+                stored_cardinality <= cardinality,
+                "stored residual rows must not exceed partition cardinality"
+            );
+        }
 
         Self {
             id,
