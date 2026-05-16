@@ -1,3 +1,5 @@
+use std::io::{self, Write};
+
 use crate::benchmark::{
     BaselineKind, BenchmarkApplicationContext, BenchmarkApplicationOutput,
     BenchmarkApplicationOutputWriter, BenchmarkApplicationRenderer,
@@ -67,6 +69,33 @@ fn benchmark_application_output_writer_writes_empty_output() {
     writer.write(&output, &mut buffer).unwrap();
 
     assert!(buffer.is_empty());
+}
+
+#[test]
+fn benchmark_application_output_writer_returns_terminal_write_error() {
+    let output = BenchmarkApplicationOutput::new("benchmark output".to_string(), Vec::new());
+    let writer = BenchmarkApplicationOutputWriter::new();
+    let mut failing_writer = AlwaysFailingWriter;
+
+    let result = writer.write(&output, &mut failing_writer);
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn benchmark_application_output_writer_returns_status_line_write_error() {
+    let terminal_output = "benchmark output\n";
+    let output = BenchmarkApplicationOutput::new(
+        terminal_output.to_string(),
+        vec!["CSV summary written: summary.csv".to_string()],
+    );
+    let writer = BenchmarkApplicationOutputWriter::new();
+    let mut failing_writer = ByteLimitedWriter::new(terminal_output.len());
+
+    let result = writer.write(&output, &mut failing_writer);
+
+    assert!(result.is_err());
+    assert_eq!(failing_writer.contents(), terminal_output.as_bytes());
 }
 
 #[test]
@@ -209,6 +238,56 @@ fn benchmark_application_runs_all_exact_baselines_configuration() {
     assert!(output.terminal_output.contains("kd_tree"));
     assert!(output.terminal_output.contains("r_tree"));
     assert!(output.csv_status_lines.is_empty());
+}
+
+struct AlwaysFailingWriter;
+
+impl Write for AlwaysFailingWriter {
+    fn write(&mut self, _buffer: &[u8]) -> io::Result<usize> {
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            "forced writer failure",
+        ))
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+struct ByteLimitedWriter {
+    bytes_allowed: usize,
+    buffer: Vec<u8>,
+}
+
+impl ByteLimitedWriter {
+    fn new(bytes_allowed: usize) -> Self {
+        Self {
+            bytes_allowed,
+            buffer: Vec::new(),
+        }
+    }
+
+    fn contents(&self) -> &[u8] {
+        &self.buffer
+    }
+}
+
+impl Write for ByteLimitedWriter {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        if self.buffer.len() + buffer.len() > self.bytes_allowed {
+            return Err(io::Error::new(io::ErrorKind::Other, "forced writer limit"));
+        }
+
+        // this writer keeps successful bytes so the test can check where it failed
+        self.buffer.extend_from_slice(buffer);
+
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 fn single_baseline_cli_config() -> BenchmarkCliConfig {
