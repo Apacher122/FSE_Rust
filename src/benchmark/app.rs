@@ -30,23 +30,43 @@ pub fn run_benchmark_application(
 ) -> Result<BenchmarkApplicationOutput, BenchmarkApplicationError> {
     let context = BenchmarkApplicationContext::from_cli_config(cli_config);
     let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
-    let renderer = BenchmarkApplicationRenderer::new();
 
-    // app.rs stays as the flow now the details live in the submodules
-    let terminal_output = renderer.render_terminal_output(&context, &result_bundle);
+    // keep the public run function as the short happy path
+    build_benchmark_application_output(&context, &result_bundle)
+}
 
-    let csv_write_report = write_benchmark_csv_outputs(
+fn build_benchmark_application_output(
+    context: &BenchmarkApplicationContext,
+    result_bundle: &BenchmarkApplicationResultBundle,
+) -> Result<BenchmarkApplicationOutput, BenchmarkApplicationError> {
+    let terminal_output = render_application_terminal_output(context, result_bundle);
+    let csv_status_lines = write_application_csv_outputs(context, result_bundle)?;
+
+    Ok(BenchmarkApplicationOutput::new(
+        terminal_output,
+        csv_status_lines,
+    ))
+}
+
+fn render_application_terminal_output(
+    context: &BenchmarkApplicationContext,
+    result_bundle: &BenchmarkApplicationResultBundle,
+) -> String {
+    // renderer is stateless so build it right where its used
+    BenchmarkApplicationRenderer::new().render_terminal_output(context, result_bundle)
+}
+
+fn write_application_csv_outputs(
+    context: &BenchmarkApplicationContext,
+    result_bundle: &BenchmarkApplicationResultBundle,
+) -> Result<Vec<String>, BenchmarkApplicationError> {
+    // csv is the only fallible output step right now
+    let write_report = write_benchmark_csv_outputs(
         &context.csv_output,
         &result_bundle.metadata,
         &result_bundle.aggregate_summary,
         &result_bundle.report,
     )?;
 
-    // keep status text owned by reporting so output stays consistent
-    let csv_status_lines = csv_write_report.status_lines();
-
-    Ok(BenchmarkApplicationOutput::new(
-        terminal_output,
-        csv_status_lines,
-    ))
+    Ok(write_report.status_lines())
 }
