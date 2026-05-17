@@ -14,6 +14,63 @@ use crate::storage::{FSEIndex, PartitionNode};
 /// conservative bounding region retained many candidates.
 pub(crate) const MAX_RESULT_PREALLOCATION: usize = 4096;
 
+/// Execution strategy used by the query runtime.
+///
+/// # Runtime Role
+///
+/// `QueryExecutionMode` makes the retained-partition execution strategy explicit.
+/// The current implementation supports only deterministic serial execution.
+/// Parallel execution can be added later without changing the public query
+/// result semantics.
+///
+/// # Formal Reference
+///
+/// This controls how retained partitions are processed after geometric
+/// selection. It does not change the required semantic order:
+///
+/// `Geometry -> Reconstruction -> Logic`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum QueryExecutionMode {
+    /// Retained partitions are reconstructed and evaluated one at a time.
+    Serial,
+}
+
+impl Default for QueryExecutionMode {
+    fn default() -> Self {
+        Self::Serial
+    }
+}
+
+/// Options controlling query execution behavior.
+///
+/// # Runtime Role
+///
+/// `QueryExecutionOptions` provides a stable place to configure execution
+/// strategy without changing the query API every time the runtime gains a new
+/// execution mode.
+///
+/// The default is deterministic serial execution.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct QueryExecutionOptions {
+    /// Retained-partition execution strategy.
+    pub mode: QueryExecutionMode,
+}
+
+impl QueryExecutionOptions {
+    /// Creates options for deterministic serial query execution.
+    pub fn serial() -> Self {
+        Self {
+            mode: QueryExecutionMode::Serial,
+        }
+    }
+}
+
+impl Default for QueryExecutionOptions {
+    fn default() -> Self {
+        Self::serial()
+    }
+}
+
 /// Runtime statistics collected during query execution.
 ///
 /// # Runtime Role
@@ -105,7 +162,8 @@ pub(crate) struct RetainedLeafBatchExecutionReport {
 ///
 /// # Runtime Role
 ///
-/// This function composes the complete minimal query pipeline:
+/// This function composes the complete minimal query pipeline using default
+/// execution options:
 ///
 /// 1. Metadata pruning.
 /// 2. Deferred reconstruction.
@@ -121,19 +179,34 @@ pub(crate) struct RetainedLeafBatchExecutionReport {
 ///
 /// Panics when the query dimensionality does not match the index dimensionality.
 pub fn execute_query(index: &FSEIndex, query: &QueryRegion) -> Vec<Vector> {
-    execute_query_with_stats(index, query).results
+    execute_query_with_options(index, query, QueryExecutionOptions::default())
+}
+
+/// Executes a query using explicit execution options.
+///
+/// # Runtime Role
+///
+/// This function allows callers to choose an execution strategy while preserving
+/// exact query semantics. At this stage, only serial execution is supported.
+///
+/// # Panics
+///
+/// Panics when the query dimensionality does not match the index dimensionality.
+pub fn execute_query_with_options(
+    index: &FSEIndex,
+    query: &QueryRegion,
+    options: QueryExecutionOptions,
+) -> Vec<Vector> {
+    execute_query_with_stats_and_options(index, query, options).results
 }
 
 /// Executes a query and returns exact matches with execution statistics.
 ///
 /// # Runtime Role
 ///
-/// This provides an instrumented execution path for correctness validation,
-/// benchmarking, and future optimization work.
-///
-/// Candidate rows are reconstructed into a reusable coordinate buffer and then
-/// evaluated immediately. An owned `Vector` is allocated only when the row
-/// satisfies the exact query predicate.
+/// This function uses default execution options and provides an instrumented
+/// execution path for correctness validation, benchmarking, and future
+/// optimization work.
 ///
 /// # Formal Reference
 ///
@@ -145,6 +218,34 @@ pub fn execute_query(index: &FSEIndex, query: &QueryRegion) -> Vec<Vector> {
 ///
 /// Panics when the query dimensionality does not match the index dimensionality.
 pub fn execute_query_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryExecutionReport {
+    execute_query_with_stats_and_options(index, query, QueryExecutionOptions::default())
+}
+
+/// Executes a query with explicit options and returns exact matches with stats.
+///
+/// # Runtime Role
+///
+/// Candidate rows are reconstructed into a reusable coordinate buffer and then
+/// evaluated immediately. An owned `Vector` is allocated only when the row
+/// satisfies the exact query predicate.
+///
+/// Execution options control how retained leaves are processed after traversal.
+/// The only currently supported mode is serial execution.
+///
+/// # Formal Reference
+///
+/// This preserves the required execution order:
+///
+/// `Geometry -> Reconstruction -> Logic`.
+///
+/// # Panics
+///
+/// Panics when the query dimensionality does not match the index dimensionality.
+pub fn execute_query_with_stats_and_options(
+    index: &FSEIndex,
+    query: &QueryRegion,
+    options: QueryExecutionOptions,
+) -> QueryExecutionReport {
     let traversal_report = traverse_with_stats(index, query);
 
     let mut stats = QueryExecutionStats {
@@ -156,7 +257,12 @@ pub fn execute_query_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryE
         ..QueryExecutionStats::default()
     };
 
-    let batch_report = execute_retained_leaves(index, query, &traversal_report.retained_leaf_ids);
+    let batch_report = execute_retained_leaves_with_options(
+        index,
+        query,
+        &traversal_report.retained_leaf_ids,
+        options,
+    );
 
     stats.reconstructed_records = batch_report.reconstructed_records;
     stats.matched_records = batch_report.matched_records;
@@ -173,13 +279,32 @@ pub fn execute_query_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryE
     }
 }
 
-/// Executes Stage II and Stage III for all retained leaf partitions.
+/// Executes Stage II and Stage III for all retained leaves using default options.
 ///
 /// # Runtime Role
 ///
-/// This helper owns the serial retained-leaf execution loop. It exists so the
-/// retained-partition execution strategy can later change from serial iteration
-/// to parallel iteration without changing traversal or final query reporting.
+/// This helper preserves the existing serial retained-leaf batch API while the
+/// execution-options seam is introduced.
+pub(crate) fn execute_retained_leaves(
+    index: &FSEIndex,
+    query: &QueryRegion,
+    retained_leaf_ids: &[usize],
+) -> RetainedLeafBatchExecutionReport {
+    execute_retained_leaves_with_options(
+        index,
+        query,
+        retained_leaf_ids,
+        QueryExecutionOptions::default(),
+    )
+}
+
+/// Executes Stage II and Stage III for all retained leaves using explicit options.
+///
+/// # Runtime Role
+///
+/// This helper dispatches retained-partition execution based on the selected
+/// execution mode. It is intentionally small so additional modes can be added
+/// without changing traversal or final query reporting.
 ///
 /// # Formal Reference
 ///
@@ -194,7 +319,32 @@ pub fn execute_query_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryE
 ///
 /// Panics if any retained node identifier is out of range or points to a
 /// non-leaf node.
-pub(crate) fn execute_retained_leaves(
+pub(crate) fn execute_retained_leaves_with_options(
+    index: &FSEIndex,
+    query: &QueryRegion,
+    retained_leaf_ids: &[usize],
+    options: QueryExecutionOptions,
+) -> RetainedLeafBatchExecutionReport {
+    match options.mode {
+        QueryExecutionMode::Serial => {
+            execute_retained_leaves_serial(index, query, retained_leaf_ids)
+        }
+    }
+}
+
+/// Executes retained leaves using deterministic serial iteration.
+///
+/// # Runtime Role
+///
+/// This is the current production execution path for retained leaves. It is
+/// separate from the options dispatcher so later parallel execution can be added
+/// beside it instead of being mixed into the serial loop.
+///
+/// # Panics
+///
+/// Panics if any retained node identifier is out of range or points to a
+/// non-leaf node.
+pub(crate) fn execute_retained_leaves_serial(
     index: &FSEIndex,
     query: &QueryRegion,
     retained_leaf_ids: &[usize],
@@ -202,27 +352,22 @@ pub(crate) fn execute_retained_leaves(
     validate_retained_leaf_ids(index, retained_leaf_ids);
 
     let candidate_count = retained_candidate_count(index, retained_leaf_ids);
-    let mut results = Vec::with_capacity(result_capacity_hint(candidate_count));
-    let mut aggregate_stats = QueryExecutionStats::default();
+    let mut leaf_reports = Vec::with_capacity(retained_leaf_ids.len());
 
-    // keep this serial until the seam earns rayon
+    // still serial on purpose
     for node_id in retained_leaf_ids {
         let node = &index.nodes[*node_id];
-        let leaf_report = execute_retained_leaf(node, query, index.dimensions);
-
-        merge_retained_leaf_report(&mut results, &mut aggregate_stats, leaf_report);
+        leaf_reports.push(execute_retained_leaf(node, query, index.dimensions));
     }
 
+    let batch_report = merge_retained_leaf_reports_in_order(leaf_reports, candidate_count);
+
     debug_assert_eq!(
-        aggregate_stats.reconstructed_records, candidate_count,
+        batch_report.reconstructed_records, candidate_count,
         "retained candidate count should match reconstructed retained rows"
     );
 
-    RetainedLeafBatchExecutionReport {
-        results,
-        reconstructed_records: aggregate_stats.reconstructed_records,
-        matched_records: aggregate_stats.matched_records,
-    }
+    batch_report
 }
 
 /// Validates that retained node identifiers reference leaf partitions.
@@ -298,6 +443,41 @@ pub(crate) fn execute_retained_leaf(
         reconstructed_records: row_count,
         matched_records: results.len(),
         results,
+    }
+}
+
+/// Merges retained leaf reports in their supplied order.
+///
+/// # Runtime Role
+///
+/// This helper defines the deterministic merge contract for retained-leaf
+/// execution. Serial execution supplies reports in retained traversal order.
+/// Future parallel execution should compute reports independently but still pass
+/// them to this function in retained leaf order before final result assembly.
+///
+/// # Formal Reference
+///
+/// This is the merge portion of:
+///
+/// `Reconstruction -> Logic -> Merge`.
+///
+/// It does not change reconstruction or exact predicate semantics.
+pub(crate) fn merge_retained_leaf_reports_in_order(
+    leaf_reports: Vec<RetainedLeafExecutionReport>,
+    candidate_count: usize,
+) -> RetainedLeafBatchExecutionReport {
+    let mut results = Vec::with_capacity(result_capacity_hint(candidate_count));
+    let mut aggregate_stats = QueryExecutionStats::default();
+
+    // keep report order boring and obvious
+    for leaf_report in leaf_reports {
+        merge_retained_leaf_report(&mut results, &mut aggregate_stats, leaf_report);
+    }
+
+    RetainedLeafBatchExecutionReport {
+        results,
+        reconstructed_records: aggregate_stats.reconstructed_records,
+        matched_records: aggregate_stats.matched_records,
     }
 }
 

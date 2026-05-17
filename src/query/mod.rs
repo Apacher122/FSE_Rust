@@ -11,7 +11,9 @@ pub mod traversal;
 
 pub use evaluator::evaluate_query;
 pub use execution::{
-    QueryExecutionReport, QueryExecutionStats, execute_query, execute_query_with_stats,
+    QueryExecutionMode, QueryExecutionOptions, QueryExecutionReport, QueryExecutionStats,
+    execute_query, execute_query_with_options, execute_query_with_stats,
+    execute_query_with_stats_and_options,
 };
 pub use reconstruction::{reconstruct_partition, reconstruct_point, reconstruct_row_into};
 pub use region::QueryRegion;
