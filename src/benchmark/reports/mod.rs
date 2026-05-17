@@ -17,7 +17,8 @@ pub mod timing;
 
 pub use comparison::{
     QueryComparisonReport, compare_query_execution, compare_query_execution_repeated,
-    compare_query_execution_with_baseline,
+    compare_query_execution_repeated_with_options, compare_query_execution_with_baseline,
+    compare_query_execution_with_baseline_and_options, compare_query_execution_with_options,
 };
 pub use csv::{
     BenchmarkCsvMetadata, BenchmarkCsvOutputConfig, multi_baseline_aggregate_summary_to_csv,

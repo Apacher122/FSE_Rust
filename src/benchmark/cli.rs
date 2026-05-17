@@ -4,6 +4,7 @@ use crate::benchmark::{
     BaselineKind, BenchmarkBaselineSet, BenchmarkCsvOutputConfig, BenchmarkDatasetKind,
     BenchmarkSuiteConfig,
 };
+use crate::query::QueryExecutionMode;
 
 /// Terminal output mode selected for a benchmark run.
 ///
@@ -156,6 +157,19 @@ impl BenchmarkCliParseState {
         Ok(())
     }
 
+    fn set_fse_execution_mode(&mut self, value: &str) -> Result<(), String> {
+        self.suite_config.fse_execution_mode = parse_fse_execution_mode(value)?;
+
+        Ok(())
+    }
+
+    fn set_fse_parallel_min_retained_leaves(&mut self, value: &str) -> Result<(), String> {
+        self.suite_config.fse_parallel_min_retained_leaves =
+            parse_usize("--fse-parallel-min-leaves", value)?;
+
+        Ok(())
+    }
+
     fn set_csv_summary_path(&mut self, value: String) {
         self.csv_output.set_summary_path(value);
     }
@@ -205,6 +219,9 @@ impl BenchmarkCliParseState {
 /// - `--iterations N`
 /// - `--max-leaf-size N`
 /// - `--max-depth N`
+/// - `--fse-execution serial`
+/// - `--fse-execution parallel`
+/// - `--fse-parallel-min-leaves N`
 /// - `--csv-summary PATH`
 /// - `--csv PATH`
 /// - `--csv-workloads PATH`
@@ -241,6 +258,18 @@ where
             "--max-depth" => {
                 let value = next_value(&mut args, "--max-depth")?;
                 state.set_max_depth(&value)?;
+            }
+            "--fse-execution" | "--fse-mode" => {
+                let value = next_value(&mut args, arg.as_str())?;
+                state.set_fse_execution_mode(&value)?;
+            }
+            "--fse-parallel-min-leaves"
+            | "--fse-parallel-min-retained-leaves"
+            | "--fse-parallel-threshold" => {
+                let value = next_value(&mut args, arg.as_str())?;
+
+                // zero is valid so benchmarks can force rayon
+                state.set_fse_parallel_min_retained_leaves(&value)?;
             }
             "--csv-summary" | "--csv" => {
                 let value = next_value(&mut args, arg.as_str())?;
@@ -296,6 +325,8 @@ pub fn benchmark_usage() -> String {
         "  --iterations <N>",
         "  --max-leaf-size <N>",
         "  --max-depth <N>",
+        "  --fse-execution <serial|parallel>",
+        "  --fse-parallel-min-leaves <N>",
         "  --csv-summary <PATH>",
         "  --csv <PATH>",
         "  --csv-workloads <PATH>",
@@ -335,6 +366,18 @@ fn parse_dataset_kind(value: &str) -> Result<BenchmarkDatasetKind, String> {
         }
         other => Err(format!(
             "unsupported dataset `{}`\n\n{}",
+            other,
+            benchmark_usage()
+        )),
+    }
+}
+
+fn parse_fse_execution_mode(value: &str) -> Result<QueryExecutionMode, String> {
+    match value {
+        "serial" => Ok(QueryExecutionMode::Serial),
+        "parallel" | "rayon" => Ok(QueryExecutionMode::Parallel),
+        other => Err(format!(
+            "unsupported FSE execution mode `{}`\n\n{}",
             other,
             benchmark_usage()
         )),

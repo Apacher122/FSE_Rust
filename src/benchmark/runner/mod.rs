@@ -4,10 +4,12 @@ use crate::benchmark::baselines::{BaselineKind, BaselineRegistry};
 use crate::benchmark::reports::{
     AggregateWorkloadMetrics, PruningEfficiencyReport, RepeatedTimingConfig,
     WorkloadComparisonSummary, aggregate_workload_metrics, compare_query_execution_repeated,
-    compare_query_execution_with_baseline, pruning_efficiency_report,
+    compare_query_execution_repeated_with_options, compare_query_execution_with_baseline,
+    compare_query_execution_with_baseline_and_options, pruning_efficiency_report,
 };
 use crate::benchmark::workloads::QueryWorkloadCase;
 use crate::math::Vector;
+use crate::query::QueryExecutionOptions;
 use crate::storage::FSEIndex;
 
 /// Pruning report associated with a named workload.
@@ -71,10 +73,6 @@ pub struct MultiBaselineBenchmarkSuiteReport {
 /// This function centralizes benchmark orchestration so demos and future
 /// benchmark harnesses do not need to manually wire together comparison,
 /// aggregation, and pruning reports.
-///
-/// # Panics
-///
-/// Panics if any FSE query result differs from the baseline result.
 pub fn run_benchmark_suite(
     index: &FSEIndex,
     points: &[Vector],
@@ -111,6 +109,31 @@ pub fn run_benchmark_suite_repeated(
     build_suite_report(comparisons)
 }
 
+/// Runs the current FSE benchmark suite with repeated timing and explicit FSE execution options.
+pub fn run_benchmark_suite_repeated_with_options(
+    index: &FSEIndex,
+    points: &[Vector],
+    workloads: &[QueryWorkloadCase],
+    timing_config: &RepeatedTimingConfig,
+    fse_options: QueryExecutionOptions,
+) -> BenchmarkSuiteReport {
+    let comparisons: Vec<WorkloadComparisonSummary> = workloads
+        .iter()
+        .map(|workload| WorkloadComparisonSummary {
+            workload_name: workload.name.clone(),
+            comparison: compare_query_execution_repeated_with_options(
+                index,
+                points,
+                &workload.query,
+                timing_config,
+                fse_options,
+            ),
+        })
+        .collect();
+
+    build_suite_report(comparisons)
+}
+
 /// Runs the benchmark suite with a configured baseline kind.
 pub fn run_benchmark_suite_with_registry(
     index: &FSEIndex,
@@ -138,6 +161,35 @@ pub fn run_benchmark_suite_with_registry(
     build_suite_report(comparisons)
 }
 
+/// Runs the benchmark suite with a configured baseline kind and explicit FSE execution options.
+pub fn run_benchmark_suite_with_registry_and_options(
+    index: &FSEIndex,
+    points: &[Vector],
+    workloads: &[QueryWorkloadCase],
+    timing_config: &RepeatedTimingConfig,
+    registry: &BaselineRegistry,
+    baseline_kind: BaselineKind,
+    fse_options: QueryExecutionOptions,
+) -> BenchmarkSuiteReport {
+    let baseline = registry.resolve(baseline_kind, points);
+
+    let comparisons: Vec<WorkloadComparisonSummary> = workloads
+        .iter()
+        .map(|workload| WorkloadComparisonSummary {
+            workload_name: workload.name.clone(),
+            comparison: compare_query_execution_with_baseline_and_options(
+                index,
+                &workload.query,
+                baseline.as_ref(),
+                timing_config,
+                fse_options,
+            ),
+        })
+        .collect();
+
+    build_suite_report(comparisons)
+}
+
 /// Runs the benchmark suite for multiple baseline kinds.
 ///
 /// # Runtime Role
@@ -152,16 +204,38 @@ pub fn run_multi_baseline_benchmark_suite(
     registry: &BaselineRegistry,
     baseline_kinds: &[BaselineKind],
 ) -> MultiBaselineBenchmarkSuiteReport {
+    run_multi_baseline_benchmark_suite_with_options(
+        index,
+        points,
+        workloads,
+        timing_config,
+        registry,
+        baseline_kinds,
+        QueryExecutionOptions::default(),
+    )
+}
+
+/// Runs the benchmark suite for multiple baseline kinds using explicit FSE execution options.
+pub fn run_multi_baseline_benchmark_suite_with_options(
+    index: &FSEIndex,
+    points: &[Vector],
+    workloads: &[QueryWorkloadCase],
+    timing_config: &RepeatedTimingConfig,
+    registry: &BaselineRegistry,
+    baseline_kinds: &[BaselineKind],
+    fse_options: QueryExecutionOptions,
+) -> MultiBaselineBenchmarkSuiteReport {
     let baseline_reports = baseline_kinds
         .iter()
         .map(|baseline_kind| {
-            let report = run_benchmark_suite_with_registry(
+            let report = run_benchmark_suite_with_registry_and_options(
                 index,
                 points,
                 workloads,
                 timing_config,
                 registry,
                 *baseline_kind,
+                fse_options,
             );
 
             BaselineBenchmarkSuiteReport {

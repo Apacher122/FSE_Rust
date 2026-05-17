@@ -7,7 +7,7 @@ use crate::benchmark::reports::{
     BenchmarkCsvOutputConfig, BenchmarkRunOverview, RepeatedTimingConfig,
 };
 use crate::benchmark::runner::{
-    MultiBaselineBenchmarkSuiteReport, run_multi_baseline_benchmark_suite,
+    MultiBaselineBenchmarkSuiteReport, run_multi_baseline_benchmark_suite_with_options,
 };
 use crate::benchmark::workloads::QueryWorkloadCase;
 use crate::build::{FSEBuilder, IndexValidationReport};
@@ -123,13 +123,14 @@ impl BenchmarkApplicationContext {
 
     /// Runs the configured multi-baseline benchmark suite.
     pub fn run_suite(&self) -> MultiBaselineBenchmarkSuiteReport {
-        run_multi_baseline_benchmark_suite(
+        run_multi_baseline_benchmark_suite_with_options(
             &self.index,
             &self.points,
             &self.workloads,
             &self.timing_config,
             &self.registry,
             &self.baseline_kinds,
+            self.suite_config.query_execution_options(),
         )
     }
 }

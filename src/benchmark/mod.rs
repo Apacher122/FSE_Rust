@@ -42,12 +42,14 @@ pub use reports::{
     PruningEfficiencyReport, QueryComparisonReport, SelectivityBucket, SelectivityBucketSummary,
     SelectivityBucketedWorkloadSummary, WorkloadComparisonSummary, aggregate_workload_metrics,
     compare_points_lexicographically, compare_query_execution, compare_query_execution_repeated,
-    compare_query_execution_with_baseline, duration_ratio, measure_elapsed, measure_repeated,
-    multi_baseline_aggregate_summary_to_csv, multi_baseline_aggregate_summary_to_csv_with_metadata,
-    multi_baseline_workload_report_to_csv, multi_baseline_workload_report_to_csv_with_metadata,
-    pruning_efficiency_report, render_benchmark_overview, render_multi_baseline_summary,
-    render_named_baseline_suite_report, render_selectivity_bucketed_workload_summary,
-    render_suite_report, sort_points_lexicographically, summarize_multi_baseline_aggregates,
+    compare_query_execution_repeated_with_options, compare_query_execution_with_baseline,
+    compare_query_execution_with_baseline_and_options, compare_query_execution_with_options,
+    duration_ratio, measure_elapsed, measure_repeated, multi_baseline_aggregate_summary_to_csv,
+    multi_baseline_aggregate_summary_to_csv_with_metadata, multi_baseline_workload_report_to_csv,
+    multi_baseline_workload_report_to_csv_with_metadata, pruning_efficiency_report,
+    render_benchmark_overview, render_multi_baseline_summary, render_named_baseline_suite_report,
+    render_selectivity_bucketed_workload_summary, render_suite_report,
+    sort_points_lexicographically, summarize_multi_baseline_aggregates,
     summarize_workload_comparisons, summarize_workloads_by_selectivity,
     write_benchmark_csv_outputs, write_multi_baseline_aggregate_summary_csv,
     write_multi_baseline_aggregate_summary_csv_with_metadata,
@@ -58,7 +60,9 @@ pub use reports::{
 pub use runner::{
     BaselineBenchmarkSuiteReport, BenchmarkSuiteReport, MultiBaselineBenchmarkSuiteReport,
     WorkloadPruningReport, run_benchmark_suite, run_benchmark_suite_repeated,
-    run_benchmark_suite_with_registry, run_multi_baseline_benchmark_suite,
+    run_benchmark_suite_repeated_with_options, run_benchmark_suite_with_registry,
+    run_benchmark_suite_with_registry_and_options, run_multi_baseline_benchmark_suite,
+    run_multi_baseline_benchmark_suite_with_options,
 };
 
 pub use workloads::{

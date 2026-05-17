@@ -1,5 +1,7 @@
 //! End-to-end query execution.
 
+use rayon::prelude::*;
+
 use crate::math::{Scalar, Vector};
 use crate::query::{QueryRegion, reconstruct_row_into, traverse_with_stats};
 use crate::storage::{FSEIndex, PartitionNode};
@@ -14,14 +16,23 @@ use crate::storage::{FSEIndex, PartitionNode};
 /// conservative bounding region retained many candidates.
 pub(crate) const MAX_RESULT_PREALLOCATION: usize = 4096;
 
+/// Default retained-leaf threshold required before parallel execution uses Rayon.
+///
+/// # Runtime Role
+///
+/// Parallel retained-leaf execution has scheduling overhead. This threshold
+/// keeps small retained-leaf batches on the deterministic serial path while
+/// still allowing larger batches to use Rayon.
+pub const DEFAULT_PARALLEL_MIN_RETAINED_LEAVES: usize = 4;
+
 /// Execution strategy used by the query runtime.
 ///
 /// # Runtime Role
 ///
 /// `QueryExecutionMode` makes the retained-partition execution strategy explicit.
-/// The current implementation supports only deterministic serial execution.
-/// Parallel execution can be added later without changing the public query
-/// result semantics.
+/// Serial execution processes retained partitions one at a time. Parallel
+/// execution evaluates retained leaf partitions independently before merging
+/// their local reports in deterministic retained-leaf order.
 ///
 /// # Formal Reference
 ///
@@ -33,6 +44,9 @@ pub(crate) const MAX_RESULT_PREALLOCATION: usize = 4096;
 pub enum QueryExecutionMode {
     /// Retained partitions are reconstructed and evaluated one at a time.
     Serial,
+
+    /// Retained partitions are reconstructed and evaluated independently using Rayon.
+    Parallel,
 }
 
 impl Default for QueryExecutionMode {
@@ -54,6 +68,11 @@ impl Default for QueryExecutionMode {
 pub struct QueryExecutionOptions {
     /// Retained-partition execution strategy.
     pub mode: QueryExecutionMode,
+
+    /// Minimum retained-leaf count required before parallel mode uses Rayon.
+    ///
+    /// This value is ignored by serial mode.
+    pub parallel_min_retained_leaves: usize,
 }
 
 impl QueryExecutionOptions {
@@ -61,7 +80,34 @@ impl QueryExecutionOptions {
     pub fn serial() -> Self {
         Self {
             mode: QueryExecutionMode::Serial,
+            parallel_min_retained_leaves: DEFAULT_PARALLEL_MIN_RETAINED_LEAVES,
         }
+    }
+
+    /// Creates options for parallel retained-partition query execution.
+    ///
+    /// # Runtime Role
+    ///
+    /// Parallel execution evaluates retained leaf partitions independently while
+    /// preserving deterministic final result ordering through ordered report
+    /// collection and merge. Small retained-leaf batches fall back to serial
+    /// execution based on `parallel_min_retained_leaves`.
+    pub fn parallel() -> Self {
+        Self {
+            mode: QueryExecutionMode::Parallel,
+            parallel_min_retained_leaves: DEFAULT_PARALLEL_MIN_RETAINED_LEAVES,
+        }
+    }
+
+    /// Returns a copy of the options with a new parallel retained-leaf threshold.
+    ///
+    /// # Runtime Role
+    ///
+    /// This allows benchmarks and tests to tune the point where parallel mode
+    /// starts using Rayon without changing the selected execution mode.
+    pub fn with_parallel_min_retained_leaves(mut self, threshold: usize) -> Self {
+        self.parallel_min_retained_leaves = threshold;
+        self
     }
 }
 
@@ -126,7 +172,7 @@ pub struct QueryExecutionReport {
 ///
 /// This report isolates Stage II and Stage III work for a single retained leaf.
 /// The structure is intentionally local to query execution so retained leaves
-/// can later be evaluated independently without changing query semantics.
+/// can be evaluated independently without changing query semantics.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct RetainedLeafExecutionReport {
     /// Exact matches produced by this retained leaf.
@@ -187,7 +233,7 @@ pub fn execute_query(index: &FSEIndex, query: &QueryRegion) -> Vec<Vector> {
 /// # Runtime Role
 ///
 /// This function allows callers to choose an execution strategy while preserving
-/// exact query semantics. At this stage, only serial execution is supported.
+/// exact query semantics.
 ///
 /// # Panics
 ///
@@ -225,12 +271,11 @@ pub fn execute_query_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryE
 ///
 /// # Runtime Role
 ///
-/// Candidate rows are reconstructed into a reusable coordinate buffer and then
+/// Candidate rows are reconstructed into reusable coordinate buffers and then
 /// evaluated immediately. An owned `Vector` is allocated only when the row
 /// satisfies the exact query predicate.
 ///
 /// Execution options control how retained leaves are processed after traversal.
-/// The only currently supported mode is serial execution.
 ///
 /// # Formal Reference
 ///
@@ -283,8 +328,8 @@ pub fn execute_query_with_stats_and_options(
 ///
 /// # Runtime Role
 ///
-/// This helper preserves the existing serial retained-leaf batch API while the
-/// execution-options seam is introduced.
+/// This helper preserves the default retained-leaf batch API while allowing the
+/// execution mode to be selected through higher-level query options.
 pub(crate) fn execute_retained_leaves(
     index: &FSEIndex,
     query: &QueryRegion,
@@ -303,8 +348,8 @@ pub(crate) fn execute_retained_leaves(
 /// # Runtime Role
 ///
 /// This helper dispatches retained-partition execution based on the selected
-/// execution mode. It is intentionally small so additional modes can be added
-/// without changing traversal or final query reporting.
+/// execution mode. Parallel mode falls back to serial execution when the retained
+/// leaf batch is smaller than the configured threshold.
 ///
 /// # Formal Reference
 ///
@@ -329,16 +374,36 @@ pub(crate) fn execute_retained_leaves_with_options(
         QueryExecutionMode::Serial => {
             execute_retained_leaves_serial(index, query, retained_leaf_ids)
         }
+        QueryExecutionMode::Parallel => {
+            if should_execute_retained_leaves_in_parallel(options, retained_leaf_ids.len()) {
+                execute_retained_leaves_parallel(index, query, retained_leaf_ids)
+            } else {
+                // rayon is not free
+                execute_retained_leaves_serial(index, query, retained_leaf_ids)
+            }
+        }
     }
+}
+
+/// Returns true when parallel mode should use Rayon for the retained-leaf batch.
+///
+/// # Runtime Role
+///
+/// This policy prevents small retained-leaf batches from paying parallel
+/// scheduling overhead. Serial mode always returns false.
+pub(crate) fn should_execute_retained_leaves_in_parallel(
+    options: QueryExecutionOptions,
+    retained_leaf_count: usize,
+) -> bool {
+    matches!(options.mode, QueryExecutionMode::Parallel)
+        && retained_leaf_count >= options.parallel_min_retained_leaves
 }
 
 /// Executes retained leaves using deterministic serial iteration.
 ///
 /// # Runtime Role
 ///
-/// This is the current production execution path for retained leaves. It is
-/// separate from the options dispatcher so later parallel execution can be added
-/// beside it instead of being mixed into the serial loop.
+/// This is the deterministic single-threaded retained-leaf execution path.
 ///
 /// # Panics
 ///
@@ -354,11 +419,61 @@ pub(crate) fn execute_retained_leaves_serial(
     let candidate_count = retained_candidate_count(index, retained_leaf_ids);
     let mut leaf_reports = Vec::with_capacity(retained_leaf_ids.len());
 
-    // still serial on purpose
+    // still useful as the boring baseline
     for node_id in retained_leaf_ids {
         let node = &index.nodes[*node_id];
         leaf_reports.push(execute_retained_leaf(node, query, index.dimensions));
     }
+
+    let batch_report = merge_retained_leaf_reports_in_order(leaf_reports, candidate_count);
+
+    debug_assert_eq!(
+        batch_report.reconstructed_records, candidate_count,
+        "retained candidate count should match reconstructed retained rows"
+    );
+
+    batch_report
+}
+
+/// Executes retained leaves using Rayon-backed parallel iteration.
+///
+/// # Runtime Role
+///
+/// This is the parallel retained-partition execution path. Each retained leaf
+/// reconstructs and evaluates its own rows independently. The resulting reports
+/// are collected in retained-leaf order and then merged deterministically.
+///
+/// # Formal Reference
+///
+/// This implements the online query parallelism shape:
+///
+/// `retained partition -> reconstruct -> evaluate -> merge`.
+///
+/// The merge remains deterministic and does not change exact query semantics.
+///
+/// # Panics
+///
+/// Panics if any retained node identifier is out of range or points to a
+/// non-leaf node.
+pub(crate) fn execute_retained_leaves_parallel(
+    index: &FSEIndex,
+    query: &QueryRegion,
+    retained_leaf_ids: &[usize],
+) -> RetainedLeafBatchExecutionReport {
+    validate_retained_leaf_ids(index, retained_leaf_ids);
+
+    let candidate_count = retained_candidate_count(index, retained_leaf_ids);
+
+    // rayon collect preserves order for this indexed slice iterator
+    let leaf_reports: Vec<RetainedLeafExecutionReport> = retained_leaf_ids
+        .par_iter()
+        .map(|node_id| {
+            let node = &index.nodes[*node_id];
+
+            // finally real parallel retained leaf work
+            execute_retained_leaf(node, query, index.dimensions)
+        })
+        .collect();
 
     let batch_report = merge_retained_leaf_reports_in_order(leaf_reports, candidate_count);
 
@@ -452,8 +567,8 @@ pub(crate) fn execute_retained_leaf(
 ///
 /// This helper defines the deterministic merge contract for retained-leaf
 /// execution. Serial execution supplies reports in retained traversal order.
-/// Future parallel execution should compute reports independently but still pass
-/// them to this function in retained leaf order before final result assembly.
+/// Parallel execution computes reports independently but still passes them to
+/// this function in retained leaf order before final result assembly.
 ///
 /// # Formal Reference
 ///
@@ -486,8 +601,6 @@ pub(crate) fn merge_retained_leaf_reports_in_order(
 /// # Runtime Role
 ///
 /// This helper keeps result merging and execution-stat aggregation in one place.
-/// It is intentionally serial for now, but it provides a clear seam for later
-/// retained-partition parallel execution.
 pub(crate) fn merge_retained_leaf_report(
     results: &mut Vec<Vector>,
     stats: &mut QueryExecutionStats,
