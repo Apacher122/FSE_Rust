@@ -3,7 +3,7 @@
 use std::fmt::Write;
 
 use crate::benchmark::{BenchmarkSuiteReport, MultiBaselineAggregateSummary};
-use crate::build::IndexValidationReport;
+use crate::build::{IndexStructureMetrics, IndexValidationReport};
 use crate::query::QueryExecutionMode;
 
 /// Header information printed before benchmark reports.
@@ -12,7 +12,7 @@ use crate::query::QueryExecutionMode;
 ///
 /// `BenchmarkRunOverview` keeps benchmark run metadata separate from the binary
 /// entry point so terminal rendering can be reused and tested independently.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BenchmarkRunOverview {
     /// Number of records in the selected dataset.
     pub dataset_records: usize,
@@ -29,6 +29,9 @@ pub struct BenchmarkRunOverview {
     /// Number of repeated timing iterations.
     pub timing_iterations: usize,
 
+    /// Target FSE leaf size used during construction.
+    pub target_leaf_size: usize,
+
     /// Maximum FSE leaf size used during construction.
     pub max_leaf_size: usize,
 
@@ -40,6 +43,9 @@ pub struct BenchmarkRunOverview {
 
     /// Minimum retained-leaf count required before parallel FSE mode uses Rayon.
     pub fse_parallel_min_retained_leaves: usize,
+
+    /// Structural metrics for the constructed FSE index.
+    pub index_structure: IndexStructureMetrics,
 
     /// Validation report for the constructed FSE index.
     pub validation: IndexValidationReport,
@@ -65,11 +71,54 @@ pub fn render_benchmark_overview(overview: &BenchmarkRunOverview) -> String {
 
     writeln!(output, "Dataset records: {}", overview.dataset_records).unwrap();
     writeln!(output, "Index nodes: {}", overview.index_nodes).unwrap();
+    writeln!(
+        output,
+        "Leaf nodes: {}",
+        overview.index_structure.leaf_count
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Internal nodes: {}",
+        overview.index_structure.internal_node_count
+    )
+    .unwrap();
     writeln!(output, "Workloads: {}", overview.workloads).unwrap();
     writeln!(output, "Baselines: {}", overview.baselines).unwrap();
     writeln!(output, "Timing iterations: {}", overview.timing_iterations).unwrap();
+    writeln!(output, "Target leaf size: {}", overview.target_leaf_size).unwrap();
     writeln!(output, "Max leaf size: {}", overview.max_leaf_size).unwrap();
     writeln!(output, "Max build depth: {}", overview.max_depth).unwrap();
+    writeln!(
+        output,
+        "Max leaf cardinality: {}",
+        overview.index_structure.max_leaf_cardinality
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Average leaf cardinality: {:.2}",
+        overview.index_structure.average_leaf_cardinality
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Total leaf volume: {:.2}",
+        overview.index_structure.total_leaf_volume
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Index density: {:.2}",
+        overview.index_structure.index_density
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Zero-volume leaves: {}",
+        overview.index_structure.zero_volume_leaf_count
+    )
+    .unwrap();
     writeln!(
         output,
         "FSE execution: {}",

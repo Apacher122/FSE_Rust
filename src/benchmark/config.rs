@@ -41,7 +41,15 @@ pub struct BenchmarkSuiteConfig {
     /// Baseline used for comparison.
     pub baseline_kind: BaselineKind,
 
-    /// Maximum number of records stored in each FSE leaf.
+    /// Target number of records stored in each FSE leaf.
+    ///
+    /// # Runtime Role
+    ///
+    /// This is the soft refinement target used by the builder. Optional splits
+    /// below the hard maximum still need to pass the configured split policy.
+    pub target_leaf_size: usize,
+
+    /// Hard maximum number of records allowed in each FSE leaf.
     pub max_leaf_size: usize,
 
     /// Maximum recursive build depth.
@@ -59,6 +67,12 @@ pub struct BenchmarkSuiteConfig {
 
 impl BenchmarkSuiteConfig {
     /// Creates a benchmark suite configuration.
+    ///
+    /// # Runtime Role
+    ///
+    /// The target leaf size defaults to the hard maximum leaf size. This
+    /// preserves the old benchmark behavior unless a caller explicitly sets a
+    /// lower target.
     ///
     /// # Panics
     ///
@@ -79,12 +93,32 @@ impl BenchmarkSuiteConfig {
         Self {
             dataset_kind,
             baseline_kind,
+            target_leaf_size: max_leaf_size,
             max_leaf_size,
             max_depth,
             timing_iterations,
             fse_execution_mode: QueryExecutionMode::Serial,
             fse_parallel_min_retained_leaves: DEFAULT_PARALLEL_MIN_RETAINED_LEAVES,
         }
+    }
+
+    /// Returns a copy of this configuration using the requested target leaf size.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `target_leaf_size` is zero or greater than `max_leaf_size`.
+    pub fn with_target_leaf_size(mut self, target_leaf_size: usize) -> Self {
+        assert!(
+            target_leaf_size > 0,
+            "target_leaf_size must be greater than zero"
+        );
+        assert!(
+            target_leaf_size <= self.max_leaf_size,
+            "target_leaf_size must not exceed max_leaf_size"
+        );
+
+        self.target_leaf_size = target_leaf_size;
+        self
     }
 
     /// Returns a copy of this configuration using the requested FSE execution mode.
@@ -107,9 +141,36 @@ impl BenchmarkSuiteConfig {
         self
     }
 
+    /// Validates the benchmark leaf-size policy.
+    ///
+    /// # Runtime Role
+    ///
+    /// CLI parsing uses this after all arguments are read so flag order does not
+    /// matter. For example, `--target-leaf-size 16 --max-leaf-size 32` should be
+    /// accepted even though the default max leaf size is lower.
+    pub fn validate_leaf_size_policy(&self) -> Result<(), String> {
+        if self.target_leaf_size == 0 {
+            return Err("`--target-leaf-size` must be greater than zero".to_string());
+        }
+
+        if self.max_leaf_size == 0 {
+            return Err("`--max-leaf-size` must be greater than zero".to_string());
+        }
+
+        if self.target_leaf_size > self.max_leaf_size {
+            return Err(format!(
+                "`--target-leaf-size` ({}) must not exceed `--max-leaf-size` ({})",
+                self.target_leaf_size, self.max_leaf_size
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Returns the build configuration for this benchmark run.
     pub fn build_config(&self) -> BuildConfig {
         BuildConfig::new(self.max_leaf_size, self.max_depth)
+            .with_target_leaf_size(self.target_leaf_size)
     }
 
     /// Returns the repeated timing configuration for this benchmark run.
@@ -150,6 +211,7 @@ impl Default for BenchmarkSuiteConfig {
         Self {
             dataset_kind: BenchmarkDatasetKind::LargeClustered2D,
             baseline_kind: BaselineKind::FlatScan,
+            target_leaf_size: 8,
             max_leaf_size: 8,
             max_depth: 8,
             timing_iterations: 10,

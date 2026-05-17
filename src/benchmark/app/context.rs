@@ -10,7 +10,7 @@ use crate::benchmark::runner::{
     MultiBaselineBenchmarkSuiteReport, run_multi_baseline_benchmark_suite_with_options,
 };
 use crate::benchmark::workloads::QueryWorkloadCase;
-use crate::build::{FSEBuilder, IndexValidationReport};
+use crate::build::{FSEBuilder, IndexValidationReport, index_structure_metrics};
 use crate::math::Vector;
 use crate::storage::FSEIndex;
 
@@ -115,10 +115,12 @@ impl BenchmarkApplicationContext {
             workloads: self.workloads.len(),
             baselines: self.baseline_set.selected_name_list(),
             timing_iterations: self.timing_config.iterations,
+            target_leaf_size: self.suite_config.target_leaf_size,
             max_leaf_size: self.suite_config.max_leaf_size,
             max_depth: self.suite_config.max_depth,
             fse_execution_mode: self.suite_config.fse_execution_mode,
             fse_parallel_min_retained_leaves: self.suite_config.fse_parallel_min_retained_leaves,
+            index_structure: index_structure_metrics(&self.index),
             validation: self.validation.clone(),
         }
     }

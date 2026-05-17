@@ -5,33 +5,27 @@ use crate::benchmark::{
     BenchmarkSuiteReport, MultiBaselineAggregateSummary, render_benchmark_overview,
     render_multi_baseline_summary, render_named_baseline_suite_report, render_suite_report,
 };
-use crate::build::IndexValidationReport;
+use crate::build::{IndexStructureMetrics, IndexValidationReport};
 use crate::query::QueryExecutionMode;
 
 #[test]
 fn benchmark_overview_render_includes_run_metadata() {
-    let overview = BenchmarkRunOverview {
-        dataset_records: 60,
-        index_nodes: 15,
-        workloads: 6,
-        baselines: "flat_scan, kd_tree".to_string(),
-        timing_iterations: 3,
-        max_leaf_size: 8,
-        max_depth: 8,
-        fse_execution_mode: QueryExecutionMode::Parallel,
-        fse_parallel_min_retained_leaves: 2,
-        validation: IndexValidationReport {
-            leaf_cardinality_valid: true,
-            hierarchy_topology_valid: true,
-            parent_child_bounds_valid: true,
-        },
-    };
+    let overview = test_overview(QueryExecutionMode::Parallel, 2);
 
     let output = render_benchmark_overview(&overview);
 
     assert!(output.contains("FSE benchmark suite"));
     assert!(output.contains("Dataset records: 60"));
     assert!(output.contains("Baselines: flat_scan, kd_tree"));
+    assert!(output.contains("Target leaf size: 4"));
+    assert!(output.contains("Max leaf size: 8"));
+    assert!(output.contains("Leaf nodes: 8"));
+    assert!(output.contains("Internal nodes: 7"));
+    assert!(output.contains("Max leaf cardinality: 8"));
+    assert!(output.contains("Average leaf cardinality: 7.50"));
+    assert!(output.contains("Total leaf volume: 120.00"));
+    assert!(output.contains("Index density: 0.50"));
+    assert!(output.contains("Zero-volume leaves: 1"));
     assert!(output.contains("FSE execution: parallel"));
     assert!(output.contains("FSE parallel min leaves: 2"));
     assert!(output.contains("Index validation: true"));
@@ -39,22 +33,7 @@ fn benchmark_overview_render_includes_run_metadata() {
 
 #[test]
 fn benchmark_overview_reports_serial_execution_mode_name() {
-    let overview = BenchmarkRunOverview {
-        dataset_records: 60,
-        index_nodes: 15,
-        workloads: 6,
-        baselines: "flat_scan".to_string(),
-        timing_iterations: 3,
-        max_leaf_size: 8,
-        max_depth: 8,
-        fse_execution_mode: QueryExecutionMode::Serial,
-        fse_parallel_min_retained_leaves: 4,
-        validation: IndexValidationReport {
-            leaf_cardinality_valid: true,
-            hierarchy_topology_valid: true,
-            parent_child_bounds_valid: true,
-        },
-    };
+    let overview = test_overview(QueryExecutionMode::Serial, 4);
 
     assert_eq!(overview.fse_execution_mode_name(), "serial");
 
@@ -118,4 +97,40 @@ fn multi_baseline_summary_render_includes_baseline_rows() {
     assert!(output.contains("Baseline: Flat Scan"));
     assert!(output.contains("Comparison: Flat Scan vs FSE"));
     assert!(output.contains("Highest weighted timing ratio: Flat Scan (1.25)"));
+}
+
+fn test_overview(
+    fse_execution_mode: QueryExecutionMode,
+    fse_parallel_min_retained_leaves: usize,
+) -> BenchmarkRunOverview {
+    BenchmarkRunOverview {
+        dataset_records: 60,
+        index_nodes: 15,
+        workloads: 6,
+        baselines: "flat_scan, kd_tree".to_string(),
+        timing_iterations: 3,
+        target_leaf_size: 4,
+        max_leaf_size: 8,
+        max_depth: 8,
+        fse_execution_mode,
+        fse_parallel_min_retained_leaves,
+        index_structure: IndexStructureMetrics {
+            node_count: 15,
+            leaf_count: 8,
+            internal_node_count: 7,
+            total_leaf_cardinality: 60,
+            min_leaf_cardinality: 4,
+            max_leaf_cardinality: 8,
+            average_leaf_cardinality: 7.5,
+            total_leaf_volume: 120.0,
+            average_leaf_volume: 15.0,
+            index_density: 0.5,
+            zero_volume_leaf_count: 1,
+        },
+        validation: IndexValidationReport {
+            leaf_cardinality_valid: true,
+            hierarchy_topology_valid: true,
+            parent_child_bounds_valid: true,
+        },
+    }
 }

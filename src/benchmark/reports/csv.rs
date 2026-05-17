@@ -7,6 +7,7 @@ use std::path::Path;
 use super::multi_summary::{BaselineAggregateSummary, MultiBaselineAggregateSummary};
 use super::output::BenchmarkRunOverview;
 use crate::benchmark::runner::{BaselineBenchmarkSuiteReport, MultiBaselineBenchmarkSuiteReport};
+use crate::math::Scalar;
 
 /// Output paths for benchmark CSV exports.
 ///
@@ -67,7 +68,7 @@ impl BenchmarkCsvOutputConfig {
 ///
 /// `BenchmarkCsvMetadata` makes exported benchmark rows self-describing so CSV
 /// files can be compared later without relying on terminal output.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BenchmarkCsvMetadata {
     /// Number of records in the selected dataset.
     pub dataset_records: usize,
@@ -84,6 +85,9 @@ pub struct BenchmarkCsvMetadata {
     /// Number of repeated timing iterations.
     pub timing_iterations: usize,
 
+    /// Target FSE leaf size used during construction.
+    pub target_leaf_size: usize,
+
     /// Maximum FSE leaf size used during construction.
     pub max_leaf_size: usize,
 
@@ -95,6 +99,36 @@ pub struct BenchmarkCsvMetadata {
 
     /// Minimum retained-leaf count required before parallel FSE mode uses Rayon.
     pub fse_parallel_min_retained_leaves: usize,
+
+    /// Number of leaf partitions in the constructed index.
+    pub index_leaf_count: usize,
+
+    /// Number of internal nodes in the constructed index.
+    pub index_internal_node_count: usize,
+
+    /// Total cardinality across leaf partitions.
+    pub index_total_leaf_cardinality: usize,
+
+    /// Minimum leaf cardinality.
+    pub index_min_leaf_cardinality: usize,
+
+    /// Maximum leaf cardinality.
+    pub index_max_leaf_cardinality: usize,
+
+    /// Average leaf cardinality.
+    pub index_average_leaf_cardinality: Scalar,
+
+    /// Sum of leaf bounding volumes.
+    pub index_total_leaf_volume: Scalar,
+
+    /// Average leaf bounding volume.
+    pub index_average_leaf_volume: Scalar,
+
+    /// Aggregate structural density across leaves.
+    pub index_density: Scalar,
+
+    /// Number of zero-volume leaves.
+    pub index_zero_volume_leaf_count: usize,
 
     /// Whether all index validation checks passed.
     pub index_valid: bool,
@@ -118,10 +152,21 @@ impl BenchmarkCsvMetadata {
             workload_count: overview.workloads,
             selected_baselines: overview.baselines.clone(),
             timing_iterations: overview.timing_iterations,
+            target_leaf_size: overview.target_leaf_size,
             max_leaf_size: overview.max_leaf_size,
             max_depth: overview.max_depth,
             fse_execution_mode: overview.fse_execution_mode_name().to_string(),
             fse_parallel_min_retained_leaves: overview.fse_parallel_min_retained_leaves,
+            index_leaf_count: overview.index_structure.leaf_count,
+            index_internal_node_count: overview.index_structure.internal_node_count,
+            index_total_leaf_cardinality: overview.index_structure.total_leaf_cardinality,
+            index_min_leaf_cardinality: overview.index_structure.min_leaf_cardinality,
+            index_max_leaf_cardinality: overview.index_structure.max_leaf_cardinality,
+            index_average_leaf_cardinality: overview.index_structure.average_leaf_cardinality,
+            index_total_leaf_volume: overview.index_structure.total_leaf_volume,
+            index_average_leaf_volume: overview.index_structure.average_leaf_volume,
+            index_density: overview.index_structure.index_density,
+            index_zero_volume_leaf_count: overview.index_structure.zero_volume_leaf_count,
             index_valid: overview.validation.is_valid(),
             leaf_cardinality_valid: overview.validation.leaf_cardinality_valid,
             hierarchy_topology_valid: overview.validation.hierarchy_topology_valid,
@@ -296,10 +341,21 @@ fn metadata_header_fields() -> Vec<&'static str> {
         "run_workload_count",
         "selected_baselines",
         "timing_iterations",
+        "target_leaf_size",
         "max_leaf_size",
         "max_depth",
         "fse_execution_mode",
         "fse_parallel_min_retained_leaves",
+        "index_leaf_count",
+        "index_internal_node_count",
+        "index_total_leaf_cardinality",
+        "index_min_leaf_cardinality",
+        "index_max_leaf_cardinality",
+        "index_average_leaf_cardinality",
+        "index_total_leaf_volume",
+        "index_average_leaf_volume",
+        "index_density",
+        "index_zero_volume_leaf_count",
         "index_valid",
         "leaf_cardinality_valid",
         "hierarchy_topology_valid",
@@ -314,10 +370,21 @@ fn metadata_value_fields(metadata: &BenchmarkCsvMetadata) -> Vec<String> {
         metadata.workload_count.to_string(),
         metadata.selected_baselines.clone(),
         metadata.timing_iterations.to_string(),
+        metadata.target_leaf_size.to_string(),
         metadata.max_leaf_size.to_string(),
         metadata.max_depth.to_string(),
         metadata.fse_execution_mode.clone(),
         metadata.fse_parallel_min_retained_leaves.to_string(),
+        metadata.index_leaf_count.to_string(),
+        metadata.index_internal_node_count.to_string(),
+        metadata.index_total_leaf_cardinality.to_string(),
+        metadata.index_min_leaf_cardinality.to_string(),
+        metadata.index_max_leaf_cardinality.to_string(),
+        format_scalar(metadata.index_average_leaf_cardinality),
+        format_scalar(metadata.index_total_leaf_volume),
+        format_scalar(metadata.index_average_leaf_volume),
+        format_scalar(metadata.index_density),
+        metadata.index_zero_volume_leaf_count.to_string(),
         metadata.index_valid.to_string(),
         metadata.leaf_cardinality_valid.to_string(),
         metadata.hierarchy_topology_valid.to_string(),
@@ -438,6 +505,10 @@ fn escape_csv_field(field: &str) -> String {
     } else {
         field.to_string()
     }
+}
+
+fn format_scalar(value: Scalar) -> String {
+    format!("{:.6}", value)
 }
 
 fn format_ratio(value: f64) -> String {

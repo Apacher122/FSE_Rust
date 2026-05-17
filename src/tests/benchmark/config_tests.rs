@@ -11,6 +11,14 @@ fn benchmark_suite_config_default_uses_large_dataset() {
 }
 
 #[test]
+fn benchmark_suite_config_default_uses_same_target_and_max_leaf_size() {
+    let config = BenchmarkSuiteConfig::default();
+
+    assert_eq!(config.target_leaf_size, 8);
+    assert_eq!(config.max_leaf_size, 8);
+}
+
+#[test]
 fn benchmark_suite_config_build_config_matches_values() {
     let config = BenchmarkSuiteConfig::new(
         BenchmarkDatasetKind::SmallClustered2D,
@@ -22,8 +30,67 @@ fn benchmark_suite_config_build_config_matches_values() {
 
     let build_config = config.build_config();
 
+    assert_eq!(build_config.target_leaf_size, 16);
     assert_eq!(build_config.max_leaf_size, 16);
     assert_eq!(build_config.max_depth, 12);
+}
+
+#[test]
+fn benchmark_suite_config_build_config_uses_custom_target_leaf_size() {
+    let config = BenchmarkSuiteConfig::new(
+        BenchmarkDatasetKind::SmallClustered2D,
+        BaselineKind::FlatScan,
+        16,
+        12,
+        5,
+    )
+    .with_target_leaf_size(4);
+
+    let build_config = config.build_config();
+
+    assert_eq!(build_config.target_leaf_size, 4);
+    assert_eq!(build_config.max_leaf_size, 16);
+    assert_eq!(build_config.max_depth, 12);
+}
+
+#[test]
+fn benchmark_suite_config_validates_leaf_size_policy() {
+    let config = BenchmarkSuiteConfig::new(
+        BenchmarkDatasetKind::SmallClustered2D,
+        BaselineKind::FlatScan,
+        16,
+        12,
+        5,
+    )
+    .with_target_leaf_size(4);
+
+    assert!(config.validate_leaf_size_policy().is_ok());
+}
+
+#[test]
+#[should_panic(expected = "target_leaf_size must be greater than zero")]
+fn benchmark_suite_config_rejects_zero_target_leaf_size() {
+    let _ = BenchmarkSuiteConfig::new(
+        BenchmarkDatasetKind::SmallClustered2D,
+        BaselineKind::FlatScan,
+        16,
+        12,
+        5,
+    )
+    .with_target_leaf_size(0);
+}
+
+#[test]
+#[should_panic(expected = "target_leaf_size must not exceed max_leaf_size")]
+fn benchmark_suite_config_rejects_target_leaf_size_above_max_leaf_size() {
+    let _ = BenchmarkSuiteConfig::new(
+        BenchmarkDatasetKind::SmallClustered2D,
+        BaselineKind::FlatScan,
+        16,
+        12,
+        5,
+    )
+    .with_target_leaf_size(17);
 }
 
 #[test]

@@ -81,8 +81,90 @@ fn parse_benchmark_config_allows_repeated_iterations_with_last_value() {
 fn parse_benchmark_config_parses_leaf_size_and_depth() {
     let config = parse_benchmark_config(["--max-leaf-size", "16", "--max-depth", "12"]).unwrap();
 
+    assert_eq!(config.target_leaf_size, 16);
     assert_eq!(config.max_leaf_size, 16);
     assert_eq!(config.max_depth, 12);
+}
+
+#[test]
+fn parse_benchmark_config_parses_target_leaf_size() {
+    let config = parse_benchmark_config(["--target-leaf-size", "4"]).unwrap();
+
+    assert_eq!(config.target_leaf_size, 4);
+    assert_eq!(config.max_leaf_size, 8);
+}
+
+#[test]
+fn parse_benchmark_config_parses_target_leaf_size_alias() {
+    let config = parse_benchmark_config(["--leaf-target-size", "4"]).unwrap();
+
+    assert_eq!(config.target_leaf_size, 4);
+    assert_eq!(config.max_leaf_size, 8);
+}
+
+#[test]
+fn parse_benchmark_config_accepts_target_leaf_size_before_larger_max_leaf_size() {
+    let config =
+        parse_benchmark_config(["--target-leaf-size", "16", "--max-leaf-size", "32"]).unwrap();
+
+    assert_eq!(config.target_leaf_size, 16);
+    assert_eq!(config.max_leaf_size, 32);
+}
+
+#[test]
+fn parse_benchmark_config_keeps_explicit_target_leaf_size_when_max_leaf_size_changes_later() {
+    let config =
+        parse_benchmark_config(["--target-leaf-size", "4", "--max-leaf-size", "16"]).unwrap();
+
+    assert_eq!(config.target_leaf_size, 4);
+    assert_eq!(config.max_leaf_size, 16);
+}
+
+#[test]
+fn parse_benchmark_config_updates_target_leaf_size_with_max_leaf_size_when_target_is_not_explicit()
+{
+    let config = parse_benchmark_config(["--max-leaf-size", "16"]).unwrap();
+
+    // old behavior stays intact unless the new knob is used
+    assert_eq!(config.target_leaf_size, 16);
+    assert_eq!(config.max_leaf_size, 16);
+}
+
+#[test]
+fn parse_benchmark_config_allows_repeated_target_leaf_size_with_last_value() {
+    let config =
+        parse_benchmark_config(["--target-leaf-size", "2", "--target-leaf-size", "4"]).unwrap();
+
+    // last target wins same as other simple flags
+    assert_eq!(config.target_leaf_size, 4);
+}
+
+#[test]
+fn parse_benchmark_config_rejects_target_leaf_size_above_max_leaf_size() {
+    let result = parse_benchmark_config(["--target-leaf-size", "16"]);
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn parse_benchmark_config_rejects_zero_target_leaf_size() {
+    let result = parse_benchmark_config(["--target-leaf-size", "0"]);
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn parse_benchmark_config_rejects_missing_target_leaf_size_value() {
+    let result = parse_benchmark_config(["--target-leaf-size"]);
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn parse_benchmark_config_rejects_non_numeric_target_leaf_size() {
+    let result = parse_benchmark_config(["--target-leaf-size", "small"]);
+
+    assert!(result.is_err());
 }
 
 #[test]
@@ -99,6 +181,7 @@ fn parse_benchmark_config_allows_repeated_leaf_size_and_depth_with_last_value() 
     ])
     .unwrap();
 
+    assert_eq!(config.target_leaf_size, 16);
     assert_eq!(config.max_leaf_size, 16);
     assert_eq!(config.max_depth, 12);
 }

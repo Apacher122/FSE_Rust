@@ -14,10 +14,21 @@ fn test_metadata() -> BenchmarkCsvMetadata {
         workload_count: 6,
         selected_baselines: "flat_scan".to_string(),
         timing_iterations: 3,
+        target_leaf_size: 4,
         max_leaf_size: 8,
         max_depth: 8,
         fse_execution_mode: "parallel".to_string(),
         fse_parallel_min_retained_leaves: 2,
+        index_leaf_count: 8,
+        index_internal_node_count: 7,
+        index_total_leaf_cardinality: 60,
+        index_min_leaf_cardinality: 4,
+        index_max_leaf_cardinality: 8,
+        index_average_leaf_cardinality: 7.5,
+        index_total_leaf_volume: 120.0,
+        index_average_leaf_volume: 15.0,
+        index_density: 0.5,
+        index_zero_volume_leaf_count: 1,
         index_valid: true,
         leaf_cardinality_valid: true,
         hierarchy_topology_valid: true,
@@ -99,11 +110,13 @@ fn benchmark_csv_output_writer_writes_configured_outputs() {
     let workloads_csv = fs::read_to_string(&workloads_path).unwrap();
 
     assert!(summary_csv.contains("baseline_name,baseline_label,comparison_label"));
-    assert!(summary_csv.contains("fse_execution_mode,fse_parallel_min_retained_leaves"));
-    assert!(summary_csv.contains("parallel,2,true,true,true,true"));
+    assert!(summary_csv.contains("target_leaf_size,max_leaf_size,max_depth"));
+    assert!(summary_csv.contains("index_leaf_count,index_internal_node_count"));
+    assert!(summary_csv.contains("parallel,2,8,7,60,4,8,7.500000"));
     assert!(workloads_csv.contains("baseline_name,baseline_label,comparison_label,workload_name"));
-    assert!(workloads_csv.contains("fse_execution_mode,fse_parallel_min_retained_leaves"));
-    assert!(workloads_csv.contains("parallel,2,true,true,true,true"));
+    assert!(workloads_csv.contains("target_leaf_size,max_leaf_size,max_depth"));
+    assert!(workloads_csv.contains("index_leaf_count,index_internal_node_count"));
+    assert!(workloads_csv.contains("parallel,2,8,7,60,4,8,7.500000"));
 
     let _ = fs::remove_file(summary_path);
     let _ = fs::remove_file(workloads_path);

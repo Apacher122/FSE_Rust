@@ -59,6 +59,23 @@ impl BenchmarkApplicationRenderer {
         ));
         output.push_str(&format!("Index nodes: {}\n", overview.index_nodes));
         output.push_str(&format!(
+            "Leaves: {} leaf, {} internal\n",
+            overview.index_structure.leaf_count, overview.index_structure.internal_node_count
+        ));
+        output.push_str(&format!(
+            "Leaf policy: target {}, max {}\n",
+            overview.target_leaf_size, overview.max_leaf_size
+        ));
+        output.push_str(&format!(
+            "Leaf records: max {}, avg {:.2}\n",
+            overview.index_structure.max_leaf_cardinality,
+            overview.index_structure.average_leaf_cardinality
+        ));
+        output.push_str(&format!(
+            "Leaf volume: total {:.2}, density {:.2}\n",
+            overview.index_structure.total_leaf_volume, overview.index_structure.index_density
+        ));
+        output.push_str(&format!(
             "FSE execution: {}\n",
             overview.fse_execution_mode_name()
         ));
@@ -91,7 +108,7 @@ impl BenchmarkApplicationRenderer {
         output.push_str(&render_scoreboard_diagnosis(aggregate_summary));
         output.push('\n');
         output.push_str("Next target:\n");
-        output.push_str("  tune retained-leaf execution threshold\n");
+        output.push_str("  compare leaf policy against candidate ratio\n");
 
         output
     }

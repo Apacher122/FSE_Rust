@@ -111,12 +111,25 @@ impl Default for BaselineSelectionState {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct BenchmarkCliParseState {
     suite_config: BenchmarkSuiteConfig,
     baseline_selection: BaselineSelectionState,
     csv_output: BenchmarkCsvOutputConfig,
     terminal_output_mode: BenchmarkTerminalOutputMode,
+    target_leaf_size_was_set: bool,
+}
+
+impl Default for BenchmarkCliParseState {
+    fn default() -> Self {
+        Self {
+            suite_config: BenchmarkSuiteConfig::default(),
+            baseline_selection: BaselineSelectionState::default(),
+            csv_output: BenchmarkCsvOutputConfig::default(),
+            terminal_output_mode: BenchmarkTerminalOutputMode::default(),
+            target_leaf_size_was_set: false,
+        }
+    }
 }
 
 impl BenchmarkCliParseState {
@@ -145,8 +158,22 @@ impl BenchmarkCliParseState {
         Ok(())
     }
 
+    fn set_target_leaf_size(&mut self, value: &str) -> Result<(), String> {
+        self.suite_config.target_leaf_size = parse_positive_usize("--target-leaf-size", value)?;
+        self.target_leaf_size_was_set = true;
+
+        Ok(())
+    }
+
     fn set_max_leaf_size(&mut self, value: &str) -> Result<(), String> {
-        self.suite_config.max_leaf_size = parse_positive_usize("--max-leaf-size", value)?;
+        let max_leaf_size = parse_positive_usize("--max-leaf-size", value)?;
+
+        self.suite_config.max_leaf_size = max_leaf_size;
+
+        if !self.target_leaf_size_was_set {
+            // keep old behavior unless the caller explicitly splits the knobs
+            self.suite_config.target_leaf_size = max_leaf_size;
+        }
 
         Ok(())
     }
@@ -182,7 +209,9 @@ impl BenchmarkCliParseState {
         self.terminal_output_mode = BenchmarkTerminalOutputMode::DebugReport;
     }
 
-    fn finish(self) -> BenchmarkCliConfig {
+    fn finish(self) -> Result<BenchmarkCliConfig, String> {
+        self.suite_config.validate_leaf_size_policy()?;
+
         let baseline_set = self
             .baseline_selection
             .into_baseline_set(self.suite_config.baseline_kind);
@@ -190,13 +219,13 @@ impl BenchmarkCliParseState {
         // build this once at the edge so the parser state does not leak out
         let baseline_kinds = baseline_set.selected_kinds();
 
-        BenchmarkCliConfig {
+        Ok(BenchmarkCliConfig {
             suite_config: self.suite_config,
             baseline_set,
             baseline_kinds,
             csv_output: self.csv_output,
             terminal_output_mode: self.terminal_output_mode,
-        }
+        })
     }
 }
 
@@ -217,6 +246,7 @@ impl BenchmarkCliParseState {
 /// - `--dataset small`
 /// - `--dataset large`
 /// - `--iterations N`
+/// - `--target-leaf-size N`
 /// - `--max-leaf-size N`
 /// - `--max-depth N`
 /// - `--fse-execution serial`
@@ -250,6 +280,10 @@ where
             "--iterations" => {
                 let value = next_value(&mut args, "--iterations")?;
                 state.set_timing_iterations(&value)?;
+            }
+            "--target-leaf-size" | "--leaf-target-size" => {
+                let value = next_value(&mut args, arg.as_str())?;
+                state.set_target_leaf_size(&value)?;
             }
             "--max-leaf-size" => {
                 let value = next_value(&mut args, "--max-leaf-size")?;
@@ -295,7 +329,7 @@ where
         }
     }
 
-    Ok(state.finish())
+    state.finish()
 }
 
 /// Parses benchmark suite configuration from command-line arguments.
@@ -323,6 +357,7 @@ pub fn benchmark_usage() -> String {
         "  --all-baselines",
         "  --dataset <small|large>",
         "  --iterations <N>",
+        "  --target-leaf-size <N>",
         "  --max-leaf-size <N>",
         "  --max-depth <N>",
         "  --fse-execution <serial|parallel>",

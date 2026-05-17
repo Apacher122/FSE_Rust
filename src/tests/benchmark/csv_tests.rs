@@ -7,7 +7,7 @@ use crate::benchmark::{
     write_multi_baseline_aggregate_summary_csv_with_metadata,
     write_multi_baseline_workload_report_csv_with_metadata,
 };
-use crate::build::IndexValidationReport;
+use crate::build::{IndexStructureMetrics, IndexValidationReport};
 use crate::query::QueryExecutionMode;
 use crate::tests::support::small_benchmark_fixture;
 use std::fs;
@@ -20,10 +20,21 @@ fn test_metadata() -> BenchmarkCsvMetadata {
         workload_count: 6,
         selected_baselines: "flat_scan, kd_tree".to_string(),
         timing_iterations: 3,
+        target_leaf_size: 4,
         max_leaf_size: 8,
         max_depth: 8,
         fse_execution_mode: "parallel".to_string(),
         fse_parallel_min_retained_leaves: 2,
+        index_leaf_count: 8,
+        index_internal_node_count: 7,
+        index_total_leaf_cardinality: 60,
+        index_min_leaf_cardinality: 4,
+        index_max_leaf_cardinality: 8,
+        index_average_leaf_cardinality: 7.5,
+        index_total_leaf_volume: 120.0,
+        index_average_leaf_volume: 15.0,
+        index_density: 0.5,
+        index_zero_volume_leaf_count: 1,
         index_valid: true,
         leaf_cardinality_valid: true,
         hierarchy_topology_valid: true,
@@ -59,10 +70,24 @@ fn csv_metadata_can_be_built_from_benchmark_overview() {
         workloads: 6,
         baselines: "flat_scan, kd_tree".to_string(),
         timing_iterations: 3,
+        target_leaf_size: 4,
         max_leaf_size: 8,
         max_depth: 8,
         fse_execution_mode: QueryExecutionMode::Parallel,
         fse_parallel_min_retained_leaves: 2,
+        index_structure: IndexStructureMetrics {
+            node_count: 15,
+            leaf_count: 8,
+            internal_node_count: 7,
+            total_leaf_cardinality: 60,
+            min_leaf_cardinality: 4,
+            max_leaf_cardinality: 8,
+            average_leaf_cardinality: 7.5,
+            total_leaf_volume: 120.0,
+            average_leaf_volume: 15.0,
+            index_density: 0.5,
+            zero_volume_leaf_count: 1,
+        },
         validation: IndexValidationReport {
             leaf_cardinality_valid: true,
             hierarchy_topology_valid: true,
@@ -77,10 +102,21 @@ fn csv_metadata_can_be_built_from_benchmark_overview() {
     assert_eq!(metadata.workload_count, 6);
     assert_eq!(metadata.selected_baselines, "flat_scan, kd_tree");
     assert_eq!(metadata.timing_iterations, 3);
+    assert_eq!(metadata.target_leaf_size, 4);
     assert_eq!(metadata.max_leaf_size, 8);
     assert_eq!(metadata.max_depth, 8);
     assert_eq!(metadata.fse_execution_mode, "parallel");
     assert_eq!(metadata.fse_parallel_min_retained_leaves, 2);
+    assert_eq!(metadata.index_leaf_count, 8);
+    assert_eq!(metadata.index_internal_node_count, 7);
+    assert_eq!(metadata.index_total_leaf_cardinality, 60);
+    assert_eq!(metadata.index_min_leaf_cardinality, 4);
+    assert_eq!(metadata.index_max_leaf_cardinality, 8);
+    assert_eq!(metadata.index_average_leaf_cardinality, 7.5);
+    assert_eq!(metadata.index_total_leaf_volume, 120.0);
+    assert_eq!(metadata.index_average_leaf_volume, 15.0);
+    assert_eq!(metadata.index_density, 0.5);
+    assert_eq!(metadata.index_zero_volume_leaf_count, 1);
     assert!(metadata.index_valid);
     assert!(metadata.leaf_cardinality_valid);
     assert!(metadata.hierarchy_topology_valid);
@@ -202,6 +238,9 @@ fn csv_export_with_metadata_includes_metadata_header() {
     let csv = multi_baseline_aggregate_summary_to_csv_with_metadata(&metadata, &summary);
 
     assert!(csv.starts_with("dataset_records,index_nodes,run_workload_count,selected_baselines"));
+    assert!(csv.contains("target_leaf_size,max_leaf_size,max_depth"));
+    assert!(csv.contains("index_leaf_count,index_internal_node_count"));
+    assert!(csv.contains("index_density,index_zero_volume_leaf_count"));
     assert!(csv.contains("fse_execution_mode,fse_parallel_min_retained_leaves"));
 }
 
@@ -214,9 +253,9 @@ fn csv_export_with_metadata_includes_metadata_values() {
     let rows: Vec<&str> = csv.lines().collect();
 
     assert_eq!(rows.len(), 2);
-    assert!(
-        rows[1].starts_with("60,15,6,\"flat_scan, kd_tree\",3,8,8,parallel,2,true,true,true,true")
-    );
+    assert!(rows[1].starts_with(
+        "60,15,6,\"flat_scan, kd_tree\",3,4,8,8,parallel,2,8,7,60,4,8,7.500000,120.000000,15.000000,0.500000,1,true,true,true,true"
+    ));
 }
 
 #[test]
@@ -234,8 +273,9 @@ fn csv_export_with_metadata_writes_summary_file() {
     let written = fs::read_to_string(&path).unwrap();
 
     assert!(written.contains("dataset_records,index_nodes,run_workload_count"));
-    assert!(written.contains("fse_execution_mode,fse_parallel_min_retained_leaves"));
-    assert!(written.contains("parallel,2,true,true,true,true"));
+    assert!(written.contains("target_leaf_size,max_leaf_size,max_depth"));
+    assert!(written.contains("index_leaf_count,index_internal_node_count"));
+    assert!(written.contains("parallel,2,8,7,60,4,8,7.500000"));
     assert!(written.contains("flat_scan,Flat Scan,Flat Scan vs FSE,1"));
 
     let _ = fs::remove_file(path);
@@ -301,7 +341,8 @@ fn workload_csv_export_with_metadata_includes_metadata_header() {
     let csv = multi_baseline_workload_report_to_csv_with_metadata(&metadata, &report);
 
     assert!(csv.starts_with("dataset_records,index_nodes,run_workload_count,selected_baselines"));
-    assert!(csv.contains("fse_execution_mode,fse_parallel_min_retained_leaves"));
+    assert!(csv.contains("target_leaf_size,max_leaf_size,max_depth"));
+    assert!(csv.contains("index_density,index_zero_volume_leaf_count"));
     assert!(csv.contains("baseline_name,baseline_label,comparison_label,workload_name"));
 }
 
@@ -325,9 +366,9 @@ fn workload_csv_export_with_metadata_includes_execution_mode_values() {
     let rows: Vec<&str> = csv.lines().collect();
 
     assert!(rows.len() > 1);
-    assert!(
-        rows[1].starts_with("60,15,6,\"flat_scan, kd_tree\",3,8,8,parallel,2,true,true,true,true")
-    );
+    assert!(rows[1].starts_with(
+        "60,15,6,\"flat_scan, kd_tree\",3,4,8,8,parallel,2,8,7,60,4,8,7.500000,120.000000,15.000000,0.500000,1,true,true,true,true"
+    ));
 }
 
 #[test]
@@ -356,8 +397,9 @@ fn workload_csv_export_writes_metadata_file() {
     let written = fs::read_to_string(&path).unwrap();
 
     assert!(written.contains("workload_name"));
-    assert!(written.contains("fse_execution_mode,fse_parallel_min_retained_leaves"));
-    assert!(written.contains("parallel,2,true,true,true,true"));
+    assert!(written.contains("target_leaf_size,max_leaf_size,max_depth"));
+    assert!(written.contains("index_leaf_count,index_internal_node_count"));
+    assert!(written.contains("parallel,2,8,7,60,4,8,7.500000"));
     assert!(written.contains("flat_scan,Flat Scan,Flat Scan vs FSE"));
 
     let _ = fs::remove_file(path);
