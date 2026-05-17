@@ -117,6 +117,8 @@ impl BenchmarkApplicationContext {
             timing_iterations: self.timing_config.iterations,
             max_leaf_size: self.suite_config.max_leaf_size,
             max_depth: self.suite_config.max_depth,
+            fse_execution_mode: self.suite_config.fse_execution_mode,
+            fse_parallel_min_retained_leaves: self.suite_config.fse_parallel_min_retained_leaves,
             validation: self.validation.clone(),
         }
     }

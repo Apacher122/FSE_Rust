@@ -1,12 +1,14 @@
 use crate::benchmark::{
     BaselineAggregateSummary, BaselineKind, BaselineRegistry, BenchmarkCsvMetadata,
-    MultiBaselineAggregateSummary, multi_baseline_aggregate_summary_to_csv,
+    BenchmarkRunOverview, MultiBaselineAggregateSummary, multi_baseline_aggregate_summary_to_csv,
     multi_baseline_aggregate_summary_to_csv_with_metadata, multi_baseline_workload_report_to_csv,
     multi_baseline_workload_report_to_csv_with_metadata, run_multi_baseline_benchmark_suite,
     write_multi_baseline_aggregate_summary_csv,
     write_multi_baseline_aggregate_summary_csv_with_metadata,
     write_multi_baseline_workload_report_csv_with_metadata,
 };
+use crate::build::IndexValidationReport;
+use crate::query::QueryExecutionMode;
 use crate::tests::support::small_benchmark_fixture;
 use std::fs;
 use std::time::Duration;
@@ -20,6 +22,8 @@ fn test_metadata() -> BenchmarkCsvMetadata {
         timing_iterations: 3,
         max_leaf_size: 8,
         max_depth: 8,
+        fse_execution_mode: "parallel".to_string(),
+        fse_parallel_min_retained_leaves: 2,
         index_valid: true,
         leaf_cardinality_valid: true,
         hierarchy_topology_valid: true,
@@ -45,6 +49,42 @@ fn single_summary() -> MultiBaselineAggregateSummary {
             total_fse_average_elapsed: Duration::from_nanos(80),
         }],
     }
+}
+
+#[test]
+fn csv_metadata_can_be_built_from_benchmark_overview() {
+    let overview = BenchmarkRunOverview {
+        dataset_records: 60,
+        index_nodes: 15,
+        workloads: 6,
+        baselines: "flat_scan, kd_tree".to_string(),
+        timing_iterations: 3,
+        max_leaf_size: 8,
+        max_depth: 8,
+        fse_execution_mode: QueryExecutionMode::Parallel,
+        fse_parallel_min_retained_leaves: 2,
+        validation: IndexValidationReport {
+            leaf_cardinality_valid: true,
+            hierarchy_topology_valid: true,
+            parent_child_bounds_valid: true,
+        },
+    };
+
+    let metadata = BenchmarkCsvMetadata::from_overview(&overview);
+
+    assert_eq!(metadata.dataset_records, 60);
+    assert_eq!(metadata.index_nodes, 15);
+    assert_eq!(metadata.workload_count, 6);
+    assert_eq!(metadata.selected_baselines, "flat_scan, kd_tree");
+    assert_eq!(metadata.timing_iterations, 3);
+    assert_eq!(metadata.max_leaf_size, 8);
+    assert_eq!(metadata.max_depth, 8);
+    assert_eq!(metadata.fse_execution_mode, "parallel");
+    assert_eq!(metadata.fse_parallel_min_retained_leaves, 2);
+    assert!(metadata.index_valid);
+    assert!(metadata.leaf_cardinality_valid);
+    assert!(metadata.hierarchy_topology_valid);
+    assert!(metadata.parent_child_bounds_valid);
 }
 
 #[test]
@@ -162,6 +202,7 @@ fn csv_export_with_metadata_includes_metadata_header() {
     let csv = multi_baseline_aggregate_summary_to_csv_with_metadata(&metadata, &summary);
 
     assert!(csv.starts_with("dataset_records,index_nodes,run_workload_count,selected_baselines"));
+    assert!(csv.contains("fse_execution_mode,fse_parallel_min_retained_leaves"));
 }
 
 #[test]
@@ -173,7 +214,9 @@ fn csv_export_with_metadata_includes_metadata_values() {
     let rows: Vec<&str> = csv.lines().collect();
 
     assert_eq!(rows.len(), 2);
-    assert!(rows[1].starts_with("60,15,6,\"flat_scan, kd_tree\",3,8,8,true,true,true,true"));
+    assert!(
+        rows[1].starts_with("60,15,6,\"flat_scan, kd_tree\",3,8,8,parallel,2,true,true,true,true")
+    );
 }
 
 #[test]
@@ -191,6 +234,8 @@ fn csv_export_with_metadata_writes_summary_file() {
     let written = fs::read_to_string(&path).unwrap();
 
     assert!(written.contains("dataset_records,index_nodes,run_workload_count"));
+    assert!(written.contains("fse_execution_mode,fse_parallel_min_retained_leaves"));
+    assert!(written.contains("parallel,2,true,true,true,true"));
     assert!(written.contains("flat_scan,Flat Scan,Flat Scan vs FSE,1"));
 
     let _ = fs::remove_file(path);
@@ -256,7 +301,33 @@ fn workload_csv_export_with_metadata_includes_metadata_header() {
     let csv = multi_baseline_workload_report_to_csv_with_metadata(&metadata, &report);
 
     assert!(csv.starts_with("dataset_records,index_nodes,run_workload_count,selected_baselines"));
+    assert!(csv.contains("fse_execution_mode,fse_parallel_min_retained_leaves"));
     assert!(csv.contains("baseline_name,baseline_label,comparison_label,workload_name"));
+}
+
+#[test]
+fn workload_csv_export_with_metadata_includes_execution_mode_values() {
+    let fixture = small_benchmark_fixture();
+    let metadata = test_metadata();
+    let registry = BaselineRegistry::new();
+    let baseline_kinds = [BaselineKind::FlatScan];
+
+    let report = run_multi_baseline_benchmark_suite(
+        &fixture.index,
+        &fixture.points,
+        &fixture.workloads,
+        &fixture.timing_config,
+        &registry,
+        &baseline_kinds,
+    );
+
+    let csv = multi_baseline_workload_report_to_csv_with_metadata(&metadata, &report);
+    let rows: Vec<&str> = csv.lines().collect();
+
+    assert!(rows.len() > 1);
+    assert!(
+        rows[1].starts_with("60,15,6,\"flat_scan, kd_tree\",3,8,8,parallel,2,true,true,true,true")
+    );
 }
 
 #[test]
@@ -285,6 +356,8 @@ fn workload_csv_export_writes_metadata_file() {
     let written = fs::read_to_string(&path).unwrap();
 
     assert!(written.contains("workload_name"));
+    assert!(written.contains("fse_execution_mode,fse_parallel_min_retained_leaves"));
+    assert!(written.contains("parallel,2,true,true,true,true"));
     assert!(written.contains("flat_scan,Flat Scan,Flat Scan vs FSE"));
 
     let _ = fs::remove_file(path);

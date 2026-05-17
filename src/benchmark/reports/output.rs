@@ -4,6 +4,7 @@ use std::fmt::Write;
 
 use crate::benchmark::{BenchmarkSuiteReport, MultiBaselineAggregateSummary};
 use crate::build::IndexValidationReport;
+use crate::query::QueryExecutionMode;
 
 /// Header information printed before benchmark reports.
 ///
@@ -34,8 +35,24 @@ pub struct BenchmarkRunOverview {
     /// Maximum FSE build depth used during construction.
     pub max_depth: usize,
 
+    /// FSE query execution mode used by the benchmark run.
+    pub fse_execution_mode: QueryExecutionMode,
+
+    /// Minimum retained-leaf count required before parallel FSE mode uses Rayon.
+    pub fse_parallel_min_retained_leaves: usize,
+
     /// Validation report for the constructed FSE index.
     pub validation: IndexValidationReport,
+}
+
+impl BenchmarkRunOverview {
+    /// Returns the user-facing name for the configured FSE execution mode.
+    pub fn fse_execution_mode_name(&self) -> &'static str {
+        match self.fse_execution_mode {
+            QueryExecutionMode::Serial => "serial",
+            QueryExecutionMode::Parallel => "parallel",
+        }
+    }
 }
 
 /// Renders the benchmark run overview.
@@ -53,6 +70,18 @@ pub fn render_benchmark_overview(overview: &BenchmarkRunOverview) -> String {
     writeln!(output, "Timing iterations: {}", overview.timing_iterations).unwrap();
     writeln!(output, "Max leaf size: {}", overview.max_leaf_size).unwrap();
     writeln!(output, "Max build depth: {}", overview.max_depth).unwrap();
+    writeln!(
+        output,
+        "FSE execution: {}",
+        overview.fse_execution_mode_name()
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "FSE parallel min leaves: {}",
+        overview.fse_parallel_min_retained_leaves
+    )
+    .unwrap();
     writeln!(output).unwrap();
 
     writeln!(

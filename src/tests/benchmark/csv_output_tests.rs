@@ -16,6 +16,8 @@ fn test_metadata() -> BenchmarkCsvMetadata {
         timing_iterations: 3,
         max_leaf_size: 8,
         max_depth: 8,
+        fse_execution_mode: "parallel".to_string(),
+        fse_parallel_min_retained_leaves: 2,
         index_valid: true,
         leaf_cardinality_valid: true,
         hierarchy_topology_valid: true,
@@ -97,7 +99,11 @@ fn benchmark_csv_output_writer_writes_configured_outputs() {
     let workloads_csv = fs::read_to_string(&workloads_path).unwrap();
 
     assert!(summary_csv.contains("baseline_name,baseline_label,comparison_label"));
+    assert!(summary_csv.contains("fse_execution_mode,fse_parallel_min_retained_leaves"));
+    assert!(summary_csv.contains("parallel,2,true,true,true,true"));
     assert!(workloads_csv.contains("baseline_name,baseline_label,comparison_label,workload_name"));
+    assert!(workloads_csv.contains("fse_execution_mode,fse_parallel_min_retained_leaves"));
+    assert!(workloads_csv.contains("parallel,2,true,true,true,true"));
 
     let _ = fs::remove_file(summary_path);
     let _ = fs::remove_file(workloads_path);

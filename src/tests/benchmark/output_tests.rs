@@ -6,6 +6,7 @@ use crate::benchmark::{
     render_multi_baseline_summary, render_named_baseline_suite_report, render_suite_report,
 };
 use crate::build::IndexValidationReport;
+use crate::query::QueryExecutionMode;
 
 #[test]
 fn benchmark_overview_render_includes_run_metadata() {
@@ -17,6 +18,8 @@ fn benchmark_overview_render_includes_run_metadata() {
         timing_iterations: 3,
         max_leaf_size: 8,
         max_depth: 8,
+        fse_execution_mode: QueryExecutionMode::Parallel,
+        fse_parallel_min_retained_leaves: 2,
         validation: IndexValidationReport {
             leaf_cardinality_valid: true,
             hierarchy_topology_valid: true,
@@ -29,7 +32,36 @@ fn benchmark_overview_render_includes_run_metadata() {
     assert!(output.contains("FSE benchmark suite"));
     assert!(output.contains("Dataset records: 60"));
     assert!(output.contains("Baselines: flat_scan, kd_tree"));
+    assert!(output.contains("FSE execution: parallel"));
+    assert!(output.contains("FSE parallel min leaves: 2"));
     assert!(output.contains("Index validation: true"));
+}
+
+#[test]
+fn benchmark_overview_reports_serial_execution_mode_name() {
+    let overview = BenchmarkRunOverview {
+        dataset_records: 60,
+        index_nodes: 15,
+        workloads: 6,
+        baselines: "flat_scan".to_string(),
+        timing_iterations: 3,
+        max_leaf_size: 8,
+        max_depth: 8,
+        fse_execution_mode: QueryExecutionMode::Serial,
+        fse_parallel_min_retained_leaves: 4,
+        validation: IndexValidationReport {
+            leaf_cardinality_valid: true,
+            hierarchy_topology_valid: true,
+            parent_child_bounds_valid: true,
+        },
+    };
+
+    assert_eq!(overview.fse_execution_mode_name(), "serial");
+
+    let output = render_benchmark_overview(&overview);
+
+    assert!(output.contains("FSE execution: serial"));
+    assert!(output.contains("FSE parallel min leaves: 4"));
 }
 
 #[test]

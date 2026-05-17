@@ -59,6 +59,14 @@ impl BenchmarkApplicationRenderer {
         ));
         output.push_str(&format!("Index nodes: {}\n", overview.index_nodes));
         output.push_str(&format!(
+            "FSE execution: {}\n",
+            overview.fse_execution_mode_name()
+        ));
+        output.push_str(&format!(
+            "FSE parallel min leaves: {}\n",
+            overview.fse_parallel_min_retained_leaves
+        ));
+        output.push_str(&format!(
             "Validation: {}\n\n",
             if overview.validation.is_valid() {
                 "pass"
@@ -83,7 +91,7 @@ impl BenchmarkApplicationRenderer {
         output.push_str(&render_scoreboard_diagnosis(aggregate_summary));
         output.push('\n');
         output.push_str("Next target:\n");
-        output.push_str("  reduce retained-leaf reconstruction cost\n");
+        output.push_str("  tune retained-leaf execution threshold\n");
 
         output
     }

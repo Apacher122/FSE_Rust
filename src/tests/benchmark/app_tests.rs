@@ -8,6 +8,7 @@ use crate::benchmark::{
     BenchmarkTerminalOutputMode, render_benchmark_application_terminal_output,
     run_benchmark_application,
 };
+use crate::query::QueryExecutionMode;
 
 #[test]
 fn benchmark_application_output_reports_empty_state() {
@@ -160,7 +161,25 @@ fn benchmark_application_context_builds_overview_from_current_state() {
     assert_eq!(overview.timing_iterations, context.timing_config.iterations);
     assert_eq!(overview.max_leaf_size, context.suite_config.max_leaf_size);
     assert_eq!(overview.max_depth, context.suite_config.max_depth);
+    assert_eq!(
+        overview.fse_execution_mode,
+        context.suite_config.fse_execution_mode
+    );
+    assert_eq!(
+        overview.fse_parallel_min_retained_leaves,
+        context.suite_config.fse_parallel_min_retained_leaves
+    );
     assert_eq!(overview.validation, context.validation);
+}
+
+#[test]
+fn benchmark_application_context_builds_parallel_overview_from_current_state() {
+    let context = BenchmarkApplicationContext::from_cli_config(parallel_baseline_cli_config());
+    let overview = context.overview();
+
+    assert_eq!(overview.fse_execution_mode, QueryExecutionMode::Parallel);
+    assert_eq!(overview.fse_execution_mode_name(), "parallel");
+    assert_eq!(overview.fse_parallel_min_retained_leaves, 2);
 }
 
 #[test]
@@ -184,6 +203,14 @@ fn benchmark_application_result_bundle_matches_context_state() {
         context.index.node_count()
     );
     assert_eq!(result_bundle.overview.workloads, context.workloads.len());
+    assert_eq!(
+        result_bundle.overview.fse_execution_mode,
+        context.suite_config.fse_execution_mode
+    );
+    assert_eq!(
+        result_bundle.overview.fse_parallel_min_retained_leaves,
+        context.suite_config.fse_parallel_min_retained_leaves
+    );
     assert_eq!(result_bundle.baseline_report_count(), 1);
     assert_eq!(result_bundle.metadata.dataset_records, context.points.len());
     assert_eq!(
@@ -209,6 +236,8 @@ fn benchmark_application_renderer_uses_compact_summary_by_default() {
     let output = renderer.render_terminal_output(&context, &result_bundle);
 
     assert!(output.contains("FSE Benchmark Summary"));
+    assert!(output.contains("FSE execution: serial"));
+    assert!(output.contains("FSE parallel min leaves"));
     assert!(output.contains("Result"));
     assert!(output.contains("Best relative result"));
     assert!(output.contains("Diagnosis"));
@@ -221,6 +250,18 @@ fn benchmark_application_renderer_uses_compact_summary_by_default() {
 }
 
 #[test]
+fn benchmark_application_renderer_renders_parallel_mode_in_compact_summary() {
+    let context = BenchmarkApplicationContext::from_cli_config(parallel_baseline_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert!(output.contains("FSE execution: parallel"));
+    assert!(output.contains("FSE parallel min leaves: 2"));
+}
+
+#[test]
 fn benchmark_application_renderer_uses_detailed_output_for_debug_report() {
     let context =
         BenchmarkApplicationContext::from_cli_config(all_exact_baselines_debug_cli_config());
@@ -230,6 +271,8 @@ fn benchmark_application_renderer_uses_detailed_output_for_debug_report() {
     let output = renderer.render_terminal_output(&context, &result_bundle);
 
     assert!(output.contains("FSE benchmark suite"));
+    assert!(output.contains("FSE execution: serial"));
+    assert!(output.contains("FSE parallel min leaves"));
     assert!(output.contains("Workload: cluster_range_000"));
     assert!(output.contains("Selectivity Bucket Summary"));
 }
@@ -244,6 +287,7 @@ fn benchmark_application_renderer_renders_single_baseline_summary_output() {
 
     assert!(!output.is_empty());
     assert!(output.contains("FSE Benchmark Summary"));
+    assert!(output.contains("FSE execution: serial"));
     assert!(output.contains("flat_scan"));
     assert!(!output.contains("Workload: cluster_range_000"));
     assert!(!output.contains("Selectivity Bucket Summary"));
@@ -292,6 +336,7 @@ fn benchmark_application_runs_single_baseline_configuration() {
 
     assert!(!output.terminal_output.is_empty());
     assert!(output.terminal_output.contains("FSE Benchmark Summary"));
+    assert!(output.terminal_output.contains("FSE execution: serial"));
     assert!(output.terminal_output.contains("flat_scan"));
     assert!(output.csv_status_lines.is_empty());
 }
@@ -302,6 +347,7 @@ fn benchmark_application_runs_all_exact_baselines_configuration() {
 
     assert!(!output.terminal_output.is_empty());
     assert!(output.terminal_output.contains("FSE Benchmark Summary"));
+    assert!(output.terminal_output.contains("FSE execution: serial"));
     assert!(output.terminal_output.contains("flat_scan"));
     assert!(output.terminal_output.contains("kd_tree"));
     assert!(output.terminal_output.contains("r_tree"));
@@ -314,6 +360,7 @@ fn benchmark_application_runs_debug_report_configuration() {
 
     assert!(!output.terminal_output.is_empty());
     assert!(output.terminal_output.contains("FSE benchmark suite"));
+    assert!(output.terminal_output.contains("FSE execution: serial"));
     assert!(
         output
             .terminal_output
@@ -379,6 +426,17 @@ impl Write for ByteLimitedWriter {
 
 fn single_baseline_cli_config() -> BenchmarkCliConfig {
     benchmark_cli_config(BenchmarkBaselineSet::Single(BaselineKind::FlatScan))
+}
+
+fn parallel_baseline_cli_config() -> BenchmarkCliConfig {
+    let mut config = benchmark_cli_config(BenchmarkBaselineSet::Single(BaselineKind::FlatScan));
+
+    config.suite_config = config
+        .suite_config
+        .with_fse_execution_mode(QueryExecutionMode::Parallel)
+        .with_fse_parallel_min_retained_leaves(2);
+
+    config
 }
 
 fn single_baseline_debug_cli_config() -> BenchmarkCliConfig {

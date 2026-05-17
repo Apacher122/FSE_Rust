@@ -90,6 +90,12 @@ pub struct BenchmarkCsvMetadata {
     /// Maximum FSE build depth used during construction.
     pub max_depth: usize,
 
+    /// FSE query execution mode used by the benchmark run.
+    pub fse_execution_mode: String,
+
+    /// Minimum retained-leaf count required before parallel FSE mode uses Rayon.
+    pub fse_parallel_min_retained_leaves: usize,
+
     /// Whether all index validation checks passed.
     pub index_valid: bool,
 
@@ -114,6 +120,8 @@ impl BenchmarkCsvMetadata {
             timing_iterations: overview.timing_iterations,
             max_leaf_size: overview.max_leaf_size,
             max_depth: overview.max_depth,
+            fse_execution_mode: overview.fse_execution_mode_name().to_string(),
+            fse_parallel_min_retained_leaves: overview.fse_parallel_min_retained_leaves,
             index_valid: overview.validation.is_valid(),
             leaf_cardinality_valid: overview.validation.leaf_cardinality_valid,
             hierarchy_topology_valid: overview.validation.hierarchy_topology_valid,
@@ -290,6 +298,8 @@ fn metadata_header_fields() -> Vec<&'static str> {
         "timing_iterations",
         "max_leaf_size",
         "max_depth",
+        "fse_execution_mode",
+        "fse_parallel_min_retained_leaves",
         "index_valid",
         "leaf_cardinality_valid",
         "hierarchy_topology_valid",
@@ -306,6 +316,8 @@ fn metadata_value_fields(metadata: &BenchmarkCsvMetadata) -> Vec<String> {
         metadata.timing_iterations.to_string(),
         metadata.max_leaf_size.to_string(),
         metadata.max_depth.to_string(),
+        metadata.fse_execution_mode.clone(),
+        metadata.fse_parallel_min_retained_leaves.to_string(),
         metadata.index_valid.to_string(),
         metadata.leaf_cardinality_valid.to_string(),
         metadata.hierarchy_topology_valid.to_string(),
