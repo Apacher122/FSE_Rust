@@ -2,6 +2,43 @@
 
 use crate::math::{BoundingBox, Scalar, Vector};
 
+/// Geometric relationship between a query region and a bounding box.
+///
+/// # Runtime Role
+///
+/// Traversal needs to know whether a node can be pruned, retained as fully
+/// covered, or descended into as a partial overlap. Keeping this as one enum
+/// lets traversal get that answer from one bounds pass instead of calling
+/// separate containment and intersection checks.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum QueryBoundsClassification {
+    /// The query and bounds do not overlap.
+    Disjoint,
+
+    /// The query intersects the bounds but does not fully contain them.
+    Partial,
+
+    /// The query fully contains the bounds.
+    Covered,
+}
+
+impl QueryBoundsClassification {
+    /// Returns true when the bounds can be safely pruned.
+    pub fn is_disjoint(self) -> bool {
+        matches!(self, Self::Disjoint)
+    }
+
+    /// Returns true when the bounds overlap but still need exact handling below.
+    pub fn is_partial(self) -> bool {
+        matches!(self, Self::Partial)
+    }
+
+    /// Returns true when the query fully contains the bounds.
+    pub fn is_covered(self) -> bool {
+        matches!(self, Self::Covered)
+    }
+}
+
 /// Axis-aligned query region.
 ///
 /// # Runtime Role
@@ -58,10 +95,53 @@ impl QueryRegion {
     /// # Notes
     ///
     /// This allocates a new bounding box. Hot traversal code should prefer
-    /// [`QueryRegion::intersects_bounds`] when it only needs an intersection
-    /// check.
+    /// [`QueryRegion::classify_bounds`] when it needs traversal classification
+    /// and [`QueryRegion::intersects_bounds`] when it only needs intersection.
     pub fn as_bounds(&self) -> BoundingBox {
         BoundingBox::new(self.min.clone(), self.max.clone())
+    }
+
+    /// Classifies the relationship between this query and a bounding box.
+    ///
+    /// # Runtime Role
+    ///
+    /// This is the traversal hot-path bounds test. It combines containment and
+    /// intersection into one dimensional pass:
+    ///
+    /// - `Disjoint` means the subtree can be pruned.
+    /// - `Covered` means the subtree can be retained without further bounds math.
+    /// - `Partial` means traversal must continue or the leaf must use exact row
+    ///   evaluation.
+    ///
+    /// Boundary contact counts as intersection.
+    pub fn classify_bounds(&self, bounds: &BoundingBox) -> QueryBoundsClassification {
+        if self.dimensions() != bounds.dimensions() {
+            return QueryBoundsClassification::Disjoint;
+        }
+
+        let mut fully_contains_bounds = true;
+
+        // one pass answers both questions now
+        for dimension in 0..self.dimensions() {
+            let query_min = self.min[dimension];
+            let query_max = self.max[dimension];
+            let bounds_min = bounds.min[dimension];
+            let bounds_max = bounds.max[dimension];
+
+            if query_max < bounds_min || query_min > bounds_max {
+                return QueryBoundsClassification::Disjoint;
+            }
+
+            if query_min > bounds_min || query_max < bounds_max {
+                fully_contains_bounds = false;
+            }
+        }
+
+        if fully_contains_bounds {
+            QueryBoundsClassification::Covered
+        } else {
+            QueryBoundsClassification::Partial
+        }
     }
 
     /// Returns true when this query fully contains a bounding box.
@@ -72,17 +152,7 @@ impl QueryRegion {
     /// query fully contains a leaf bounding box, every reconstructed row from
     /// that leaf is guaranteed to satisfy the query.
     pub fn contains_bounds(&self, bounds: &BoundingBox) -> bool {
-        if self.dimensions() != bounds.dimensions() {
-            return false;
-        }
-
-        self.min
-            .iter()
-            .zip(&self.max)
-            .zip(bounds.min.iter().zip(&bounds.max))
-            .all(|((query_min, query_max), (bounds_min, bounds_max))| {
-                query_min <= bounds_min && query_max >= bounds_max
-            })
+        self.classify_bounds(bounds).is_covered()
     }
 
     /// Returns true when this query intersects a bounding box.
@@ -95,18 +165,7 @@ impl QueryRegion {
     ///
     /// Boundary contact counts as intersection.
     pub fn intersects_bounds(&self, bounds: &BoundingBox) -> bool {
-        if self.dimensions() != bounds.dimensions() {
-            return false;
-        }
-
-        // same overlap test just without building a query box
-        self.min
-            .iter()
-            .zip(&self.max)
-            .zip(bounds.min.iter().zip(&bounds.max))
-            .all(|((query_min, query_max), (bounds_min, bounds_max))| {
-                query_max >= bounds_min && query_min <= bounds_max
-            })
+        !self.classify_bounds(bounds).is_disjoint()
     }
 
     /// Returns true when a coordinate slice lies inside the query region.
