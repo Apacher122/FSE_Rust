@@ -354,6 +354,7 @@ fn merge_retained_leaf_report_updates_stats_and_extends_results() {
     let leaf_report = RetainedLeafExecutionReport {
         results: vec![Vector::new(vec![1.0, 1.0]), Vector::new(vec![2.0, 2.0])],
         reconstructed_records: 4,
+        predicate_evaluated_records: 4,
         matched_records: 2,
     };
 

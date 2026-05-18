@@ -1,9 +1,9 @@
 use crate::math::{BoundingBox, ResidualBlock, Vector};
-use crate::query::QueryRegion;
 use crate::query::execution::{
-    RetainedLeafExecutionReport, execute_retained_leaves, merge_retained_leaf_reports_in_order,
-    validate_retained_leaf_ids,
+    RetainedLeafExecutionReport, execute_classified_retained_leaves_serial,
+    execute_retained_leaves, merge_retained_leaf_reports_in_order, validate_retained_leaf_ids,
 };
+use crate::query::{QueryRegion, RetainedLeaf};
 use crate::storage::{FSEIndex, PartitionNode};
 
 #[test]
@@ -18,7 +18,49 @@ fn retained_leaf_batch_execution_returns_empty_report_when_no_leaves_are_retaine
 
     assert!(report.results.is_empty());
     assert_eq!(report.reconstructed_records, 0);
+    assert_eq!(report.predicate_evaluated_records, 0);
     assert_eq!(report.matched_records, 0);
+}
+
+#[test]
+fn classified_serial_execution_streams_results_into_one_batch_report() {
+    let root = PartitionNode::with_cardinality(
+        0,
+        vec![5.0, 5.0],
+        BoundingBox::new(vec![0.0, 0.0], vec![10.0, 10.0]),
+        ResidualBlock::new(vec![Vec::new(), Vec::new()]),
+        4,
+        vec![1, 2],
+        false,
+    );
+
+    let left_child = PartitionNode::from_points(
+        1,
+        &[Vector::new(vec![0.0, 0.0]), Vector::new(vec![2.0, 2.0])],
+    );
+
+    let right_child = PartitionNode::from_points(
+        2,
+        &[Vector::new(vec![8.0, 8.0]), Vector::new(vec![10.0, 10.0])],
+    );
+
+    let index = FSEIndex::new(vec![root, left_child, right_child], 0);
+    let query = QueryRegion::new(vec![0.0, 0.0], vec![8.0, 8.0]);
+    let retained_leaves = vec![RetainedLeaf::covered(1), RetainedLeaf::partial(2)];
+
+    let report = execute_classified_retained_leaves_serial(&index, &query, &retained_leaves);
+
+    assert_eq!(
+        report.results,
+        vec![
+            Vector::new(vec![0.0, 0.0]),
+            Vector::new(vec![2.0, 2.0]),
+            Vector::new(vec![8.0, 8.0]),
+        ]
+    );
+    assert_eq!(report.reconstructed_records, 4);
+    assert_eq!(report.predicate_evaluated_records, 2);
+    assert_eq!(report.matched_records, 3);
 }
 
 #[test]
@@ -50,9 +92,10 @@ fn retained_leaf_batch_execution_merges_results_from_multiple_leaves() {
 
     assert_eq!(
         report.results,
-        vec![Vector::new(vec![2.0, 2.0]), Vector::new(vec![8.0, 8.0]),]
+        vec![Vector::new(vec![2.0, 2.0]), Vector::new(vec![8.0, 8.0])]
     );
     assert_eq!(report.reconstructed_records, 4);
+    assert_eq!(report.predicate_evaluated_records, 4);
     assert_eq!(report.matched_records, 2);
 }
 
@@ -85,9 +128,10 @@ fn retained_leaf_batch_execution_preserves_supplied_retained_leaf_order() {
 
     assert_eq!(
         report.results,
-        vec![Vector::new(vec![8.0, 8.0]), Vector::new(vec![2.0, 2.0]),]
+        vec![Vector::new(vec![8.0, 8.0]), Vector::new(vec![2.0, 2.0])]
     );
     assert_eq!(report.reconstructed_records, 4);
+    assert_eq!(report.predicate_evaluated_records, 4);
     assert_eq!(report.matched_records, 2);
 }
 
@@ -120,6 +164,7 @@ fn retained_leaf_batch_execution_filters_false_positive_retained_leaves() {
 
     assert!(report.results.is_empty());
     assert_eq!(report.reconstructed_records, 2);
+    assert_eq!(report.predicate_evaluated_records, 2);
     assert_eq!(report.matched_records, 0);
 }
 
@@ -128,12 +173,14 @@ fn retained_leaf_reports_merge_in_supplied_order() {
     let first_report = RetainedLeafExecutionReport {
         results: vec![Vector::new(vec![2.0, 2.0])],
         reconstructed_records: 2,
+        predicate_evaluated_records: 2,
         matched_records: 1,
     };
 
     let second_report = RetainedLeafExecutionReport {
         results: vec![Vector::new(vec![8.0, 8.0]), Vector::new(vec![10.0, 10.0])],
         reconstructed_records: 2,
+        predicate_evaluated_records: 0,
         matched_records: 2,
     };
 
@@ -148,6 +195,7 @@ fn retained_leaf_reports_merge_in_supplied_order() {
         ]
     );
     assert_eq!(report.reconstructed_records, 4);
+    assert_eq!(report.predicate_evaluated_records, 2);
     assert_eq!(report.matched_records, 3);
 }
 
@@ -157,6 +205,7 @@ fn retained_leaf_reports_merge_empty_report_list() {
 
     assert!(report.results.is_empty());
     assert_eq!(report.reconstructed_records, 0);
+    assert_eq!(report.predicate_evaluated_records, 0);
     assert_eq!(report.matched_records, 0);
 }
 

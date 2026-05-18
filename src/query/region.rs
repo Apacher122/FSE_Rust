@@ -54,8 +54,59 @@ impl QueryRegion {
     ///
     /// This allows query-box intersection to reuse the same bounded-region logic
     /// used by partition metadata.
+    ///
+    /// # Notes
+    ///
+    /// This allocates a new bounding box. Hot traversal code should prefer
+    /// [`QueryRegion::intersects_bounds`] when it only needs an intersection
+    /// check.
     pub fn as_bounds(&self) -> BoundingBox {
         BoundingBox::new(self.min.clone(), self.max.clone())
+    }
+
+    /// Returns true when this query fully contains a bounding box.
+    ///
+    /// # Runtime Role
+    ///
+    /// This method supports retained-leaf classification during traversal. If a
+    /// query fully contains a leaf bounding box, every reconstructed row from
+    /// that leaf is guaranteed to satisfy the query.
+    pub fn contains_bounds(&self, bounds: &BoundingBox) -> bool {
+        if self.dimensions() != bounds.dimensions() {
+            return false;
+        }
+
+        self.min
+            .iter()
+            .zip(&self.max)
+            .zip(bounds.min.iter().zip(&bounds.max))
+            .all(|((query_min, query_max), (bounds_min, bounds_max))| {
+                query_min <= bounds_min && query_max >= bounds_max
+            })
+    }
+
+    /// Returns true when this query intersects a bounding box.
+    ///
+    /// # Runtime Role
+    ///
+    /// This method supports allocation-free metadata traversal. It checks query
+    /// and node-bound overlap directly without first materializing the query as
+    /// a temporary `BoundingBox`.
+    ///
+    /// Boundary contact counts as intersection.
+    pub fn intersects_bounds(&self, bounds: &BoundingBox) -> bool {
+        if self.dimensions() != bounds.dimensions() {
+            return false;
+        }
+
+        // same overlap test just without building a query box
+        self.min
+            .iter()
+            .zip(&self.max)
+            .zip(bounds.min.iter().zip(&bounds.max))
+            .all(|((query_min, query_max), (bounds_min, bounds_max))| {
+                query_max >= bounds_min && query_min <= bounds_max
+            })
     }
 
     /// Returns true when a coordinate slice lies inside the query region.

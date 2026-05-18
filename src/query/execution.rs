@@ -2,8 +2,12 @@
 
 use rayon::prelude::*;
 
+#[cfg(test)]
+use crate::math::BoundingBox;
 use crate::math::{Scalar, Vector};
-use crate::query::{QueryRegion, reconstruct_row_into, traverse_with_stats};
+use crate::query::{
+    QueryRegion, RetainedLeaf, RetainedLeafCoverage, reconstruct_row_into, traverse_with_stats,
+};
 use crate::storage::{FSEIndex, PartitionNode};
 
 /// Maximum number of result slots preallocated before exact evaluation.
@@ -181,6 +185,15 @@ pub(crate) struct RetainedLeafExecutionReport {
     /// Number of records reconstructed from this retained leaf.
     pub(crate) reconstructed_records: usize,
 
+    /// Number of records that required exact predicate checks.
+    ///
+    /// # Runtime Role
+    ///
+    /// This field is test-only because current benchmark accounting does not
+    /// expose predicate-check counts yet.
+    #[cfg(test)]
+    pub(crate) predicate_evaluated_records: usize,
+
     /// Number of records that matched the exact query predicate.
     pub(crate) matched_records: usize,
 }
@@ -200,8 +213,35 @@ pub(crate) struct RetainedLeafBatchExecutionReport {
     /// Number of records reconstructed across retained leaves.
     pub(crate) reconstructed_records: usize,
 
+    /// Number of records that required exact predicate checks.
+    ///
+    /// # Runtime Role
+    ///
+    /// This field is test-only until predicate-check counts become part of
+    /// benchmark-facing execution stats.
+    #[cfg(test)]
+    pub(crate) predicate_evaluated_records: usize,
+
     /// Number of records that matched the exact query predicate.
     pub(crate) matched_records: usize,
+}
+
+impl RetainedLeafBatchExecutionReport {
+    /// Creates an empty batch report with bounded result capacity.
+    ///
+    /// # Runtime Role
+    ///
+    /// Serial retained-leaf execution streams directly into this report instead
+    /// of allocating one local result vector per leaf.
+    pub(crate) fn with_candidate_capacity(candidate_count: usize) -> Self {
+        Self {
+            results: Vec::with_capacity(result_capacity_hint(candidate_count)),
+            reconstructed_records: 0,
+            #[cfg(test)]
+            predicate_evaluated_records: 0,
+            matched_records: 0,
+        }
+    }
 }
 
 /// Executes a query against an FSE index.
@@ -291,6 +331,17 @@ pub fn execute_query_with_stats_and_options(
     query: &QueryRegion,
     options: QueryExecutionOptions,
 ) -> QueryExecutionReport {
+    assert_eq!(
+        index.dimensions,
+        query.dimensions(),
+        "query dimensionality must match index dimensionality"
+    );
+
+    if query.contains_bounds(&index.root_node().bounds) {
+        // root coverage means the whole index is already proven in range
+        return execute_fully_covered_index_with_options(index, query, options);
+    }
+
     let traversal_report = traverse_with_stats(index, query);
 
     let mut stats = QueryExecutionStats {
@@ -302,10 +353,10 @@ pub fn execute_query_with_stats_and_options(
         ..QueryExecutionStats::default()
     };
 
-    let batch_report = execute_retained_leaves_with_options(
+    let batch_report = execute_classified_retained_leaves_with_options(
         index,
         query,
-        &traversal_report.retained_leaf_ids,
+        &traversal_report.retained_leaves,
         options,
     );
 
@@ -324,12 +375,125 @@ pub fn execute_query_with_stats_and_options(
     }
 }
 
+/// Executes a query that fully contains the root bounding region.
+///
+/// # Runtime Role
+///
+/// This is the full-index coverage fast path. It bypasses normal traversal
+/// because the root bound already proves every indexed record satisfies the
+/// query.
+///
+/// Serial mode streams all leaf rows directly into one output buffer. Parallel
+/// mode still uses the classified retained-leaf execution path so the requested
+/// execution strategy is preserved for larger datasets.
+pub(crate) fn execute_fully_covered_index_with_options(
+    index: &FSEIndex,
+    query: &QueryRegion,
+    options: QueryExecutionOptions,
+) -> QueryExecutionReport {
+    let total_leaves = leaf_count(index);
+    let total_records = index.root_node().cardinality;
+
+    let batch_report = match options.mode {
+        QueryExecutionMode::Serial => execute_fully_covered_index_serial(index),
+        QueryExecutionMode::Parallel => {
+            let retained_leaves = fully_covered_retained_leaves(index);
+            execute_classified_retained_leaves_with_options(index, query, &retained_leaves, options)
+        }
+    };
+
+    let stats = QueryExecutionStats {
+        visited_nodes: 1,
+        total_leaves,
+        retained_leaves: total_leaves,
+        retained_leaf_ratio: if total_leaves == 0 { 0.0 } else { 1.0 },
+        total_records,
+        reconstructed_records: batch_report.reconstructed_records,
+        matched_records: batch_report.matched_records,
+        candidate_ratio: if total_records == 0 {
+            0.0
+        } else {
+            batch_report.reconstructed_records as Scalar / total_records as Scalar
+        },
+    };
+
+    QueryExecutionReport {
+        results: batch_report.results,
+        stats,
+    }
+}
+
+/// Executes a fully covered index using direct serial leaf streaming.
+///
+/// # Runtime Role
+///
+/// This function skips traversal-produced retained-leaf vectors entirely and
+/// reconstructs every leaf row into one batch result.
+///
+/// # Panics
+///
+/// Panics when the sum of reconstructed leaf rows does not match root
+/// cardinality in debug builds.
+pub(crate) fn execute_fully_covered_index_serial(
+    index: &FSEIndex,
+) -> RetainedLeafBatchExecutionReport {
+    let candidate_count = index.root_node().cardinality;
+    let mut batch_report =
+        RetainedLeafBatchExecutionReport::with_candidate_capacity(candidate_count);
+    let mut reconstructed_values = Vec::with_capacity(index.dimensions);
+
+    // one buffer for the whole full index path
+    for node in index.nodes.iter().filter(|node| node.is_leaf) {
+        append_covered_retained_leaf_results(node, &mut batch_report, &mut reconstructed_values);
+    }
+
+    debug_assert_eq!(
+        batch_report.reconstructed_records, candidate_count,
+        "fully covered index reconstruction should match root cardinality"
+    );
+
+    batch_report
+}
+
+/// Returns retained-leaf records for every leaf in the index.
+///
+/// # Runtime Role
+///
+/// Parallel fully covered queries still need retained-leaf work units. Every
+/// leaf is classified as covered because root containment proves all descendants
+/// are covered.
+pub(crate) fn fully_covered_retained_leaves(index: &FSEIndex) -> Vec<RetainedLeaf> {
+    index
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(node_id, node)| {
+            if node.is_leaf {
+                Some(RetainedLeaf::covered(node_id))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Returns the number of leaf partitions in an index.
+pub(crate) fn leaf_count(index: &FSEIndex) -> usize {
+    index.nodes.iter().filter(|node| node.is_leaf).count()
+}
+
 /// Executes Stage II and Stage III for all retained leaves using default options.
 ///
 /// # Runtime Role
 ///
-/// This helper preserves the default retained-leaf batch API while allowing the
-/// execution mode to be selected through higher-level query options.
+/// This helper preserves the default retained-leaf batch API while classifying
+/// retained leaf identifiers before execution.
+///
+/// # Notes
+///
+/// This exists for internal tests that still exercise the id-based retained-leaf
+/// API. Normal query execution consumes traversal-classified retained leaves.
+#[cfg(test)]
 pub(crate) fn execute_retained_leaves(
     index: &FSEIndex,
     query: &QueryRegion,
@@ -343,43 +507,46 @@ pub(crate) fn execute_retained_leaves(
     )
 }
 
-/// Executes Stage II and Stage III for all retained leaves using explicit options.
+/// Executes Stage II and Stage III for retained leaf identifiers using explicit options.
 ///
 /// # Runtime Role
 ///
-/// This helper dispatches retained-partition execution based on the selected
-/// execution mode. Parallel mode falls back to serial execution when the retained
-/// leaf batch is smaller than the configured threshold.
-///
-/// # Formal Reference
-///
-/// This performs the retained-partition portion of:
-///
-/// `Reconstruction -> Logic -> Merge`.
-///
-/// The function assumes geometric pruning has already produced the retained
-/// leaf identifiers.
-///
-/// # Panics
-///
-/// Panics if any retained node identifier is out of range or points to a
-/// non-leaf node.
+/// This compatibility helper accepts retained leaf identifiers and performs the
+/// coverage classification needed by the newer retained-leaf execution path.
+#[cfg(test)]
 pub(crate) fn execute_retained_leaves_with_options(
     index: &FSEIndex,
     query: &QueryRegion,
     retained_leaf_ids: &[usize],
     options: QueryExecutionOptions,
 ) -> RetainedLeafBatchExecutionReport {
+    let retained_leaves = classify_retained_leaf_ids(index, query, retained_leaf_ids);
+
+    execute_classified_retained_leaves_with_options(index, query, &retained_leaves, options)
+}
+
+/// Executes already classified retained leaves using explicit options.
+///
+/// # Runtime Role
+///
+/// Query execution uses this path directly because traversal already knows
+/// whether each retained leaf is covered or partial.
+pub(crate) fn execute_classified_retained_leaves_with_options(
+    index: &FSEIndex,
+    query: &QueryRegion,
+    retained_leaves: &[RetainedLeaf],
+    options: QueryExecutionOptions,
+) -> RetainedLeafBatchExecutionReport {
     match options.mode {
         QueryExecutionMode::Serial => {
-            execute_retained_leaves_serial(index, query, retained_leaf_ids)
+            execute_classified_retained_leaves_serial(index, query, retained_leaves)
         }
         QueryExecutionMode::Parallel => {
-            if should_execute_retained_leaves_in_parallel(options, retained_leaf_ids.len()) {
-                execute_retained_leaves_parallel(index, query, retained_leaf_ids)
+            if should_execute_retained_leaves_in_parallel(options, retained_leaves.len()) {
+                execute_classified_retained_leaves_parallel(index, query, retained_leaves)
             } else {
                 // rayon is not free
-                execute_retained_leaves_serial(index, query, retained_leaf_ids)
+                execute_classified_retained_leaves_serial(index, query, retained_leaves)
             }
         }
     }
@@ -399,33 +566,53 @@ pub(crate) fn should_execute_retained_leaves_in_parallel(
         && retained_leaf_count >= options.parallel_min_retained_leaves
 }
 
-/// Executes retained leaves using deterministic serial iteration.
+/// Executes retained leaf identifiers using deterministic serial iteration.
 ///
 /// # Runtime Role
 ///
-/// This is the deterministic single-threaded retained-leaf execution path.
-///
-/// # Panics
-///
-/// Panics if any retained node identifier is out of range or points to a
-/// non-leaf node.
+/// This preserves the older test/helper API by classifying leaf ids before
+/// dispatching to the classified retained-leaf execution path.
+#[cfg(test)]
 pub(crate) fn execute_retained_leaves_serial(
     index: &FSEIndex,
     query: &QueryRegion,
     retained_leaf_ids: &[usize],
 ) -> RetainedLeafBatchExecutionReport {
-    validate_retained_leaf_ids(index, retained_leaf_ids);
+    let retained_leaves = classify_retained_leaf_ids(index, query, retained_leaf_ids);
 
-    let candidate_count = retained_candidate_count(index, retained_leaf_ids);
-    let mut leaf_reports = Vec::with_capacity(retained_leaf_ids.len());
+    execute_classified_retained_leaves_serial(index, query, &retained_leaves)
+}
 
-    // still useful as the boring baseline
-    for node_id in retained_leaf_ids {
-        let node = &index.nodes[*node_id];
-        leaf_reports.push(execute_retained_leaf(node, query, index.dimensions));
+/// Executes classified retained leaves using deterministic serial iteration.
+///
+/// # Runtime Role
+///
+/// This is the deterministic single-threaded retained-leaf execution path. It
+/// streams all retained rows into one batch report and avoids per-leaf result
+/// vectors on the serial path.
+pub(crate) fn execute_classified_retained_leaves_serial(
+    index: &FSEIndex,
+    query: &QueryRegion,
+    retained_leaves: &[RetainedLeaf],
+) -> RetainedLeafBatchExecutionReport {
+    validate_retained_leaves(index, retained_leaves);
+
+    let candidate_count = classified_retained_candidate_count(index, retained_leaves);
+    let mut batch_report =
+        RetainedLeafBatchExecutionReport::with_candidate_capacity(candidate_count);
+    let mut reconstructed_values = Vec::with_capacity(index.dimensions);
+
+    // one scratch buffer for every retained leaf in this serial query
+    for retained_leaf in retained_leaves {
+        let node = &index.nodes[retained_leaf.node_id];
+        execute_retained_leaf_into_batch_report(
+            node,
+            query,
+            retained_leaf.coverage,
+            &mut batch_report,
+            &mut reconstructed_values,
+        );
     }
-
-    let batch_report = merge_retained_leaf_reports_in_order(leaf_reports, candidate_count);
 
     debug_assert_eq!(
         batch_report.reconstructed_records, candidate_count,
@@ -435,43 +622,52 @@ pub(crate) fn execute_retained_leaves_serial(
     batch_report
 }
 
-/// Executes retained leaves using Rayon-backed parallel iteration.
+/// Executes retained leaf identifiers using Rayon-backed parallel iteration.
+///
+/// # Runtime Role
+///
+/// This preserves the older test/helper API by classifying leaf ids before
+/// dispatching to the classified retained-leaf execution path.
+#[cfg(test)]
+pub(crate) fn execute_retained_leaves_parallel(
+    index: &FSEIndex,
+    query: &QueryRegion,
+    retained_leaf_ids: &[usize],
+) -> RetainedLeafBatchExecutionReport {
+    let retained_leaves = classify_retained_leaf_ids(index, query, retained_leaf_ids);
+
+    execute_classified_retained_leaves_parallel(index, query, &retained_leaves)
+}
+
+/// Executes classified retained leaves using Rayon-backed parallel iteration.
 ///
 /// # Runtime Role
 ///
 /// This is the parallel retained-partition execution path. Each retained leaf
 /// reconstructs and evaluates its own rows independently. The resulting reports
 /// are collected in retained-leaf order and then merged deterministically.
-///
-/// # Formal Reference
-///
-/// This implements the online query parallelism shape:
-///
-/// `retained partition -> reconstruct -> evaluate -> merge`.
-///
-/// The merge remains deterministic and does not change exact query semantics.
-///
-/// # Panics
-///
-/// Panics if any retained node identifier is out of range or points to a
-/// non-leaf node.
-pub(crate) fn execute_retained_leaves_parallel(
+pub(crate) fn execute_classified_retained_leaves_parallel(
     index: &FSEIndex,
     query: &QueryRegion,
-    retained_leaf_ids: &[usize],
+    retained_leaves: &[RetainedLeaf],
 ) -> RetainedLeafBatchExecutionReport {
-    validate_retained_leaf_ids(index, retained_leaf_ids);
+    validate_retained_leaves(index, retained_leaves);
 
-    let candidate_count = retained_candidate_count(index, retained_leaf_ids);
+    let candidate_count = classified_retained_candidate_count(index, retained_leaves);
 
     // rayon collect preserves order for this indexed slice iterator
-    let leaf_reports: Vec<RetainedLeafExecutionReport> = retained_leaf_ids
+    let leaf_reports: Vec<RetainedLeafExecutionReport> = retained_leaves
         .par_iter()
-        .map(|node_id| {
-            let node = &index.nodes[*node_id];
+        .map(|retained_leaf| {
+            let node = &index.nodes[retained_leaf.node_id];
 
-            // finally real parallel retained leaf work
-            execute_retained_leaf(node, query, index.dimensions)
+            // parallel still needs leaf local buffers
+            execute_retained_leaf_with_coverage(
+                node,
+                query,
+                index.dimensions,
+                retained_leaf.coverage,
+            )
         })
         .collect();
 
@@ -483,6 +679,34 @@ pub(crate) fn execute_retained_leaves_parallel(
     );
 
     batch_report
+}
+
+/// Converts retained leaf identifiers into traversal-style retained leaf records.
+///
+/// # Runtime Role
+///
+/// This helper keeps older internal tests and helpers working while allowing
+/// normal query execution to consume classified traversal output directly.
+#[cfg(test)]
+pub(crate) fn classify_retained_leaf_ids(
+    index: &FSEIndex,
+    query: &QueryRegion,
+    retained_leaf_ids: &[usize],
+) -> Vec<RetainedLeaf> {
+    validate_retained_leaf_ids(index, retained_leaf_ids);
+
+    retained_leaf_ids
+        .iter()
+        .map(|node_id| {
+            let node = &index.nodes[*node_id];
+
+            if query.contains_bounds(&node.bounds) {
+                RetainedLeaf::covered(*node_id)
+            } else {
+                RetainedLeaf::partial(*node_id)
+            }
+        })
+        .collect()
 }
 
 /// Validates that retained node identifiers reference leaf partitions.
@@ -498,6 +722,7 @@ pub(crate) fn execute_retained_leaves_parallel(
 ///
 /// Panics when a retained node identifier is outside the index or references an
 /// internal partition.
+#[cfg(test)]
 pub(crate) fn validate_retained_leaf_ids(index: &FSEIndex, retained_leaf_ids: &[usize]) {
     // dont let later paralel work inherit sketchy ids
     for node_id in retained_leaf_ids {
@@ -512,53 +737,276 @@ pub(crate) fn validate_retained_leaf_ids(index: &FSEIndex, retained_leaf_ids: &[
     }
 }
 
+/// Validates that retained leaf records reference leaf partitions.
+///
+/// # Runtime Role
+///
+/// Classified traversal output should already be valid, but this keeps execution
+/// helpers safe when tests or future callers construct retained leaves directly.
+pub(crate) fn validate_retained_leaves(index: &FSEIndex, retained_leaves: &[RetainedLeaf]) {
+    for retained_leaf in retained_leaves {
+        let Some(node) = index.nodes.get(retained_leaf.node_id) else {
+            panic!(
+                "retained leaf id {} is outside index node range",
+                retained_leaf.node_id
+            );
+        };
+
+        assert!(
+            node.is_leaf,
+            "retained leaf id {} must reference a leaf partition",
+            retained_leaf.node_id
+        );
+    }
+}
+
 /// Executes Stage II and Stage III for one retained leaf partition.
 ///
 /// # Runtime Role
 ///
-/// This helper reconstructs candidate records from one retained leaf and applies
-/// the exact query predicate immediately after each row is lifted back into
-/// coordinate space.
-///
-/// # Formal Reference
-///
-/// This implements the per-leaf portion of:
-///
-/// `Reconstruction -> Logic`.
-///
-/// The function assumes geometric pruning has already retained the leaf.
+/// This compatibility helper classifies the retained leaf locally. Normal query
+/// execution should prefer traversal-provided classification.
 ///
 /// # Panics
 ///
 /// Panics when `node` is not a leaf partition.
+#[cfg(test)]
 pub(crate) fn execute_retained_leaf(
     node: &PartitionNode,
     query: &QueryRegion,
     dimensions: usize,
+) -> RetainedLeafExecutionReport {
+    let coverage = if query.contains_bounds(&node.bounds) {
+        RetainedLeafCoverage::Covered
+    } else {
+        RetainedLeafCoverage::Partial
+    };
+
+    execute_retained_leaf_with_coverage(node, query, dimensions, coverage)
+}
+
+/// Executes Stage II and Stage III for one retained leaf with known coverage.
+///
+/// # Runtime Role
+///
+/// The coverage classification comes from traversal in the normal query path.
+/// Covered leaves skip exact per-row predicate checks. Partial leaves preserve
+/// the exact predicate path.
+pub(crate) fn execute_retained_leaf_with_coverage(
+    node: &PartitionNode,
+    query: &QueryRegion,
+    dimensions: usize,
+    coverage: RetainedLeafCoverage,
 ) -> RetainedLeafExecutionReport {
     assert!(
         node.is_leaf,
         "retained leaf execution helper requires a leaf node"
     );
 
-    let row_count = node.residuals.cardinality();
-    let mut results = Vec::with_capacity(result_capacity_hint(row_count));
+    let mut batch_report =
+        RetainedLeafBatchExecutionReport::with_candidate_capacity(node.residuals.cardinality());
     let mut reconstructed_values = Vec::with_capacity(dimensions);
 
-    // local results get a sane head start now too
-    for row in 0..row_count {
-        reconstruct_row_into(node, row, &mut reconstructed_values);
+    execute_retained_leaf_into_batch_report(
+        node,
+        query,
+        coverage,
+        &mut batch_report,
+        &mut reconstructed_values,
+    );
 
-        if query.contains_values(&reconstructed_values) {
-            results.push(Vector::new(reconstructed_values.clone()));
+    RetainedLeafExecutionReport {
+        results: batch_report.results,
+        reconstructed_records: batch_report.reconstructed_records,
+        #[cfg(test)]
+        predicate_evaluated_records: batch_report.predicate_evaluated_records,
+        matched_records: batch_report.matched_records,
+    }
+}
+
+/// Streams one retained leaf into an existing batch report.
+///
+/// # Runtime Role
+///
+/// This is the serial execution hot path. It preserves retained-leaf ordering
+/// while avoiding a temporary result vector and merge step for each leaf.
+pub(crate) fn execute_retained_leaf_into_batch_report(
+    node: &PartitionNode,
+    query: &QueryRegion,
+    coverage: RetainedLeafCoverage,
+    batch_report: &mut RetainedLeafBatchExecutionReport,
+    reconstructed_values: &mut Vec<Scalar>,
+) {
+    assert!(
+        node.is_leaf,
+        "retained leaf streaming helper requires a leaf node"
+    );
+
+    match coverage {
+        RetainedLeafCoverage::Covered => {
+            append_covered_retained_leaf_results(node, batch_report, reconstructed_values)
+        }
+        RetainedLeafCoverage::Partial => append_partially_covered_retained_leaf_results(
+            node,
+            query,
+            batch_report,
+            reconstructed_values,
+        ),
+    }
+}
+
+/// Appends all rows from a covered retained leaf into the batch report.
+///
+/// # Runtime Role
+///
+/// The query already contains the leaf bounds, so every reconstructed row can be
+/// appended directly without exact predicate evaluation.
+pub(crate) fn append_covered_retained_leaf_results(
+    node: &PartitionNode,
+    batch_report: &mut RetainedLeafBatchExecutionReport,
+    reconstructed_values: &mut Vec<Scalar>,
+) {
+    let row_count = node.residuals.cardinality();
+
+    reserve_additional_results(&mut batch_report.results, row_count);
+
+    // geometry already proved these rows match
+    for row in 0..row_count {
+        reconstruct_row_into(node, row, reconstructed_values);
+        batch_report
+            .results
+            .push(Vector::new(reconstructed_values.clone()));
+    }
+
+    batch_report.reconstructed_records += row_count;
+    batch_report.matched_records += row_count;
+}
+
+/// Appends matching rows from a partially covered retained leaf into the batch report.
+///
+/// # Runtime Role
+///
+/// Partial leaves still use the exact predicate path. The reconstructed row
+/// buffer is reused across all rows in the leaf.
+pub(crate) fn append_partially_covered_retained_leaf_results(
+    node: &PartitionNode,
+    query: &QueryRegion,
+    batch_report: &mut RetainedLeafBatchExecutionReport,
+    reconstructed_values: &mut Vec<Scalar>,
+) {
+    let row_count = node.residuals.cardinality();
+    let original_match_count = batch_report.results.len();
+
+    // exact path stays here no shortcuts for partial leaves
+    for row in 0..row_count {
+        reconstruct_row_into(node, row, reconstructed_values);
+
+        if query.contains_values(reconstructed_values) {
+            batch_report
+                .results
+                .push(Vector::new(reconstructed_values.clone()));
         }
     }
 
-    RetainedLeafExecutionReport {
-        reconstructed_records: row_count,
-        matched_records: results.len(),
-        results,
+    let matched_records = batch_report.results.len() - original_match_count;
+
+    batch_report.reconstructed_records += row_count;
+    #[cfg(test)]
+    {
+        batch_report.predicate_evaluated_records += row_count;
     }
+    batch_report.matched_records += matched_records;
+}
+
+/// Executes a retained leaf whose bounding box is fully contained by the query.
+///
+/// # Runtime Role
+///
+/// Covered leaves skip exact per-row predicate checks. Reconstruction still
+/// happens because query output is expressed as coordinate vectors, but every
+/// reconstructed row can be appended directly to the result set.
+#[cfg(test)]
+pub(crate) fn execute_covered_retained_leaf(
+    node: &PartitionNode,
+    dimensions: usize,
+) -> RetainedLeafExecutionReport {
+    assert!(
+        node.is_leaf,
+        "covered retained leaf helper requires a leaf node"
+    );
+
+    let mut batch_report =
+        RetainedLeafBatchExecutionReport::with_candidate_capacity(node.residuals.cardinality());
+    let mut reconstructed_values = Vec::with_capacity(dimensions);
+
+    append_covered_retained_leaf_results(node, &mut batch_report, &mut reconstructed_values);
+
+    RetainedLeafExecutionReport {
+        results: batch_report.results,
+        reconstructed_records: batch_report.reconstructed_records,
+        #[cfg(test)]
+        predicate_evaluated_records: batch_report.predicate_evaluated_records,
+        matched_records: batch_report.matched_records,
+    }
+}
+
+/// Executes a retained leaf whose bounding box only partially overlaps the query.
+///
+/// # Runtime Role
+///
+/// Partially covered leaves preserve the full exact predicate path. Each row is
+/// reconstructed into a reusable buffer and only materialized as an owned
+/// `Vector` after passing the query predicate.
+#[cfg(test)]
+pub(crate) fn execute_partially_covered_retained_leaf(
+    node: &PartitionNode,
+    query: &QueryRegion,
+    dimensions: usize,
+) -> RetainedLeafExecutionReport {
+    assert!(
+        node.is_leaf,
+        "partial retained leaf helper requires a leaf node"
+    );
+
+    let mut batch_report =
+        RetainedLeafBatchExecutionReport::with_candidate_capacity(node.residuals.cardinality());
+    let mut reconstructed_values = Vec::with_capacity(dimensions);
+
+    append_partially_covered_retained_leaf_results(
+        node,
+        query,
+        &mut batch_report,
+        &mut reconstructed_values,
+    );
+
+    RetainedLeafExecutionReport {
+        results: batch_report.results,
+        reconstructed_records: batch_report.reconstructed_records,
+        #[cfg(test)]
+        predicate_evaluated_records: batch_report.predicate_evaluated_records,
+        matched_records: batch_report.matched_records,
+    }
+}
+
+/// Returns whether a query region fully contains a bounding box.
+///
+/// # Runtime Role
+///
+/// This predicate preserves the previous execution helper API while delegating
+/// the actual containment logic to `QueryRegion`.
+///
+/// # Panics
+///
+/// Panics when dimensionality differs between the query and bounds.
+#[cfg(test)]
+pub(crate) fn query_contains_bounds(query: &QueryRegion, bounds: &BoundingBox) -> bool {
+    assert_eq!(
+        query.dimensions(),
+        bounds.dimensions(),
+        "query and bounds dimensionality must match"
+    );
+
+    query.contains_bounds(bounds)
 }
 
 /// Merges retained leaf reports in their supplied order.
@@ -566,17 +1014,8 @@ pub(crate) fn execute_retained_leaf(
 /// # Runtime Role
 ///
 /// This helper defines the deterministic merge contract for retained-leaf
-/// execution. Serial execution supplies reports in retained traversal order.
-/// Parallel execution computes reports independently but still passes them to
-/// this function in retained leaf order before final result assembly.
-///
-/// # Formal Reference
-///
-/// This is the merge portion of:
-///
-/// `Reconstruction -> Logic -> Merge`.
-///
-/// It does not change reconstruction or exact predicate semantics.
+/// execution. Parallel execution computes reports independently but still passes
+/// them to this function in retained leaf order before final result assembly.
 pub(crate) fn merge_retained_leaf_reports_in_order(
     leaf_reports: Vec<RetainedLeafExecutionReport>,
     candidate_count: usize,
@@ -584,14 +1023,24 @@ pub(crate) fn merge_retained_leaf_reports_in_order(
     let mut results = Vec::with_capacity(result_capacity_hint(candidate_count));
     let mut aggregate_stats = QueryExecutionStats::default();
 
-    // keep report order boring and obvious
+    #[cfg(test)]
+    let mut predicate_evaluated_records = 0;
+
+    // parallel reports still merge here
     for leaf_report in leaf_reports {
+        #[cfg(test)]
+        {
+            predicate_evaluated_records += leaf_report.predicate_evaluated_records;
+        }
+
         merge_retained_leaf_report(&mut results, &mut aggregate_stats, leaf_report);
     }
 
     RetainedLeafBatchExecutionReport {
         results,
         reconstructed_records: aggregate_stats.reconstructed_records,
+        #[cfg(test)]
+        predicate_evaluated_records,
         matched_records: aggregate_stats.matched_records,
     }
 }
@@ -600,7 +1049,8 @@ pub(crate) fn merge_retained_leaf_reports_in_order(
 ///
 /// # Runtime Role
 ///
-/// This helper keeps result merging and execution-stat aggregation in one place.
+/// This helper keeps result merging and execution-stat aggregation in one place
+/// for the parallel path, where leaf-local result vectors are still required.
 pub(crate) fn merge_retained_leaf_report(
     results: &mut Vec<Vector>,
     stats: &mut QueryExecutionStats,
@@ -616,13 +1066,13 @@ pub(crate) fn merge_retained_leaf_report(
     results.extend(leaf_report.results);
 }
 
-/// Reserves enough final result capacity for an incoming leaf result batch.
+/// Reserves enough final result capacity for an incoming result batch.
 ///
 /// # Runtime Role
 ///
 /// The final query result vector may start with a bounded capacity hint. If
 /// actual matches exceed that initial hint, this helper reserves exactly the
-/// additional space needed before merging the next retained leaf report.
+/// additional space needed before appending more results.
 pub(crate) fn reserve_additional_results(results: &mut Vec<Vector>, incoming_len: usize) {
     let available_capacity = results.capacity().saturating_sub(results.len());
 
@@ -643,10 +1093,26 @@ pub(crate) fn reserve_additional_results(results: &mut Vec<Vector>, incoming_len
 /// # Panics
 ///
 /// Panics if any retained node identifier is outside the index node range.
+#[cfg(test)]
 pub(crate) fn retained_candidate_count(index: &FSEIndex, retained_leaf_ids: &[usize]) -> usize {
     retained_leaf_ids
         .iter()
         .map(|node_id| index.nodes[*node_id].residuals.cardinality())
+        .sum()
+}
+
+/// Returns the number of records contained in classified retained leaves.
+///
+/// # Runtime Role
+///
+/// This is the classified retained-leaf equivalent of `retained_candidate_count`.
+pub(crate) fn classified_retained_candidate_count(
+    index: &FSEIndex,
+    retained_leaves: &[RetainedLeaf],
+) -> usize {
+    retained_leaves
+        .iter()
+        .map(|retained_leaf| index.nodes[retained_leaf.node_id].residuals.cardinality())
         .sum()
 }
 

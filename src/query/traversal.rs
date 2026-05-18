@@ -4,6 +4,68 @@ use crate::math::Scalar;
 use crate::query::QueryRegion;
 use crate::storage::FSEIndex;
 
+/// Coverage classification for a retained leaf.
+///
+/// # Runtime Role
+///
+/// `RetainedLeafCoverage` describes whether traversal proved that a retained
+/// leaf is fully covered by the query or only partially overlaps the query.
+///
+/// Covered leaves can skip exact per-row predicate checks during retained-leaf
+/// execution. Partial leaves must still use the exact predicate path.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RetainedLeafCoverage {
+    /// The query fully contains the retained leaf bounds.
+    Covered,
+
+    /// The query intersects the retained leaf bounds but does not fully contain them.
+    Partial,
+}
+
+/// A retained leaf paired with its traversal-time coverage classification.
+///
+/// # Runtime Role
+///
+/// `RetainedLeaf` is the Stage I handoff to retained-partition execution. It
+/// keeps the leaf identifier together with the geometric proof discovered during
+/// traversal.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RetainedLeaf {
+    /// Retained leaf node identifier.
+    pub node_id: usize,
+
+    /// Coverage classification for this retained leaf.
+    pub coverage: RetainedLeafCoverage,
+}
+
+impl RetainedLeaf {
+    /// Creates a retained leaf classified as covered.
+    pub fn covered(node_id: usize) -> Self {
+        Self {
+            node_id,
+            coverage: RetainedLeafCoverage::Covered,
+        }
+    }
+
+    /// Creates a retained leaf classified as partially covered.
+    pub fn partial(node_id: usize) -> Self {
+        Self {
+            node_id,
+            coverage: RetainedLeafCoverage::Partial,
+        }
+    }
+
+    /// Returns true when traversal proved full query coverage.
+    pub fn is_covered(&self) -> bool {
+        matches!(self.coverage, RetainedLeafCoverage::Covered)
+    }
+
+    /// Returns true when the retained leaf still requires exact predicate checks.
+    pub fn is_partial(&self) -> bool {
+        matches!(self.coverage, RetainedLeafCoverage::Partial)
+    }
+}
+
 /// Runtime statistics collected during geometric traversal.
 ///
 /// # Runtime Role
@@ -32,20 +94,48 @@ pub struct QueryTraversalStats {
     pub retained_leaf_ratio: Scalar,
 }
 
-/// Retained leaf identifiers paired with traversal statistics.
+/// Retained leaves paired with traversal statistics.
 ///
 /// # Runtime Role
 ///
 /// `QueryTraversalReport` is the output of Stage I query execution. It records
 /// the leaf partitions that are geometrically admissible and the amount of
 /// metadata work required to discover them.
+///
+/// Production query execution consumes the classified retained leaves directly.
+/// Legacy callers that only need node identifiers can derive them with
+/// [`QueryTraversalReport::retained_leaf_ids`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct QueryTraversalReport {
     /// Leaf node identifiers retained by geometric pruning.
+    ///
+    /// # Runtime Role
+    ///
+    /// This test-only field keeps the existing unit tests stable while the
+    /// production traversal report avoids storing duplicate retained-leaf state.
+    #[cfg(test)]
     pub retained_leaf_ids: Vec<usize>,
+
+    /// Retained leaves with traversal-time coverage classification.
+    pub retained_leaves: Vec<RetainedLeaf>,
 
     /// Traversal statistics collected while walking the hierarchy.
     pub stats: QueryTraversalStats,
+}
+
+impl QueryTraversalReport {
+    /// Returns retained leaf node identifiers in traversal order.
+    ///
+    /// # Runtime Role
+    ///
+    /// This preserves the original id-only traversal shape without forcing the
+    /// production query path to store a second retained-leaf vector.
+    pub fn retained_leaf_ids(&self) -> Vec<usize> {
+        self.retained_leaves
+            .iter()
+            .map(|retained_leaf| retained_leaf.node_id)
+            .collect()
+    }
 }
 
 /// Traverses the FSE hierarchy and returns retained leaf partitions.
@@ -65,7 +155,7 @@ pub struct QueryTraversalReport {
 ///
 /// Panics when the query dimensionality does not match the index dimensionality.
 pub fn traverse(index: &FSEIndex, query: &QueryRegion) -> Vec<usize> {
-    traverse_with_stats(index, query).retained_leaf_ids
+    traverse_with_stats(index, query).retained_leaf_ids()
 }
 
 /// Traverses the FSE hierarchy and returns retained leaves with traversal stats.
@@ -73,8 +163,8 @@ pub fn traverse(index: &FSEIndex, query: &QueryRegion) -> Vec<usize> {
 /// # Runtime Role
 ///
 /// This function keeps traversal accounting inside the traversal stage instead
-/// of mixing it with reconstruction or exact evaluation. The returned leaf IDs
-/// are the only partitions that later stages should reconstruct.
+/// of mixing it with reconstruction or exact evaluation. The returned retained
+/// leaves are the only partitions that later stages should reconstruct.
 ///
 /// # Formal Reference
 ///
@@ -101,8 +191,7 @@ pub fn traverse_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryTraver
         ..QueryTraversalStats::default()
     };
 
-    let query_bounds = query.as_bounds();
-    let mut retained_leaf_ids = Vec::new();
+    let mut retained_leaves = Vec::new();
     let mut stack = vec![index.root];
 
     // tiny vec stack is fine until traversal itself shows up hot
@@ -111,13 +200,38 @@ pub fn traverse_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryTraver
 
         let node = &index.nodes[node_id];
 
-        if !node.bounds.intersects(&query_bounds) {
+        if query.contains_bounds(&node.bounds) {
+            if node.is_leaf {
+                retain_leaf(
+                    node_id,
+                    RetainedLeafCoverage::Covered,
+                    &mut retained_leaves,
+                    &mut stats,
+                );
+            } else {
+                // covered subtree means no more intersection checks below here
+                collect_covered_descendant_leaves(
+                    index,
+                    &node.children,
+                    &mut retained_leaves,
+                    &mut stats,
+                );
+            }
+
+            continue;
+        }
+
+        if !query.intersects_bounds(&node.bounds) {
             continue;
         }
 
         if node.is_leaf {
-            stats.retained_leaves += 1;
-            retained_leaf_ids.push(node_id);
+            retain_leaf(
+                node_id,
+                RetainedLeafCoverage::Partial,
+                &mut retained_leaves,
+                &mut stats,
+            );
         } else {
             // preserve current left to right traversal order
             for child in node.children.iter().rev() {
@@ -132,8 +246,55 @@ pub fn traverse_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryTraver
         stats.retained_leaves as Scalar / stats.total_leaves as Scalar
     };
 
+    #[cfg(test)]
+    let retained_leaf_ids = retained_leaves
+        .iter()
+        .map(|retained_leaf| retained_leaf.node_id)
+        .collect();
+
     QueryTraversalReport {
+        #[cfg(test)]
         retained_leaf_ids,
+        retained_leaves,
         stats,
+    }
+}
+
+fn retain_leaf(
+    node_id: usize,
+    coverage: RetainedLeafCoverage,
+    retained_leaves: &mut Vec<RetainedLeaf>,
+    stats: &mut QueryTraversalStats,
+) {
+    stats.retained_leaves += 1;
+    retained_leaves.push(RetainedLeaf { node_id, coverage });
+}
+
+fn collect_covered_descendant_leaves(
+    index: &FSEIndex,
+    children: &[usize],
+    retained_leaves: &mut Vec<RetainedLeaf>,
+    stats: &mut QueryTraversalStats,
+) {
+    let mut stack: Vec<usize> = children.iter().rev().copied().collect();
+
+    // covered subtree still walks ids but skips all the bounds math
+    while let Some(node_id) = stack.pop() {
+        stats.visited_nodes += 1;
+
+        let node = &index.nodes[node_id];
+
+        if node.is_leaf {
+            retain_leaf(
+                node_id,
+                RetainedLeafCoverage::Covered,
+                retained_leaves,
+                stats,
+            );
+        } else {
+            for child in node.children.iter().rev() {
+                stack.push(*child);
+            }
+        }
     }
 }

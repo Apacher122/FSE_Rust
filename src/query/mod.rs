@@ -17,4 +17,7 @@ pub use execution::{
 };
 pub use reconstruction::{reconstruct_partition, reconstruct_point, reconstruct_row_into};
 pub use region::QueryRegion;
-pub use traversal::{QueryTraversalReport, QueryTraversalStats, traverse, traverse_with_stats};
+pub use traversal::{
+    QueryTraversalReport, QueryTraversalStats, RetainedLeaf, RetainedLeafCoverage, traverse,
+    traverse_with_stats,
+};
