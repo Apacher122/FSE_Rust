@@ -16,8 +16,8 @@ mod test_support;
 pub(crate) use dispatch::execute_classified_retained_leaves_with_candidate_count;
 
 pub(crate) use leaf::{
-    append_covered_retained_leaf_results, execute_retained_leaf_into_batch_report,
-    execute_retained_leaf_with_cached_shape,
+    append_covered_retained_leaf_results, append_covered_retained_leaf_results_to_reserved_batch,
+    execute_retained_leaf_into_batch_report, execute_retained_leaf_with_cached_shape,
 };
 
 pub(crate) use merge::merge_retained_leaf_reports_in_order;

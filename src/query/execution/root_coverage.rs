@@ -7,7 +7,8 @@ use crate::storage::FSEIndex;
 use super::options::{QueryExecutionMode, QueryExecutionOptions};
 use super::reports::{QueryExecutionReport, QueryExecutionStats, RetainedLeafBatchExecutionReport};
 use super::retained::{
-    append_covered_retained_leaf_results, execute_classified_retained_leaves_with_candidate_count,
+    append_covered_retained_leaf_results, append_covered_retained_leaf_results_to_reserved_batch,
+    execute_classified_retained_leaves_with_candidate_count,
 };
 
 /// Executes a query that fully contains the root bounding region.
@@ -73,6 +74,10 @@ pub(crate) fn execute_fully_covered_index_with_options(
 /// are read from the index cache so the full-coverage path does not rescan or
 /// revalidate the node list.
 ///
+/// When the batch report has enough capacity for every record, this path avoids
+/// repeating per-leaf reserve checks. If the result capacity is capped for a
+/// larger index, it falls back to the normal reserving covered-leaf append.
+///
 /// # Panics
 ///
 /// Panics when the sum of reconstructed leaf rows does not match root
@@ -84,10 +89,17 @@ pub(crate) fn execute_fully_covered_index_serial(
     let mut batch_report =
         RetainedLeafBatchExecutionReport::with_candidate_capacity(candidate_count);
 
+    let has_full_result_capacity = batch_report.results.capacity() >= candidate_count;
+
     // full coverage can materialize rows directly
     for shape in index.leaf_reconstruction_shapes() {
         let node = &index.nodes[shape.node_id];
-        append_covered_retained_leaf_results(node, *shape, &mut batch_report);
+
+        if has_full_result_capacity {
+            append_covered_retained_leaf_results_to_reserved_batch(node, *shape, &mut batch_report);
+        } else {
+            append_covered_retained_leaf_results(node, *shape, &mut batch_report);
+        }
     }
 
     debug_assert_eq!(
