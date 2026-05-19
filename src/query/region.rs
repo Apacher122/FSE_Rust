@@ -115,14 +115,78 @@ impl QueryRegion {
     ///
     /// Boundary contact counts as intersection.
     pub fn classify_bounds(&self, bounds: &BoundingBox) -> QueryBoundsClassification {
-        if self.dimensions() != bounds.dimensions() {
+        let dimensions = self.dimensions();
+
+        if dimensions != bounds.dimensions() {
             return QueryBoundsClassification::Disjoint;
         }
 
+        match dimensions {
+            1 => self.classify_bounds_1d(bounds),
+            2 => self.classify_bounds_2d(bounds),
+            _ => self.classify_bounds_generic(bounds, dimensions),
+        }
+    }
+
+    #[inline]
+    fn classify_bounds_1d(&self, bounds: &BoundingBox) -> QueryBoundsClassification {
+        let query_min = self.min[0];
+        let query_max = self.max[0];
+        let bounds_min = bounds.min[0];
+        let bounds_max = bounds.max[0];
+
+        if query_max < bounds_min || query_min > bounds_max {
+            return QueryBoundsClassification::Disjoint;
+        }
+
+        if query_min <= bounds_min && query_max >= bounds_max {
+            QueryBoundsClassification::Covered
+        } else {
+            QueryBoundsClassification::Partial
+        }
+    }
+
+    #[inline]
+    fn classify_bounds_2d(&self, bounds: &BoundingBox) -> QueryBoundsClassification {
+        let query_min_0 = self.min[0];
+        let query_max_0 = self.max[0];
+        let bounds_min_0 = bounds.min[0];
+        let bounds_max_0 = bounds.max[0];
+
+        if query_max_0 < bounds_min_0 || query_min_0 > bounds_max_0 {
+            return QueryBoundsClassification::Disjoint;
+        }
+
+        let query_min_1 = self.min[1];
+        let query_max_1 = self.max[1];
+        let bounds_min_1 = bounds.min[1];
+        let bounds_max_1 = bounds.max[1];
+
+        if query_max_1 < bounds_min_1 || query_min_1 > bounds_max_1 {
+            return QueryBoundsClassification::Disjoint;
+        }
+
+        if query_min_0 <= bounds_min_0
+            && query_max_0 >= bounds_max_0
+            && query_min_1 <= bounds_min_1
+            && query_max_1 >= bounds_max_1
+        {
+            QueryBoundsClassification::Covered
+        } else {
+            QueryBoundsClassification::Partial
+        }
+    }
+
+    #[inline]
+    fn classify_bounds_generic(
+        &self,
+        bounds: &BoundingBox,
+        dimensions: usize,
+    ) -> QueryBoundsClassification {
         let mut fully_contains_bounds = true;
 
         // one pass answers both questions now
-        for dimension in 0..self.dimensions() {
+        for dimension in 0..dimensions {
             let query_min = self.min[dimension];
             let query_max = self.max[dimension];
             let bounds_min = bounds.min[dimension];
