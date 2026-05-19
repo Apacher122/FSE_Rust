@@ -156,8 +156,8 @@ pub(crate) fn append_partially_covered_retained_leaf_results(
 
     let original_match_count = batch_report.results.len();
 
-    // keep reconstruction and exact predicate evaluation separated
-    // only accepted 1d/2d rows avoid moving away the reusable scratch vec
+    // keep the restored buffered reconstruction path
+    // only the exact predicate check uses the prevalidated hot helper
     for row in 0..shape.cardinality {
         reconstruct_row_into_prevalidated(node, row, shape.dimensions, reconstructed_values);
 
@@ -180,16 +180,13 @@ pub(crate) fn append_partially_covered_retained_leaf_results(
     batch_report.matched_records += matched_records;
 }
 
-/// Stores a reconstructed row in the final result set.
+/// Moves a reconstructed row buffer into the final result set.
 ///
 /// # Runtime Role
 ///
-/// Matching rows must become owned `Vector` values because that is the query API
-/// contract. For the common 1D and 2D paths, copy the scalar values into the
-/// result while keeping the scratch buffer allocated for the next candidate row.
-///
-/// Higher-dimensional rows keep the existing move-based behavior to avoid
-/// cloning larger coordinate vectors.
+/// Matching rows must still become owned `Vector` values because that is the
+/// query API contract. Moving the scratch buffer avoids cloning the same row
+/// after exact predicate evaluation has already accepted it.
 fn push_reconstructed_values_as_result(
     results: &mut Vec<Vector>,
     reconstructed_values: &mut Vec<Scalar>,
@@ -201,32 +198,6 @@ fn push_reconstructed_values_as_result(
         "reconstructed row dimensionality should match the partition"
     );
 
-    match dimensions {
-        1 => push_reconstructed_values_1d(results, reconstructed_values),
-        2 => push_reconstructed_values_2d(results, reconstructed_values),
-        _ => move_reconstructed_values_as_result(results, reconstructed_values, dimensions),
-    }
-}
-
-#[inline]
-fn push_reconstructed_values_1d(results: &mut Vec<Vector>, reconstructed_values: &[Scalar]) {
-    results.push(Vector::new(vec![reconstructed_values[0]]));
-}
-
-#[inline]
-fn push_reconstructed_values_2d(results: &mut Vec<Vector>, reconstructed_values: &[Scalar]) {
-    results.push(Vector::new(vec![
-        reconstructed_values[0],
-        reconstructed_values[1],
-    ]));
-}
-
-#[inline]
-fn move_reconstructed_values_as_result(
-    results: &mut Vec<Vector>,
-    reconstructed_values: &mut Vec<Scalar>,
-    dimensions: usize,
-) {
     let accepted_values = std::mem::replace(reconstructed_values, Vec::with_capacity(dimensions));
 
     results.push(Vector::new(accepted_values));
