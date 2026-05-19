@@ -126,7 +126,8 @@ pub(crate) fn reconstruct_row_into_prevalidated(
         output.reserve(dimensions - output.capacity());
     }
 
-    // shape was already checked at the leaf boundary
+    // keep this as the restored buffered row path
+    // commit 113 showed reshaping the scratch vec wasnt worth keeping
     for (centroid_value, residual_dimension) in node.centroid.iter().zip(&node.residuals.dimensions)
     {
         output.push(*centroid_value + residual_dimension[row]);
@@ -139,6 +140,10 @@ pub(crate) fn reconstruct_row_into_prevalidated(
 ///
 /// Covered retained leaves can append every row directly to the result set.
 /// This helper avoids routing each row through the public reconstruction wrapper.
+///
+/// The 1D and 2D branches avoid the generic dimension loop for the current small
+/// benchmark path. Higher-dimensional datasets keep the general reconstruction
+/// loop so the implementation remains dimension-agnostic.
 #[inline]
 pub(crate) fn reconstruct_point_prevalidated(
     node: &PartitionNode,
@@ -160,6 +165,32 @@ pub(crate) fn reconstruct_point_prevalidated(
         "prevalidated residual row should be inside cardinality"
     );
 
+    match dimensions {
+        1 => reconstruct_point_1d_prevalidated(node, row),
+        2 => reconstruct_point_2d_prevalidated(node, row),
+        _ => reconstruct_point_generic_prevalidated(node, row, dimensions),
+    }
+}
+
+#[inline]
+fn reconstruct_point_1d_prevalidated(node: &PartitionNode, row: usize) -> Vector {
+    Vector::new(vec![node.centroid[0] + node.residuals.dimensions[0][row]])
+}
+
+#[inline]
+fn reconstruct_point_2d_prevalidated(node: &PartitionNode, row: usize) -> Vector {
+    Vector::new(vec![
+        node.centroid[0] + node.residuals.dimensions[0][row],
+        node.centroid[1] + node.residuals.dimensions[1][row],
+    ])
+}
+
+#[inline]
+fn reconstruct_point_generic_prevalidated(
+    node: &PartitionNode,
+    row: usize,
+    dimensions: usize,
+) -> Vector {
     let mut values = Vec::with_capacity(dimensions);
 
     // covered rows still need owned result vectors
