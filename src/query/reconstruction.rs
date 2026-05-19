@@ -93,10 +93,6 @@ pub fn reconstruct_row_into(node: &PartitionNode, row: usize, output: &mut Vec<S
 /// shape checks for every row in a leaf while preserving debug assertions that
 /// catch misuse during development.
 ///
-/// The output buffer is kept shaped to `dimensions` and overwritten in place
-/// across rows. That avoids the clear-and-push loop in the partial retained-leaf
-/// path while preserving the same public result semantics.
-///
 /// # Panics
 ///
 /// In release builds, this function relies on the caller to pass a valid row
@@ -124,19 +120,16 @@ pub(crate) fn reconstruct_row_into_prevalidated(
         "prevalidated residual row should be inside cardinality"
     );
 
-    if output.len() != dimensions {
-        output.resize(dimensions, 0.0);
+    output.clear();
+
+    if output.capacity() < dimensions {
+        output.reserve(dimensions - output.capacity());
     }
 
     // shape was already checked at the leaf boundary
-    // keep the scratch vec sized and just overwrite it
-    for (dimension, (centroid_value, residual_dimension)) in node
-        .centroid
-        .iter()
-        .zip(&node.residuals.dimensions)
-        .enumerate()
+    for (centroid_value, residual_dimension) in node.centroid.iter().zip(&node.residuals.dimensions)
     {
-        output[dimension] = *centroid_value + residual_dimension[row];
+        output.push(*centroid_value + residual_dimension[row]);
     }
 }
 

@@ -177,41 +177,11 @@ impl QueryRegion {
     /// This method supports allocation-conscious query execution because callers
     /// can evaluate coordinates held in a reusable reconstruction buffer.
     pub fn contains_values(&self, values: &[Scalar]) -> bool {
-        let dimensions = self.dimensions();
-
-        if values.len() != dimensions {
+        if values.len() != self.dimensions() {
             return false;
         }
 
-        self.contains_values_prevalidated(values, dimensions)
-    }
-
-    /// Returns true when a prevalidated coordinate slice lies inside the query region.
-    ///
-    /// # Runtime Role
-    ///
-    /// Retained-leaf execution already knows that reconstructed scratch buffers
-    /// match the query dimensionality. This helper avoids repeating the public
-    /// length check for every reconstructed candidate row.
-    ///
-    /// Boundary values are treated as contained.
-    pub(crate) fn contains_values_prevalidated(
-        &self,
-        values: &[Scalar],
-        dimensions: usize,
-    ) -> bool {
-        debug_assert_eq!(
-            self.dimensions(),
-            dimensions,
-            "prevalidated query dimensionality should match"
-        );
-        debug_assert_eq!(
-            values.len(),
-            dimensions,
-            "prevalidated coordinate dimensionality should match"
-        );
-
-        for dimension in 0..dimensions {
+        for dimension in 0..self.dimensions() {
             let value = values[dimension];
 
             if value < self.min[dimension] || value > self.max[dimension] {

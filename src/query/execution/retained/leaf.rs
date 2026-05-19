@@ -151,12 +151,11 @@ pub(crate) fn append_partially_covered_retained_leaf_results(
 
     let original_match_count = batch_report.results.len();
 
-    // keep this split: reconstruct first, then exact predicate
-    // the scratch vec now stays shaped instead of being rebuilt every row
+    // two-pass row handling was faster for the tiny 2d benchmark than fusion
     for row in 0..shape.cardinality {
         reconstruct_row_into_prevalidated(node, row, shape.dimensions, reconstructed_values);
 
-        if query.contains_values_prevalidated(reconstructed_values, shape.dimensions) {
+        if query.contains_values(reconstructed_values) {
             push_reconstructed_values_as_result(
                 &mut batch_report.results,
                 reconstructed_values,
