@@ -6,6 +6,8 @@ use crate::benchmark::{
 };
 use crate::query::QueryExecutionMode;
 
+const SMALL_DATASET_DEFAULT_TARGET_LEAF_SIZE: usize = 4;
+
 /// Terminal output mode selected for a benchmark run.
 ///
 /// # Runtime Role
@@ -118,6 +120,7 @@ struct BenchmarkCliParseState {
     csv_output: BenchmarkCsvOutputConfig,
     terminal_output_mode: BenchmarkTerminalOutputMode,
     target_leaf_size_was_set: bool,
+    max_leaf_size_was_set: bool,
 }
 
 impl Default for BenchmarkCliParseState {
@@ -128,6 +131,7 @@ impl Default for BenchmarkCliParseState {
             csv_output: BenchmarkCsvOutputConfig::default(),
             terminal_output_mode: BenchmarkTerminalOutputMode::default(),
             target_leaf_size_was_set: false,
+            max_leaf_size_was_set: false,
         }
     }
 }
@@ -169,6 +173,7 @@ impl BenchmarkCliParseState {
         let max_leaf_size = parse_positive_usize("--max-leaf-size", value)?;
 
         self.suite_config.max_leaf_size = max_leaf_size;
+        self.max_leaf_size_was_set = true;
 
         if !self.target_leaf_size_was_set {
             // keep old behavior unless the caller explicitly splits the knobs
@@ -209,7 +214,9 @@ impl BenchmarkCliParseState {
         self.terminal_output_mode = BenchmarkTerminalOutputMode::DebugReport;
     }
 
-    fn finish(self) -> Result<BenchmarkCliConfig, String> {
+    fn finish(mut self) -> Result<BenchmarkCliConfig, String> {
+        self.apply_dataset_default_leaf_policy();
+
         self.suite_config.validate_leaf_size_policy()?;
 
         let baseline_set = self
@@ -226,6 +233,20 @@ impl BenchmarkCliParseState {
             csv_output: self.csv_output,
             terminal_output_mode: self.terminal_output_mode,
         })
+    }
+
+    fn apply_dataset_default_leaf_policy(&mut self) {
+        if self.target_leaf_size_was_set || self.max_leaf_size_was_set {
+            return;
+        }
+
+        if matches!(
+            self.suite_config.dataset_kind,
+            BenchmarkDatasetKind::SmallClustered2D
+        ) {
+            // small clustered data benefits from tighter leaves after traversal got cheaper
+            self.suite_config.target_leaf_size = SMALL_DATASET_DEFAULT_TARGET_LEAF_SIZE;
+        }
     }
 }
 
