@@ -148,14 +148,20 @@ pub(crate) fn append_partially_covered_retained_leaf_results(
         shape.cardinality,
         "cached leaf cardinality should match residual cardinality"
     );
+    debug_assert_eq!(
+        query.dimensions(),
+        shape.dimensions,
+        "query dimensionality should match retained leaf dimensionality"
+    );
 
     let original_match_count = batch_report.results.len();
 
-    // two-pass row handling was faster for the tiny 2d benchmark than fusion
+    // keep the restored buffered reconstruction path
+    // only the exact predicate check uses the prevalidated hot helper
     for row in 0..shape.cardinality {
         reconstruct_row_into_prevalidated(node, row, shape.dimensions, reconstructed_values);
 
-        if query.contains_values(reconstructed_values) {
+        if query.contains_values_prevalidated(reconstructed_values, shape.dimensions) {
             push_reconstructed_values_as_result(
                 &mut batch_report.results,
                 reconstructed_values,
