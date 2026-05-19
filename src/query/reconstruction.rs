@@ -93,6 +93,11 @@ pub fn reconstruct_row_into(node: &PartitionNode, row: usize, output: &mut Vec<S
 /// shape checks for every row in a leaf while preserving debug assertions that
 /// catch misuse during development.
 ///
+/// The 1D and 2D branches avoid the generic iterator loop for small-dimensional
+/// benchmark workloads. The output buffer behavior remains the restored
+/// buffered path: clear, push reconstructed values, then let the caller decide
+/// whether to move the buffer into the result set.
+///
 /// # Panics
 ///
 /// In release builds, this function relies on the caller to pass a valid row
@@ -120,14 +125,56 @@ pub(crate) fn reconstruct_row_into_prevalidated(
         "prevalidated residual row should be inside cardinality"
     );
 
+    match dimensions {
+        1 => reconstruct_row_1d_into_prevalidated(node, row, output),
+        2 => reconstruct_row_2d_into_prevalidated(node, row, output),
+        _ => reconstruct_row_generic_into_prevalidated(node, row, dimensions, output),
+    }
+}
+
+#[inline]
+fn prepare_reconstruction_output(output: &mut Vec<Scalar>, dimensions: usize) {
     output.clear();
 
     if output.capacity() < dimensions {
-        output.reserve(dimensions - output.capacity());
+        output.reserve(dimensions);
     }
+}
 
-    // keep this as the restored buffered row path
-    // commit 113 showed reshaping the scratch vec wasnt worth keeping
+#[inline]
+fn reconstruct_row_1d_into_prevalidated(
+    node: &PartitionNode,
+    row: usize,
+    output: &mut Vec<Scalar>,
+) {
+    prepare_reconstruction_output(output, 1);
+
+    output.push(node.centroid[0] + node.residuals.dimensions[0][row]);
+}
+
+#[inline]
+fn reconstruct_row_2d_into_prevalidated(
+    node: &PartitionNode,
+    row: usize,
+    output: &mut Vec<Scalar>,
+) {
+    prepare_reconstruction_output(output, 2);
+
+    // this is the hot small benchmark path
+    output.push(node.centroid[0] + node.residuals.dimensions[0][row]);
+    output.push(node.centroid[1] + node.residuals.dimensions[1][row]);
+}
+
+#[inline]
+fn reconstruct_row_generic_into_prevalidated(
+    node: &PartitionNode,
+    row: usize,
+    dimensions: usize,
+    output: &mut Vec<Scalar>,
+) {
+    prepare_reconstruction_output(output, dimensions);
+
+    // higher dimensional data keeps the generic loop
     for (centroid_value, residual_dimension) in node.centroid.iter().zip(&node.residuals.dimensions)
     {
         output.push(*centroid_value + residual_dimension[row]);
