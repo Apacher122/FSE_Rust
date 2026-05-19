@@ -1,7 +1,7 @@
 //! Recursive FSE index builder.
 
 use crate::build::metrics::SplitQualityMetrics;
-use crate::build::splitter::best_median_split;
+use crate::build::splitter::best_structural_split;
 use crate::build::{IndexValidationReport, validate_index};
 use crate::math::Vector;
 use crate::storage::{FSEIndex, PartitionNode};
@@ -218,7 +218,7 @@ impl FSEBuilder {
             return id;
         }
 
-        let Some(split) = self.accepted_median_split(&points) else {
+        let Some(split) = self.accepted_structural_split(&points) else {
             // optional split didnt earn the extra node
             let node = PartitionNode::from_points(id, &points);
             nodes.push(node);
@@ -251,8 +251,8 @@ impl FSEBuilder {
         point_count > self.config.max_leaf_size
     }
 
-    fn accepted_median_split(&self, points: &[Vector]) -> Option<AcceptedMedianSplit> {
-        let split = best_median_split(points);
+    fn accepted_structural_split(&self, points: &[Vector]) -> Option<AcceptedStructuralSplit> {
+        let split = best_structural_split(points);
         let was_forced = self.should_force_split(points.len());
         let metrics = split.score.metrics;
 
@@ -264,7 +264,7 @@ impl FSEBuilder {
             return None;
         }
 
-        Some(AcceptedMedianSplit {
+        Some(AcceptedStructuralSplit {
             left_points: split.left_points,
             right_points: split.right_points,
             metrics,
@@ -290,7 +290,7 @@ pub fn accepts_split_quality(metrics: &SplitQualityMetrics) -> bool {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct AcceptedMedianSplit {
+struct AcceptedStructuralSplit {
     left_points: Vec<Vector>,
     right_points: Vec<Vector>,
     metrics: SplitQualityMetrics,

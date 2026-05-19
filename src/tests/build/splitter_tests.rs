@@ -1,6 +1,7 @@
 use crate::build::splitter::{
-    best_median_split_axis_score, median_split, median_split_on_axis, median_split_score_on_axis,
-    select_split_axis,
+    best_median_split_axis_score, best_structural_split, median_split, median_split_on_axis,
+    median_split_score_on_axis, select_split_axis, structural_split_on_axis,
+    structural_split_score_on_axis,
 };
 use crate::build::variance::max_variance_dimension;
 use crate::math::Vector;
@@ -156,6 +157,96 @@ fn median_split_uses_volume_optimized_axis() {
 }
 
 #[test]
+fn structural_split_on_axis_uses_dominant_gap() {
+    let points = dominant_gap_points();
+
+    let (left, right) = structural_split_on_axis(&points, 0);
+
+    assert_eq!(
+        left,
+        vec![
+            Vector::new(vec![0.0, 0.0]),
+            Vector::new(vec![1.0, 0.0]),
+            Vector::new(vec![2.0, 0.0]),
+        ]
+    );
+
+    assert_eq!(
+        right,
+        vec![
+            Vector::new(vec![50.0, 0.0]),
+            Vector::new(vec![51.0, 0.0]),
+            Vector::new(vec![52.0, 0.0]),
+        ]
+    );
+}
+
+#[test]
+fn structural_split_on_axis_falls_back_to_median_when_gaps_are_uniform() {
+    let points = uniform_gap_points();
+
+    let (left, right) = structural_split_on_axis(&points, 0);
+
+    assert_eq!(
+        left,
+        vec![
+            Vector::new(vec![0.0, 0.0]),
+            Vector::new(vec![5.0, 0.0]),
+            Vector::new(vec![10.0, 0.0]),
+        ]
+    );
+
+    assert_eq!(
+        right,
+        vec![
+            Vector::new(vec![15.0, 0.0]),
+            Vector::new(vec![20.0, 0.0]),
+            Vector::new(vec![25.0, 0.0]),
+        ]
+    );
+}
+
+#[test]
+fn structural_split_score_on_axis_uses_guarded_gap_rule() {
+    let clustered_score = structural_split_score_on_axis(&dominant_gap_points(), 0);
+    let uniform_score = structural_split_score_on_axis(&uniform_gap_points(), 0);
+
+    // both fixtures are zero-volume line datasets, so volume reduction is not
+    // the right signal here. the guarded gap rule shows up in extent reduction
+    assert_eq!(clustered_score.metrics.parent_volume, 0.0);
+    assert_eq!(uniform_score.metrics.parent_volume, 0.0);
+    assert!(
+        clustered_score.extent_reduction_ratio() > uniform_score.extent_reduction_ratio(),
+        "dominant gap split should produce stronger extent reduction than uniform fallback"
+    );
+}
+
+#[test]
+fn best_structural_split_separates_obvious_cluster_gap() {
+    let split = best_structural_split(&dominant_gap_points());
+
+    assert_eq!(split.split_dimension(), 0);
+
+    assert_eq!(
+        split.left_points,
+        vec![
+            Vector::new(vec![0.0, 0.0]),
+            Vector::new(vec![1.0, 0.0]),
+            Vector::new(vec![2.0, 0.0]),
+        ]
+    );
+
+    assert_eq!(
+        split.right_points,
+        vec![
+            Vector::new(vec![50.0, 0.0]),
+            Vector::new(vec![51.0, 0.0]),
+            Vector::new(vec![52.0, 0.0]),
+        ]
+    );
+}
+
+#[test]
 #[should_panic(expected = "median split requires at least two points")]
 fn median_split_on_axis_rejects_single_point_input() {
     let points = vec![Vector::new(vec![0.0, 0.0])];
@@ -179,5 +270,27 @@ fn volume_sensitive_points() -> Vec<Vector> {
         Vector::new(vec![1.0, 0.0]),
         Vector::new(vec![1.0, 1.0]),
         Vector::new(vec![10.0, 0.0]),
+    ]
+}
+
+fn dominant_gap_points() -> Vec<Vector> {
+    vec![
+        Vector::new(vec![0.0, 0.0]),
+        Vector::new(vec![1.0, 0.0]),
+        Vector::new(vec![2.0, 0.0]),
+        Vector::new(vec![50.0, 0.0]),
+        Vector::new(vec![51.0, 0.0]),
+        Vector::new(vec![52.0, 0.0]),
+    ]
+}
+
+fn uniform_gap_points() -> Vec<Vector> {
+    vec![
+        Vector::new(vec![0.0, 0.0]),
+        Vector::new(vec![5.0, 0.0]),
+        Vector::new(vec![10.0, 0.0]),
+        Vector::new(vec![15.0, 0.0]),
+        Vector::new(vec![20.0, 0.0]),
+        Vector::new(vec![25.0, 0.0]),
     ]
 }

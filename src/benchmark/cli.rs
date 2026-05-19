@@ -6,7 +6,7 @@ use crate::benchmark::{
 };
 use crate::query::QueryExecutionMode;
 
-const SMALL_DATASET_DEFAULT_TARGET_LEAF_SIZE: usize = 4;
+const SMALL_DATASET_DEFAULT_TARGET_LEAF_SIZE: usize = 8;
 
 /// Terminal output mode selected for a benchmark run.
 ///
@@ -244,7 +244,7 @@ impl BenchmarkCliParseState {
             self.suite_config.dataset_kind,
             BenchmarkDatasetKind::SmallClustered2D
         ) {
-            // small clustered data benefits from tighter leaves after traversal got cheaper
+            // gap-aware construction made 8/8 the better tiny benchmark default again
             self.suite_config.target_leaf_size = SMALL_DATASET_DEFAULT_TARGET_LEAF_SIZE;
         }
     }

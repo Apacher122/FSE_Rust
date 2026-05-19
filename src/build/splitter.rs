@@ -6,6 +6,8 @@ use crate::build::metrics::{SplitQualityMetrics, split_quality_metrics};
 use crate::build::variance::variance_by_dimension;
 use crate::math::{Scalar, Vector};
 
+const STRUCTURAL_GAP_DOMINANCE_RATIO: Scalar = 4.0;
+
 /// Split-axis score used during partition construction.
 ///
 /// # Runtime Role
@@ -24,7 +26,7 @@ pub struct SplitAxisScore {
     /// Candidate split dimension.
     pub split_dimension: usize,
 
-    /// Structural quality metrics for the median split along this axis.
+    /// Structural quality metrics for the split along this axis.
     pub metrics: SplitQualityMetrics,
 
     /// Variance of the selected split dimension.
@@ -58,7 +60,7 @@ impl SplitAxisScore {
     }
 }
 
-/// Median split result paired with the score that selected it.
+/// Point split result paired with the score that selected it.
 ///
 /// # Runtime Role
 ///
@@ -135,10 +137,8 @@ pub fn best_median_split_axis_score(points: &[Vector]) -> SplitAxisScore {
 ///
 /// # Runtime Role
 ///
-/// This is the construction-facing helper. It evaluates candidate split axes
-/// once and returns the winning score together with the already-sorted child
-/// point sets. The builder can then recurse without re-sorting the selected
-/// axis.
+/// This helper evaluates candidate median split axes and returns the winning
+/// score together with the already-sorted child point sets.
 ///
 /// # Panics
 ///
@@ -148,11 +148,42 @@ pub fn best_median_split(points: &[Vector]) -> MedianSplit {
     let dimensions = validate_points_for_split(points);
     let variances = variance_by_dimension(points);
 
-    // each candidate owns the child vectors it just scored
-    // the losing candidates drop, the winner goes straight to the builder
     (0..dimensions)
         .map(|split_dimension| {
             median_split_on_axis_with_variance(points, split_dimension, variances[split_dimension])
+        })
+        .min_by(|left, right| compare_split_axis_scores(&left.score, &right.score))
+        .expect("validated split input should have at least one dimension")
+}
+
+/// Returns the best guarded structural split for a point set.
+///
+/// # Runtime Role
+///
+/// This is the builder-facing split helper. It evaluates every axis using a
+/// guarded structural split:
+///
+/// - When an axis contains a dominant coordinate gap, split at that gap.
+/// - Otherwise, fall back to median splitting on that axis.
+///
+/// This preserves cluster separation for clearly separated groups without
+/// overreacting to uniform spacing.
+///
+/// # Panics
+///
+/// Panics when fewer than two points are provided or dimensionality is
+/// inconsistent.
+pub fn best_structural_split(points: &[Vector]) -> MedianSplit {
+    let dimensions = validate_points_for_split(points);
+    let variances = variance_by_dimension(points);
+
+    (0..dimensions)
+        .map(|split_dimension| {
+            structural_split_on_axis_with_variance(
+                points,
+                split_dimension,
+                variances[split_dimension],
+            )
         })
         .min_by(|left, right| compare_split_axis_scores(&left.score, &right.score))
         .expect("validated split input should have at least one dimension")
@@ -180,6 +211,30 @@ pub fn median_split_score_on_axis(points: &[Vector], split_dimension: usize) -> 
     median_split_on_axis_with_variance(points, split_dimension, variances[split_dimension]).score
 }
 
+/// Scores a guarded structural split along one dimension.
+///
+/// # Runtime Role
+///
+/// This exposes the builder-facing split rule for tests. It uses the largest
+/// structural gap only when that gap dominates local spacing; otherwise it
+/// scores the median split on the selected axis.
+///
+/// # Panics
+///
+/// Panics when fewer than two points are provided, when the split dimension is
+/// out of range, or when dimensionality is inconsistent.
+pub fn structural_split_score_on_axis(points: &[Vector], split_dimension: usize) -> SplitAxisScore {
+    let variances = variance_by_dimension(points);
+
+    assert!(
+        split_dimension < variances.len(),
+        "split dimension must be inside point dimensionality"
+    );
+
+    structural_split_on_axis_with_variance(points, split_dimension, variances[split_dimension])
+        .score
+}
+
 /// Splits points at the median along the selected dimension.
 ///
 /// # Runtime Role
@@ -202,25 +257,43 @@ pub fn median_split_on_axis(
         "split dimension must be inside point dimensionality"
     );
 
-    let mut sorted = points.to_vec();
+    let sorted = sorted_points_on_axis(points, split_dimension);
+    split_sorted_points_at_index(sorted, points.len() / 2)
+}
 
-    // full sort is still the obvious version
-    // select_nth_unstable can come later if this shows up in profiles
-    sorted.sort_by(|left, right| {
-        left.values[split_dimension]
-            .partial_cmp(&right.values[split_dimension])
-            .unwrap_or(Ordering::Equal)
-    });
+/// Splits points using the guarded structural split rule along one dimension.
+///
+/// # Runtime Role
+///
+/// This is useful for tests and diagnostics. The builder normally calls
+/// [`best_structural_split`] so every axis can compete by split quality.
+///
+/// # Panics
+///
+/// Panics when fewer than two points are provided, when the split dimension is
+/// out of range, or when dimensionality is inconsistent.
+pub fn structural_split_on_axis(
+    points: &[Vector],
+    split_dimension: usize,
+) -> (Vec<Vector>, Vec<Vector>) {
+    let dimensions = validate_points_for_split(points);
 
-    split_sorted_points_at_midpoint(sorted)
+    assert!(
+        split_dimension < dimensions,
+        "split dimension must be inside point dimensionality"
+    );
+
+    let sorted = sorted_points_on_axis(points, split_dimension);
+    let split_index = guarded_structural_split_index(&sorted, split_dimension);
+    split_sorted_points_at_index(sorted, split_index)
 }
 
 /// Splits points at the median along the best geometric split dimension.
 ///
 /// # Runtime Role
 ///
-/// This convenience function preserves the builder API while selecting the split
-/// dimension with the shared split-quality metric definition.
+/// This convenience function preserves the median split API while selecting the
+/// split dimension with the shared split-quality metric definition.
 pub fn median_split(points: &[Vector]) -> (Vec<Vector>, Vec<Vector>) {
     let split = best_median_split(points);
 
@@ -233,7 +306,26 @@ fn median_split_on_axis_with_variance(
     variance: Scalar,
 ) -> MedianSplit {
     let (left_points, right_points) = median_split_on_axis(points, split_dimension);
-    let metrics = split_quality_metrics(points, &left_points, &right_points);
+    split_with_score(points, split_dimension, variance, left_points, right_points)
+}
+
+fn structural_split_on_axis_with_variance(
+    points: &[Vector],
+    split_dimension: usize,
+    variance: Scalar,
+) -> MedianSplit {
+    let (left_points, right_points) = structural_split_on_axis(points, split_dimension);
+    split_with_score(points, split_dimension, variance, left_points, right_points)
+}
+
+fn split_with_score(
+    parent_points: &[Vector],
+    split_dimension: usize,
+    variance: Scalar,
+    left_points: Vec<Vector>,
+    right_points: Vec<Vector>,
+) -> MedianSplit {
+    let metrics = split_quality_metrics(parent_points, &left_points, &right_points);
 
     // metrics owns the geometry now
     let score = SplitAxisScore {
@@ -249,16 +341,102 @@ fn median_split_on_axis_with_variance(
     }
 }
 
-fn split_sorted_points_at_midpoint(mut sorted: Vec<Vector>) -> (Vec<Vector>, Vec<Vector>) {
-    let midpoint = sorted.len() / 2;
-    let right = sorted.split_off(midpoint);
+fn sorted_points_on_axis(points: &[Vector], split_dimension: usize) -> Vec<Vector> {
+    let mut sorted = points.to_vec();
+
+    // full sort is still the obvious version
+    // select_nth_unstable can come later if this shows up in profiles
+    sorted.sort_by(|left, right| {
+        left.values[split_dimension]
+            .partial_cmp(&right.values[split_dimension])
+            .unwrap_or(Ordering::Equal)
+    });
+
+    sorted
+}
+
+fn guarded_structural_split_index(sorted: &[Vector], split_dimension: usize) -> usize {
+    structural_gap_split_index(sorted, split_dimension).unwrap_or(sorted.len() / 2)
+}
+
+fn structural_gap_split_index(sorted: &[Vector], split_dimension: usize) -> Option<usize> {
+    debug_assert!(
+        sorted.len() >= 2,
+        "structural gap split requires at least two sorted points"
+    );
+
+    let median_index = sorted.len() / 2;
+    let mut best_split_index = median_index;
+    let mut best_gap = Scalar::NEG_INFINITY;
+    let mut best_median_distance = usize::MAX;
+    let mut positive_gaps = Vec::with_capacity(sorted.len().saturating_sub(1));
+
+    for split_index in 1..sorted.len() {
+        let previous_value = sorted[split_index - 1].values[split_dimension];
+        let next_value = sorted[split_index].values[split_dimension];
+        let gap = next_value - previous_value;
+
+        if gap > 0.0 {
+            positive_gaps.push(gap);
+        }
+
+        let median_distance = split_index.abs_diff(median_index);
+
+        if gap > best_gap || (gap == best_gap && median_distance < best_median_distance) {
+            best_gap = gap;
+            best_split_index = split_index;
+            best_median_distance = median_distance;
+        }
+    }
+
+    if !gap_is_structural(best_gap, &mut positive_gaps) {
+        return None;
+    }
+
+    Some(best_split_index)
+}
+
+fn gap_is_structural(largest_gap: Scalar, positive_gaps: &mut Vec<Scalar>) -> bool {
+    if largest_gap <= 0.0 || positive_gaps.is_empty() {
+        return false;
+    }
+
+    if positive_gaps.len() == 1 {
+        return true;
+    }
+
+    positive_gaps.sort_by(|left, right| left.partial_cmp(right).unwrap_or(Ordering::Equal));
+
+    let local_spacing = lower_median_positive_gap(positive_gaps);
+
+    if local_spacing <= 0.0 {
+        return true;
+    }
+
+    // largest gap has to stand out from normal local spacing
+    largest_gap >= local_spacing * STRUCTURAL_GAP_DOMINANCE_RATIO
+}
+
+fn lower_median_positive_gap(sorted_positive_gaps: &[Scalar]) -> Scalar {
+    let median_index = (sorted_positive_gaps.len() - 1) / 2;
+
+    sorted_positive_gaps[median_index]
+}
+
+fn split_sorted_points_at_index(
+    mut sorted: Vec<Vector>,
+    split_index: usize,
+) -> (Vec<Vector>, Vec<Vector>) {
+    assert!(
+        split_index > 0 && split_index < sorted.len(),
+        "split index must produce two non-empty sides"
+    );
+
+    let right = sorted.split_off(split_index);
     let left = sorted;
 
-    assert!(!left.is_empty(), "median split produced an empty left side");
-    assert!(
-        !right.is_empty(),
-        "median split produced an empty right side"
-    );
+    assert!(!left.is_empty(), "split produced an empty left side");
+    assert!(!right.is_empty(), "split produced an empty right side");
 
     (left, right)
 }

@@ -49,6 +49,58 @@ fn parse_benchmark_config_parses_small_dataset() {
 }
 
 #[test]
+fn parse_benchmark_config_uses_gap_aware_small_dataset_default_leaf_policy() {
+    let config = parse_benchmark_config(["--dataset", "small"]).unwrap();
+
+    assert_eq!(config.dataset_kind, BenchmarkDatasetKind::SmallClustered2D);
+    assert_eq!(config.target_leaf_size, 8);
+    assert_eq!(config.max_leaf_size, 8);
+}
+
+#[test]
+fn parse_benchmark_config_keeps_explicit_small_dataset_target_leaf_size() {
+    let config = parse_benchmark_config(["--dataset", "small", "--target-leaf-size", "4"]).unwrap();
+
+    assert_eq!(config.dataset_kind, BenchmarkDatasetKind::SmallClustered2D);
+    assert_eq!(config.target_leaf_size, 4);
+    assert_eq!(config.max_leaf_size, 8);
+}
+
+#[test]
+fn parse_benchmark_config_keeps_explicit_small_dataset_max_leaf_size() {
+    let config = parse_benchmark_config(["--dataset", "small", "--max-leaf-size", "16"]).unwrap();
+
+    assert_eq!(config.dataset_kind, BenchmarkDatasetKind::SmallClustered2D);
+    assert_eq!(config.target_leaf_size, 16);
+    assert_eq!(config.max_leaf_size, 16);
+}
+
+#[test]
+fn parse_benchmark_cli_config_uses_gap_aware_small_dataset_default_leaf_policy() {
+    let config = parse_benchmark_cli_config(["--dataset", "small"]).unwrap();
+
+    assert_eq!(
+        config.suite_config.dataset_kind,
+        BenchmarkDatasetKind::SmallClustered2D
+    );
+    assert_eq!(config.suite_config.target_leaf_size, 8);
+    assert_eq!(config.suite_config.max_leaf_size, 8);
+}
+
+#[test]
+fn parse_benchmark_cli_config_keeps_explicit_small_dataset_leaf_policy() {
+    let config =
+        parse_benchmark_cli_config(["--dataset", "small", "--target-leaf-size", "4"]).unwrap();
+
+    assert_eq!(
+        config.suite_config.dataset_kind,
+        BenchmarkDatasetKind::SmallClustered2D
+    );
+    assert_eq!(config.suite_config.target_leaf_size, 4);
+    assert_eq!(config.suite_config.max_leaf_size, 8);
+}
+
+#[test]
 fn parse_benchmark_config_parses_large_dataset() {
     let config = parse_benchmark_config(["--dataset", "large"]).unwrap();
 

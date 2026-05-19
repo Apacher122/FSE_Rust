@@ -74,7 +74,24 @@ fn builder_rejects_optional_zero_volume_split_when_extent_does_not_improve() {
 }
 
 #[test]
-fn builder_rejects_optional_split_when_child_volume_does_not_improve_parent_volume() {
+fn builder_accepts_optional_structural_gap_split_when_child_volume_improves() {
+    let points = dominant_gap_points();
+
+    let config = BuildConfig::new(16, 8).with_target_leaf_size(2);
+    let builder = FSEBuilder::new(config);
+    let index = builder.build(&points);
+
+    assert!(index.node_count() > 1);
+    assert!(!index.root_node().is_leaf);
+    assert_eq!(index.root_node().cardinality, points.len());
+    assert!(validate_leaf_cardinality(
+        &index,
+        builder.config().max_leaf_size
+    ));
+}
+
+#[test]
+fn builder_rejects_optional_uniform_grid_split_under_hard_limit() {
     let points = neutral_grid_points();
 
     let config = BuildConfig::new(16, 8).with_target_leaf_size(2);
@@ -159,7 +176,7 @@ fn build_config_requires_positive_split_volume_reduction_by_default() {
 }
 
 #[test]
-fn build_config_can_turn_off_positive_split_volume_requirement() {
+fn build_config_can_turn_off_positive_volume_requirement() {
     let config = BuildConfig::new(4, 8).with_positive_split_volume_reduction_required(false);
 
     assert!(!config.require_positive_split_volume_reduction);
@@ -269,7 +286,21 @@ fn build_validated_keeps_leaf_cardinality_valid_when_hard_split_is_forced() {
 }
 
 #[test]
-fn build_validated_allows_optional_unsplit_leaf_under_hard_limit() {
+fn build_validated_accepts_optional_structural_gap_split_under_hard_limit() {
+    let points = dominant_gap_points();
+
+    let config = BuildConfig::new(16, 8).with_target_leaf_size(2);
+    let builder = FSEBuilder::new(config);
+    let validated = builder.build_validated(&points);
+
+    assert!(validated.index.node_count() > 1);
+    assert!(!validated.index.root_node().is_leaf);
+    assert_eq!(validated.index.root_node().cardinality, points.len());
+    assert!(validated.validation.is_valid());
+}
+
+#[test]
+fn build_validated_allows_optional_unsplit_uniform_grid_under_hard_limit() {
     let points = neutral_grid_points();
 
     let config = BuildConfig::new(16, 8).with_target_leaf_size(2);
@@ -331,5 +362,16 @@ fn neutral_grid_points() -> Vec<Vector> {
         Vector::new(vec![0.0, 10.0]),
         Vector::new(vec![5.0, 10.0]),
         Vector::new(vec![10.0, 10.0]),
+    ]
+}
+
+fn dominant_gap_points() -> Vec<Vector> {
+    vec![
+        Vector::new(vec![0.0, 0.0]),
+        Vector::new(vec![1.0, 0.0]),
+        Vector::new(vec![2.0, 0.0]),
+        Vector::new(vec![50.0, 0.0]),
+        Vector::new(vec![51.0, 0.0]),
+        Vector::new(vec![52.0, 0.0]),
     ]
 }
