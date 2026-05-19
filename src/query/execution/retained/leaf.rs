@@ -95,45 +95,7 @@ pub(crate) fn execute_retained_leaf_into_batch_report(
 ///
 /// The query already contains the leaf bounds, so every reconstructed row can be
 /// appended directly without exact predicate evaluation.
-///
-/// This reserving variant is the normal retained-leaf path. It protects callers
-/// whose result vector was created with a bounded capacity hint instead of a
-/// full candidate-count allocation.
 pub(crate) fn append_covered_retained_leaf_results(
-    node: &PartitionNode,
-    shape: LeafReconstructionShape,
-    batch_report: &mut RetainedLeafBatchExecutionReport,
-) {
-    reserve_additional_results(&mut batch_report.results, shape.cardinality);
-    append_covered_retained_leaf_results_without_reserve(node, shape, batch_report);
-}
-
-/// Appends all covered rows when the caller has already reserved enough capacity.
-///
-/// # Runtime Role
-///
-/// Full-root serial execution can know that its result vector has enough room
-/// for every indexed record. This helper avoids repeating the per-leaf capacity
-/// check in that specific path while keeping the normal retained-leaf helper
-/// safe for bounded-capacity result buffers.
-pub(crate) fn append_covered_retained_leaf_results_to_reserved_batch(
-    node: &PartitionNode,
-    shape: LeafReconstructionShape,
-    batch_report: &mut RetainedLeafBatchExecutionReport,
-) {
-    debug_assert!(
-        batch_report
-            .results
-            .capacity()
-            .saturating_sub(batch_report.results.len())
-            >= shape.cardinality,
-        "reserved covered-leaf append requires enough remaining result capacity"
-    );
-
-    append_covered_retained_leaf_results_without_reserve(node, shape, batch_report);
-}
-
-fn append_covered_retained_leaf_results_without_reserve(
     node: &PartitionNode,
     shape: LeafReconstructionShape,
     batch_report: &mut RetainedLeafBatchExecutionReport,
@@ -148,6 +110,8 @@ fn append_covered_retained_leaf_results_without_reserve(
         shape.cardinality,
         "cached leaf cardinality should match residual cardinality"
     );
+
+    reserve_additional_results(&mut batch_report.results, shape.cardinality);
 
     // geometry already proved these rows match
     for row in 0..shape.cardinality {
