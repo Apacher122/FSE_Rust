@@ -9,9 +9,10 @@ use crate::storage::PartitionNode;
 /// `FSEIndex` owns all partition nodes and identifies the root of the hierarchy.
 /// Query execution traverses this structure without mutating it.
 ///
-/// The index also caches simple structural counts that are needed during query
-/// reporting. These values are derived once at construction time so query
-/// execution does not need to rescan the whole node list for every request.
+/// The index also caches simple structural counts and leaf identifiers that are
+/// needed during query execution. These values are derived once at construction
+/// time so hot query paths do not need to rescan the whole node list for every
+/// request.
 ///
 /// # Formal Reference
 ///
@@ -35,6 +36,15 @@ pub struct FSEIndex {
     /// Traversal reports need this value for pruning statistics. Caching it here
     /// avoids a full node scan during every query.
     pub leaf_count: usize,
+
+    /// Leaf node identifiers in node-list order.
+    ///
+    /// # Runtime Role
+    ///
+    /// Full-root coverage and parallel covered-leaf setup need to iterate all
+    /// leaves. Caching these ids avoids repeatedly scanning every node and
+    /// checking `is_leaf` on the hot path.
+    pub leaf_node_ids: Vec<usize>,
 }
 
 impl FSEIndex {
@@ -60,13 +70,24 @@ impl FSEIndex {
             );
         }
 
-        let leaf_count = nodes.iter().filter(|node| node.is_leaf).count();
+        let leaf_node_ids = nodes
+            .iter()
+            .enumerate()
+            .filter_map(
+                |(node_id, node)| {
+                    if node.is_leaf { Some(node_id) } else { None }
+                },
+            )
+            .collect::<Vec<_>>();
+
+        let leaf_count = leaf_node_ids.len();
 
         Self {
             nodes,
             root,
             dimensions,
             leaf_count,
+            leaf_node_ids,
         }
     }
 
@@ -93,6 +114,16 @@ impl FSEIndex {
     /// leaf pruning statistics without scanning all nodes first.
     pub fn leaf_count(&self) -> usize {
         self.leaf_count
+    }
+
+    /// Returns leaf node identifiers in node-list order.
+    ///
+    /// # Runtime Role
+    ///
+    /// This is the cached leaf iteration path for root-covered execution and
+    /// other execution helpers that need every leaf.
+    pub fn leaf_node_ids(&self) -> &[usize] {
+        &self.leaf_node_ids
     }
 
     /// Returns the number of internal partitions in the index.

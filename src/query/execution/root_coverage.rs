@@ -69,7 +69,9 @@ pub(crate) fn execute_fully_covered_index_with_options(
 /// # Runtime Role
 ///
 /// This function skips traversal-produced retained-leaf vectors entirely and
-/// reconstructs every leaf row into one batch result.
+/// reconstructs every leaf row into one batch result. Leaf ids are read from the
+/// index cache so the full-coverage path does not rescan the node list looking
+/// for leaves.
 ///
 /// # Panics
 ///
@@ -83,7 +85,8 @@ pub(crate) fn execute_fully_covered_index_serial(
         RetainedLeafBatchExecutionReport::with_candidate_capacity(candidate_count);
 
     // full coverage can materialize rows directly
-    for node in index.nodes.iter().filter(|node| node.is_leaf) {
+    for node_id in index.leaf_node_ids() {
+        let node = &index.nodes[*node_id];
         append_covered_retained_leaf_results(node, &mut batch_report);
     }
 
@@ -105,10 +108,8 @@ pub(crate) fn execute_fully_covered_index_serial(
 pub(crate) fn fully_covered_retained_leaves(index: &FSEIndex) -> Vec<RetainedLeaf> {
     let mut retained_leaves = Vec::with_capacity(index.leaf_count());
 
-    for (node_id, node) in index.nodes.iter().enumerate() {
-        if node.is_leaf {
-            retained_leaves.push(RetainedLeaf::covered(node_id));
-        }
+    for node_id in index.leaf_node_ids() {
+        retained_leaves.push(RetainedLeaf::covered(*node_id));
     }
 
     retained_leaves
