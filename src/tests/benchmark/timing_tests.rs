@@ -1,10 +1,12 @@
+use std::cell::RefCell;
+use std::time::Duration;
+
 use crate::benchmark::reports::{
     RepeatedTimingConfig, compare_query_execution, compare_query_execution_repeated,
-    duration_ratio, measure_elapsed, measure_repeated,
+    duration_ratio, measure_elapsed, measure_repeated, measure_repeated_comparison_interleaved,
 };
 use crate::query::QueryRegion;
 use crate::tests::support::small_benchmark_fixture;
-use std::time::Duration;
 
 fn middle_cluster_query() -> QueryRegion {
     QueryRegion::new(vec![50.0, 50.0], vec![55.0, 55.0])
@@ -66,6 +68,31 @@ fn repeated_comparison_report_uses_requested_iteration_count() {
 
     assert_eq!(report.repeated_timing.baseline.iterations, 3);
     assert_eq!(report.repeated_timing.fse.iterations, 3);
+}
+
+#[test]
+fn measure_repeated_comparison_interleaves_operation_order() {
+    let config = RepeatedTimingConfig::new(4);
+    let operation_order = RefCell::new(Vec::new());
+
+    let report = measure_repeated_comparison_interleaved(
+        &config,
+        || {
+            operation_order.borrow_mut().push("baseline");
+        },
+        || {
+            operation_order.borrow_mut().push("fse");
+        },
+    );
+
+    assert_eq!(report.baseline.iterations, 4);
+    assert_eq!(report.fse.iterations, 4);
+    assert_eq!(
+        operation_order.into_inner(),
+        vec![
+            "baseline", "fse", "fse", "baseline", "baseline", "fse", "fse", "baseline",
+        ]
+    );
 }
 
 #[test]

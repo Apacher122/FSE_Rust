@@ -106,15 +106,51 @@ pub fn measure_repeated(
     let mut total_elapsed = Duration::ZERO;
 
     for _ in 0..config.iterations {
-        let started_at = Instant::now();
-        operation();
-        total_elapsed += started_at.elapsed();
+        total_elapsed += measure_iteration(&mut operation);
     }
 
-    RepeatedTimingReport {
-        iterations: config.iterations,
-        total_elapsed,
-        average_elapsed: duration_div(total_elapsed, config.iterations),
+    repeated_timing_report(config.iterations, total_elapsed)
+}
+
+/// Measures repeated baseline and FSE execution with alternating order.
+///
+/// # Runtime Role
+///
+/// `measure_repeated_comparison_interleaved` keeps repeated benchmark timing
+/// fairer for very small operations by avoiding one large baseline timing block
+/// followed by one large FSE timing block. Each measured iteration runs both
+/// operations, but the order flips every other iteration:
+///
+/// ```text
+/// iteration 0: baseline -> fse
+/// iteration 1: fse -> baseline
+/// iteration 2: baseline -> fse
+/// iteration 3: fse -> baseline
+/// ```
+///
+/// This does not change execution semantics or result reporting. It only changes
+/// how repeated wall-clock timing samples are collected.
+pub fn measure_repeated_comparison_interleaved(
+    config: &RepeatedTimingConfig,
+    mut baseline_operation: impl FnMut(),
+    mut fse_operation: impl FnMut(),
+) -> RepeatedComparisonTimingReport {
+    let mut baseline_total_elapsed = Duration::ZERO;
+    let mut fse_total_elapsed = Duration::ZERO;
+
+    for iteration in 0..config.iterations {
+        if iteration % 2 == 0 {
+            baseline_total_elapsed += measure_iteration(&mut baseline_operation);
+            fse_total_elapsed += measure_iteration(&mut fse_operation);
+        } else {
+            fse_total_elapsed += measure_iteration(&mut fse_operation);
+            baseline_total_elapsed += measure_iteration(&mut baseline_operation);
+        }
+    }
+
+    RepeatedComparisonTimingReport {
+        baseline: repeated_timing_report(config.iterations, baseline_total_elapsed),
+        fse: repeated_timing_report(config.iterations, fse_total_elapsed),
     }
 }
 
@@ -135,11 +171,25 @@ pub fn duration_ratio(numerator: Duration, denominator: Duration) -> f64 {
     numerator.as_secs_f64() / denominator.as_secs_f64()
 }
 
+fn measure_iteration(operation: &mut impl FnMut()) -> Duration {
+    let started_at = Instant::now();
+    operation();
+    started_at.elapsed()
+}
+
+fn repeated_timing_report(iterations: usize, total_elapsed: Duration) -> RepeatedTimingReport {
+    RepeatedTimingReport {
+        iterations,
+        total_elapsed,
+        average_elapsed: duration_div(total_elapsed, iterations),
+    }
+}
+
 fn duration_div(duration: Duration, divisor: usize) -> Duration {
     if divisor == 0 {
         return Duration::ZERO;
     }
 
-    // Duration division is kept explicit so the averaging logic is easy to audit.
+    // duration division is kept explicit so the averaging logic is easy to audit
     Duration::from_secs_f64(duration.as_secs_f64() / divisor as f64)
 }

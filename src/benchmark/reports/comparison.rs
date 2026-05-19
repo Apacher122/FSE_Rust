@@ -3,7 +3,7 @@
 use super::ordering::sort_points_lexicographically;
 use super::timing::{
     RepeatedComparisonTimingReport, RepeatedTimingConfig, TimingReport, duration_ratio,
-    measure_elapsed, measure_repeated,
+    measure_elapsed, measure_repeated_comparison_interleaved,
 };
 use crate::benchmark::baselines::{
     BaselineComparisonLabels, BaselineQueryStats, FlatScanBaseline, RangeQueryBaseline,
@@ -186,14 +186,15 @@ pub fn compare_query_execution_with_baseline_and_options(
         "FSE query results must match baseline query results"
     );
 
-    let repeated_timing = RepeatedComparisonTimingReport {
-        baseline: measure_repeated(timing_config, || {
+    let repeated_timing = measure_repeated_comparison_interleaved(
+        timing_config,
+        || {
             let _ = baseline.execute(query);
-        }),
-        fse: measure_repeated(timing_config, || {
+        },
+        || {
             let _ = execute_query_with_stats_and_options(index, query, fse_options);
-        }),
-    };
+        },
+    );
 
     let single_run_timing_ratio = duration_ratio(baseline_elapsed, fse_elapsed);
     let average_timing_ratio = duration_ratio(

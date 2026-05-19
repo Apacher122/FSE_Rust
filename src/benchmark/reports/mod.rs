@@ -52,5 +52,5 @@ pub use summary::{
 };
 pub use timing::{
     RepeatedComparisonTimingReport, RepeatedTimingConfig, RepeatedTimingReport, TimingReport,
-    duration_ratio, measure_elapsed, measure_repeated,
+    duration_ratio, measure_elapsed, measure_repeated, measure_repeated_comparison_interleaved,
 };
