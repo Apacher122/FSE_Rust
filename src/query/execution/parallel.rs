@@ -73,7 +73,7 @@ pub(crate) fn execute_classified_retained_leaves_parallel_with_candidate_count(
         .par_iter()
         .map(|retained_leaf| {
             let node = &index.nodes[retained_leaf.node_id];
-            let shape = index.leaf_reconstruction_shape(retained_leaf.node_id);
+            let shape = retained_leaf.reconstruction_shape(index);
 
             // parallel still needs leaf local buffers
             execute_retained_leaf_with_cached_shape(node, query, shape, retained_leaf.coverage)

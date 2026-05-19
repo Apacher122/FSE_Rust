@@ -3,7 +3,7 @@
 use crate::math::Scalar;
 use crate::query::QueryRegion;
 use crate::query::region::QueryBoundsClassification;
-use crate::storage::FSEIndex;
+use crate::storage::{FSEIndex, LeafReconstructionShape};
 
 /// Coverage classification for a retained leaf.
 ///
@@ -30,29 +30,89 @@ pub enum RetainedLeafCoverage {
 /// `RetainedLeaf` is the Stage I handoff to retained-partition execution. It
 /// keeps the leaf identifier together with the geometric proof discovered during
 /// traversal.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+///
+/// Normal traversal also carries cached reconstruction shape metadata so Stage
+/// II does not need to look that shape back up by node id. Test constructors
+/// still support id-only retained leaves for older unit tests.
+#[derive(Clone, Copy, Debug)]
 pub struct RetainedLeaf {
     /// Retained leaf node identifier.
     pub node_id: usize,
 
     /// Coverage classification for this retained leaf.
     pub coverage: RetainedLeafCoverage,
+
+    cached_shape: Option<LeafReconstructionShape>,
 }
+
+impl PartialEq for RetainedLeaf {
+    fn eq(&self, other: &Self) -> bool {
+        self.node_id == other.node_id && self.coverage == other.coverage
+    }
+}
+
+impl Eq for RetainedLeaf {}
 
 impl RetainedLeaf {
     /// Creates a retained leaf classified as covered.
+    ///
+    /// # Runtime Role
+    ///
+    /// This id-only constructor is kept for tests and compatibility helpers.
+    /// Runtime traversal should prefer [`RetainedLeaf::covered_with_shape`].
     pub fn covered(node_id: usize) -> Self {
         Self {
             node_id,
             coverage: RetainedLeafCoverage::Covered,
+            cached_shape: None,
         }
     }
 
     /// Creates a retained leaf classified as partially covered.
+    ///
+    /// # Runtime Role
+    ///
+    /// This id-only constructor is kept for tests and compatibility helpers.
+    /// Runtime traversal should prefer [`RetainedLeaf::partial_with_shape`].
     pub fn partial(node_id: usize) -> Self {
         Self {
             node_id,
             coverage: RetainedLeafCoverage::Partial,
+            cached_shape: None,
+        }
+    }
+
+    /// Creates a covered retained leaf with cached reconstruction shape.
+    pub(crate) fn covered_with_shape(shape: LeafReconstructionShape) -> Self {
+        Self::with_shape(shape.node_id, RetainedLeafCoverage::Covered, shape)
+    }
+
+    /// Creates a partially covered retained leaf with cached reconstruction shape.
+    ///
+    /// # Runtime Role
+    ///
+    /// This is currently only needed by test compatibility helpers that classify
+    /// retained leaf ids after traversal.
+    #[cfg(test)]
+    pub(crate) fn partial_with_shape(shape: LeafReconstructionShape) -> Self {
+        Self::with_shape(shape.node_id, RetainedLeafCoverage::Partial, shape)
+    }
+
+    /// Creates a retained leaf with explicit coverage and cached shape.
+    pub(crate) fn with_shape(
+        node_id: usize,
+        coverage: RetainedLeafCoverage,
+        shape: LeafReconstructionShape,
+    ) -> Self {
+        debug_assert_eq!(
+            node_id, shape.node_id,
+            "retained leaf node id should match cached shape node id"
+        );
+
+        Self {
+            node_id,
+            coverage,
+            cached_shape: Some(shape),
         }
     }
 
@@ -64,6 +124,18 @@ impl RetainedLeaf {
     /// Returns true when the retained leaf still requires exact predicate checks.
     pub fn is_partial(&self) -> bool {
         matches!(self.coverage, RetainedLeafCoverage::Partial)
+    }
+
+    /// Returns cached reconstruction shape for this retained leaf.
+    ///
+    /// # Runtime Role
+    ///
+    /// Traversal-produced retained leaves already carry shape metadata. Older
+    /// tests and compatibility helpers may construct id-only retained leaves, so
+    /// this method falls back to the index cache when needed.
+    pub(crate) fn reconstruction_shape(&self, index: &FSEIndex) -> LeafReconstructionShape {
+        self.cached_shape
+            .unwrap_or_else(|| index.leaf_reconstruction_shape(self.node_id))
     }
 }
 
@@ -283,9 +355,8 @@ pub(crate) fn traverse_with_known_root_classification(
 
             if root.is_leaf {
                 retain_leaf(
-                    index.root,
+                    index.leaf_reconstruction_shape(index.root),
                     RetainedLeafCoverage::Partial,
-                    root.residuals.cardinality(),
                     &mut retained_leaves,
                     &mut stats,
                 );
@@ -328,9 +399,8 @@ pub(crate) fn traverse_with_known_root_classification(
             QueryBoundsClassification::Partial => {
                 if node.is_leaf {
                     retain_leaf(
-                        frame.node_id,
+                        index.leaf_reconstruction_shape(frame.node_id),
                         RetainedLeafCoverage::Partial,
-                        node.residuals.cardinality(),
                         &mut retained_leaves,
                         &mut stats,
                     );
@@ -392,9 +462,8 @@ fn retain_or_descend_covered_node(
 
     if node.is_leaf {
         retain_leaf(
-            node_id,
+            index.leaf_reconstruction_shape(node_id),
             RetainedLeafCoverage::Covered,
-            node.residuals.cardinality(),
             retained_leaves,
             stats,
         );
@@ -420,15 +489,14 @@ fn push_child_frames(children: &[usize], inherited_covered: bool, stack: &mut Ve
 
 #[inline]
 fn retain_leaf(
-    node_id: usize,
+    shape: LeafReconstructionShape,
     coverage: RetainedLeafCoverage,
-    candidate_records: usize,
     retained_leaves: &mut Vec<RetainedLeaf>,
     stats: &mut QueryTraversalStats,
 ) {
     stats.retained_leaves += 1;
-    stats.retained_candidate_records += candidate_records;
-    retained_leaves.push(RetainedLeaf { node_id, coverage });
+    stats.retained_candidate_records += shape.cardinality;
+    retained_leaves.push(RetainedLeaf::with_shape(shape.node_id, coverage, shape));
 }
 
 fn finish_traversal_report(

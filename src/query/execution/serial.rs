@@ -57,7 +57,7 @@ pub(crate) fn execute_classified_retained_leaves_serial_with_candidate_count(
     // one scratch buffer for every retained leaf in this serial query
     for retained_leaf in retained_leaves {
         let node = &index.nodes[retained_leaf.node_id];
-        let shape = index.leaf_reconstruction_shape(retained_leaf.node_id);
+        let shape = retained_leaf.reconstruction_shape(index);
 
         execute_retained_leaf_into_batch_report(
             node,

@@ -109,7 +109,7 @@ pub(crate) fn fully_covered_retained_leaves(index: &FSEIndex) -> Vec<RetainedLea
     let mut retained_leaves = Vec::with_capacity(index.leaf_count());
 
     for shape in index.leaf_reconstruction_shapes() {
-        retained_leaves.push(RetainedLeaf::covered(shape.node_id));
+        retained_leaves.push(RetainedLeaf::covered_with_shape(*shape));
     }
 
     retained_leaves
