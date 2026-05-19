@@ -2,6 +2,40 @@
 
 use crate::storage::PartitionNode;
 
+/// Cached reconstruction shape for a leaf partition.
+///
+/// # Runtime Role
+///
+/// `LeafReconstructionShape` stores the small amount of immutable metadata
+/// needed by retained-leaf execution. Query execution can use this value instead
+/// of revalidating leaf residual shape every time a leaf is reconstructed.
+///
+/// # Notes
+///
+/// The `node_id` is the position of the leaf in `FSEIndex::nodes`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LeafReconstructionShape {
+    /// Leaf node identifier in the index node list.
+    pub node_id: usize,
+
+    /// Number of coordinate dimensions reconstructed for each row.
+    pub dimensions: usize,
+
+    /// Number of residual rows stored by the leaf.
+    pub cardinality: usize,
+}
+
+impl LeafReconstructionShape {
+    /// Creates cached reconstruction metadata for a leaf node.
+    pub fn new(node_id: usize, dimensions: usize, cardinality: usize) -> Self {
+        Self {
+            node_id,
+            dimensions,
+            cardinality,
+        }
+    }
+}
+
 /// In-memory representation of an FSE hierarchy.
 ///
 /// # Runtime Role
@@ -9,10 +43,10 @@ use crate::storage::PartitionNode;
 /// `FSEIndex` owns all partition nodes and identifies the root of the hierarchy.
 /// Query execution traverses this structure without mutating it.
 ///
-/// The index also caches simple structural counts and leaf identifiers that are
-/// needed during query execution. These values are derived once at construction
-/// time so hot query paths do not need to rescan the whole node list for every
-/// request.
+/// The index also caches simple structural counts, leaf identifiers, and leaf
+/// reconstruction shapes that are needed during query execution. These values
+/// are derived once at construction time so hot query paths do not need to
+/// rescan or revalidate the whole node list for every request.
 ///
 /// # Formal Reference
 ///
@@ -45,6 +79,22 @@ pub struct FSEIndex {
     /// leaves. Caching these ids avoids repeatedly scanning every node and
     /// checking `is_leaf` on the hot path.
     pub leaf_node_ids: Vec<usize>,
+
+    /// Cached reconstruction shapes for every leaf in node-list order.
+    ///
+    /// # Runtime Role
+    ///
+    /// Retained-leaf execution uses this metadata to avoid per-query leaf shape
+    /// validation.
+    pub leaf_reconstruction_shapes: Vec<LeafReconstructionShape>,
+
+    /// Cached leaf reconstruction shape lookup by node id.
+    ///
+    /// # Runtime Role
+    ///
+    /// Traversal returns retained leaves by node id. This table makes the shape
+    /// lookup O(1) without searching the leaf list.
+    pub leaf_reconstruction_shapes_by_node: Vec<Option<LeafReconstructionShape>>,
 }
 
 impl FSEIndex {
@@ -70,15 +120,25 @@ impl FSEIndex {
             );
         }
 
-        let leaf_node_ids = nodes
-            .iter()
-            .enumerate()
-            .filter_map(
-                |(node_id, node)| {
-                    if node.is_leaf { Some(node_id) } else { None }
-                },
-            )
-            .collect::<Vec<_>>();
+        let mut leaf_node_ids = Vec::new();
+        let mut leaf_reconstruction_shapes = Vec::new();
+        let mut leaf_reconstruction_shapes_by_node = vec![None; nodes.len()];
+
+        for (node_id, node) in nodes.iter().enumerate() {
+            if !node.is_leaf {
+                continue;
+            }
+
+            let shape = LeafReconstructionShape::new(
+                node_id,
+                node.dimensions(),
+                node.residuals.cardinality(),
+            );
+
+            leaf_node_ids.push(node_id);
+            leaf_reconstruction_shapes.push(shape);
+            leaf_reconstruction_shapes_by_node[node_id] = Some(shape);
+        }
 
         let leaf_count = leaf_node_ids.len();
 
@@ -88,6 +148,8 @@ impl FSEIndex {
             dimensions,
             leaf_count,
             leaf_node_ids,
+            leaf_reconstruction_shapes,
+            leaf_reconstruction_shapes_by_node,
         }
     }
 
@@ -124,6 +186,34 @@ impl FSEIndex {
     /// other execution helpers that need every leaf.
     pub fn leaf_node_ids(&self) -> &[usize] {
         &self.leaf_node_ids
+    }
+
+    /// Returns cached reconstruction shapes for all leaves.
+    ///
+    /// # Runtime Role
+    ///
+    /// This supports full-root coverage paths that need to reconstruct every
+    /// leaf and already know every leaf is covered.
+    pub fn leaf_reconstruction_shapes(&self) -> &[LeafReconstructionShape] {
+        &self.leaf_reconstruction_shapes
+    }
+
+    /// Returns cached reconstruction shape for a leaf node.
+    ///
+    /// # Runtime Role
+    ///
+    /// Retained-leaf execution receives leaf node ids from traversal. This method
+    /// maps those ids directly to cached reconstruction metadata.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `node_id` is outside the index or does not reference a leaf.
+    pub fn leaf_reconstruction_shape(&self, node_id: usize) -> LeafReconstructionShape {
+        self.leaf_reconstruction_shapes_by_node
+            .get(node_id)
+            .copied()
+            .flatten()
+            .unwrap_or_else(|| panic!("node id {node_id} does not reference a leaf partition"))
     }
 
     /// Returns the number of internal partitions in the index.

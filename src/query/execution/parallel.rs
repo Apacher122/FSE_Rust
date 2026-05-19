@@ -7,7 +7,9 @@ use crate::storage::FSEIndex;
 
 use super::options::{QueryExecutionMode, QueryExecutionOptions};
 use super::reports::{RetainedLeafBatchExecutionReport, RetainedLeafExecutionReport};
-use super::retained::{execute_retained_leaf_with_coverage, merge_retained_leaf_reports_in_order};
+use super::retained::{
+    execute_retained_leaf_with_cached_shape, merge_retained_leaf_reports_in_order,
+};
 
 #[cfg(test)]
 use super::retained::classified_retained_candidate_count;
@@ -71,14 +73,10 @@ pub(crate) fn execute_classified_retained_leaves_parallel_with_candidate_count(
         .par_iter()
         .map(|retained_leaf| {
             let node = &index.nodes[retained_leaf.node_id];
+            let shape = index.leaf_reconstruction_shape(retained_leaf.node_id);
 
             // parallel still needs leaf local buffers
-            execute_retained_leaf_with_coverage(
-                node,
-                query,
-                index.dimensions,
-                retained_leaf.coverage,
-            )
+            execute_retained_leaf_with_cached_shape(node, query, shape, retained_leaf.coverage)
         })
         .collect();
 

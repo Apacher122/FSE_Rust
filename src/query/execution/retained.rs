@@ -3,12 +3,13 @@
 #[cfg(test)]
 use crate::math::BoundingBox;
 use crate::math::{Scalar, Vector};
+#[cfg(test)]
+use crate::query::reconstruction::validate_partition_reconstruction_shape;
 use crate::query::reconstruction::{
     reconstruct_point_prevalidated, reconstruct_row_into_prevalidated,
-    validate_partition_reconstruction_shape,
 };
 use crate::query::{QueryRegion, RetainedLeaf, RetainedLeafCoverage};
-use crate::storage::{FSEIndex, PartitionNode};
+use crate::storage::{FSEIndex, LeafReconstructionShape, PartitionNode};
 
 use super::options::{QueryExecutionMode, QueryExecutionOptions};
 use super::parallel::{
@@ -279,10 +280,33 @@ pub(crate) fn execute_retained_leaf(
 /// The coverage classification comes from traversal in the normal query path.
 /// Covered leaves skip exact per-row predicate checks. Partial leaves preserve
 /// the exact predicate path.
+///
+/// This compatibility helper validates shape locally because it receives only a
+/// node reference. The normal index execution path should use
+/// [`execute_retained_leaf_with_cached_shape`].
+#[cfg(test)]
 pub(crate) fn execute_retained_leaf_with_coverage(
     node: &PartitionNode,
     query: &QueryRegion,
     dimensions: usize,
+    coverage: RetainedLeafCoverage,
+) -> RetainedLeafExecutionReport {
+    let shape = leaf_reconstruction_shape_for_direct_node(node, dimensions);
+
+    execute_retained_leaf_with_cached_shape(node, query, shape, coverage)
+}
+
+/// Executes one retained leaf using cached reconstruction shape metadata.
+///
+/// # Runtime Role
+///
+/// This is the leaf-local execution path used by parallel retained-leaf
+/// execution. The index already validated and cached the leaf shape, so this
+/// function avoids per-query shape validation.
+pub(crate) fn execute_retained_leaf_with_cached_shape(
+    node: &PartitionNode,
+    query: &QueryRegion,
+    shape: LeafReconstructionShape,
     coverage: RetainedLeafCoverage,
 ) -> RetainedLeafExecutionReport {
     assert!(
@@ -291,16 +315,17 @@ pub(crate) fn execute_retained_leaf_with_coverage(
     );
 
     let mut batch_report =
-        RetainedLeafBatchExecutionReport::with_candidate_capacity(node.residuals.cardinality());
+        RetainedLeafBatchExecutionReport::with_candidate_capacity(shape.cardinality);
 
     match coverage {
         RetainedLeafCoverage::Covered => {
-            append_covered_retained_leaf_results(node, &mut batch_report);
+            append_covered_retained_leaf_results(node, shape, &mut batch_report);
         }
         RetainedLeafCoverage::Partial => {
-            let mut reconstructed_values = Vec::with_capacity(dimensions);
+            let mut reconstructed_values = Vec::with_capacity(shape.dimensions);
             append_partially_covered_retained_leaf_results(
                 node,
+                shape,
                 query,
                 &mut batch_report,
                 &mut reconstructed_values,
@@ -325,6 +350,7 @@ pub(crate) fn execute_retained_leaf_with_coverage(
 /// while avoiding a temporary result vector and merge step for each leaf.
 pub(crate) fn execute_retained_leaf_into_batch_report(
     node: &PartitionNode,
+    shape: LeafReconstructionShape,
     query: &QueryRegion,
     coverage: RetainedLeafCoverage,
     batch_report: &mut RetainedLeafBatchExecutionReport,
@@ -336,9 +362,12 @@ pub(crate) fn execute_retained_leaf_into_batch_report(
     );
 
     match coverage {
-        RetainedLeafCoverage::Covered => append_covered_retained_leaf_results(node, batch_report),
+        RetainedLeafCoverage::Covered => {
+            append_covered_retained_leaf_results(node, shape, batch_report)
+        }
         RetainedLeafCoverage::Partial => append_partially_covered_retained_leaf_results(
             node,
+            shape,
             query,
             batch_report,
             reconstructed_values,
@@ -354,22 +383,31 @@ pub(crate) fn execute_retained_leaf_into_batch_report(
 /// appended directly without exact predicate evaluation.
 pub(crate) fn append_covered_retained_leaf_results(
     node: &PartitionNode,
+    shape: LeafReconstructionShape,
     batch_report: &mut RetainedLeafBatchExecutionReport,
 ) {
-    let shape = validate_partition_reconstruction_shape(node);
-    let row_count = shape.cardinality;
+    debug_assert_eq!(
+        node.dimensions(),
+        shape.dimensions,
+        "cached leaf dimensionality should match node dimensionality"
+    );
+    debug_assert_eq!(
+        node.residuals.cardinality(),
+        shape.cardinality,
+        "cached leaf cardinality should match residual cardinality"
+    );
 
-    reserve_additional_results(&mut batch_report.results, row_count);
+    reserve_additional_results(&mut batch_report.results, shape.cardinality);
 
     // geometry already proved these rows match
-    for row in 0..row_count {
+    for row in 0..shape.cardinality {
         batch_report
             .results
             .push(reconstruct_point_prevalidated(node, row, shape.dimensions));
     }
 
-    batch_report.reconstructed_records += row_count;
-    batch_report.matched_records += row_count;
+    batch_report.reconstructed_records += shape.cardinality;
+    batch_report.matched_records += shape.cardinality;
 }
 
 /// Appends matching rows from a partially covered retained leaf into the batch report.
@@ -377,38 +415,47 @@ pub(crate) fn append_covered_retained_leaf_results(
 /// # Runtime Role
 ///
 /// Partial leaves still use the exact predicate path. The retained-leaf shape is
-/// validated once before the row loop, then each row uses the prevalidated
-/// reconstruction helper.
+/// read from the index cache before the row loop, then each candidate row is
+/// reconstructed into the reusable scratch buffer before exact query evaluation.
 pub(crate) fn append_partially_covered_retained_leaf_results(
     node: &PartitionNode,
+    shape: LeafReconstructionShape,
     query: &QueryRegion,
     batch_report: &mut RetainedLeafBatchExecutionReport,
     reconstructed_values: &mut Vec<Scalar>,
 ) {
-    let shape = validate_partition_reconstruction_shape(node);
-    let row_count = shape.cardinality;
-    let dimensions = shape.dimensions;
+    debug_assert_eq!(
+        node.dimensions(),
+        shape.dimensions,
+        "cached leaf dimensionality should match node dimensionality"
+    );
+    debug_assert_eq!(
+        node.residuals.cardinality(),
+        shape.cardinality,
+        "cached leaf cardinality should match residual cardinality"
+    );
+
     let original_match_count = batch_report.results.len();
 
-    // exact path stays here no shortcuts for partial leaves
-    for row in 0..row_count {
-        reconstruct_row_into_prevalidated(node, row, dimensions, reconstructed_values);
+    // two-pass row handling was faster for the tiny 2d benchmark than fusion
+    for row in 0..shape.cardinality {
+        reconstruct_row_into_prevalidated(node, row, shape.dimensions, reconstructed_values);
 
         if query.contains_values(reconstructed_values) {
             push_reconstructed_values_as_result(
                 &mut batch_report.results,
                 reconstructed_values,
-                dimensions,
+                shape.dimensions,
             );
         }
     }
 
     let matched_records = batch_report.results.len() - original_match_count;
 
-    batch_report.reconstructed_records += row_count;
+    batch_report.reconstructed_records += shape.cardinality;
     #[cfg(test)]
     {
-        batch_report.predicate_evaluated_records += row_count;
+        batch_report.predicate_evaluated_records += shape.cardinality;
     }
     batch_report.matched_records += matched_records;
 }
@@ -446,16 +493,18 @@ fn push_reconstructed_values_as_result(
 #[cfg(test)]
 pub(crate) fn execute_covered_retained_leaf(
     node: &PartitionNode,
-    _dimensions: usize,
+    dimensions: usize,
 ) -> RetainedLeafExecutionReport {
     assert!(
         node.is_leaf,
         "covered retained leaf helper requires a leaf node"
     );
 
+    let shape = leaf_reconstruction_shape_for_direct_node(node, dimensions);
     let mut batch_report =
-        RetainedLeafBatchExecutionReport::with_candidate_capacity(node.residuals.cardinality());
-    append_covered_retained_leaf_results(node, &mut batch_report);
+        RetainedLeafBatchExecutionReport::with_candidate_capacity(shape.cardinality);
+
+    append_covered_retained_leaf_results(node, shape, &mut batch_report);
 
     RetainedLeafExecutionReport {
         results: batch_report.results,
@@ -470,9 +519,9 @@ pub(crate) fn execute_covered_retained_leaf(
 ///
 /// # Runtime Role
 ///
-/// Partially covered leaves preserve the full exact predicate path. Each row is
-/// reconstructed into a reusable buffer and only materialized as an owned
-/// `Vector` after passing the query predicate.
+/// Partially covered leaves preserve the full exact predicate path. Each
+/// candidate row reconstructs coordinate values and checks them against the
+/// query before becoming an owned `Vector`.
 #[cfg(test)]
 pub(crate) fn execute_partially_covered_retained_leaf(
     node: &PartitionNode,
@@ -484,12 +533,14 @@ pub(crate) fn execute_partially_covered_retained_leaf(
         "partial retained leaf helper requires a leaf node"
     );
 
+    let shape = leaf_reconstruction_shape_for_direct_node(node, dimensions);
     let mut batch_report =
-        RetainedLeafBatchExecutionReport::with_candidate_capacity(node.residuals.cardinality());
-    let mut reconstructed_values = Vec::with_capacity(dimensions);
+        RetainedLeafBatchExecutionReport::with_candidate_capacity(shape.cardinality);
+    let mut reconstructed_values = Vec::with_capacity(shape.dimensions);
 
     append_partially_covered_retained_leaf_results(
         node,
+        shape,
         query,
         &mut batch_report,
         &mut reconstructed_values,
@@ -631,4 +682,32 @@ pub(crate) fn classified_retained_candidate_count(
         .iter()
         .map(|retained_leaf| index.nodes[retained_leaf.node_id].residuals.cardinality())
         .sum()
+}
+
+/// Builds a local reconstruction shape for helpers that receive only a node.
+///
+/// # Runtime Role
+///
+/// Normal index execution uses cached shape metadata from `FSEIndex`. This
+/// helper exists for test-facing functions that operate directly on a
+/// `PartitionNode`.
+#[cfg(test)]
+fn leaf_reconstruction_shape_for_direct_node(
+    node: &PartitionNode,
+    dimensions: usize,
+) -> LeafReconstructionShape {
+    assert!(node.is_leaf, "retained leaf helper requires a leaf node");
+
+    let validated_shape = validate_partition_reconstruction_shape(node);
+
+    assert_eq!(
+        validated_shape.dimensions, dimensions,
+        "provided dimensions must match leaf dimensionality"
+    );
+
+    LeafReconstructionShape::new(
+        node.id,
+        validated_shape.dimensions,
+        validated_shape.cardinality,
+    )
 }

@@ -6,5 +6,5 @@
 pub mod hierarchy;
 pub mod partition;
 
-pub use hierarchy::FSEIndex;
+pub use hierarchy::{FSEIndex, LeafReconstructionShape};
 pub use partition::PartitionNode;
