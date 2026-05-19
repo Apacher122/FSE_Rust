@@ -311,18 +311,24 @@ pub fn traverse_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryTraver
 /// partial path reuse that classification instead of repeating root bounds
 /// math inside traversal.
 ///
-/// Public traversal validates dimensions before entering this helper. The full
-/// query execution API also validates dimensions before root classification, so
-/// this helper keeps only a debug assertion to catch internal misuse.
+/// Public traversal and the full query execution API already validate
+/// dimensionality before entering this helper. The release assertion is kept
+/// here anyway because this helper is still the boundary where retained leaves
+/// are produced from geometry. Keeping the guard is safer than relying on every
+/// future internal caller to preserve that precondition.
+///
+/// # Panics
+///
+/// Panics when the query dimensionality does not match the index dimensionality.
 pub(crate) fn traverse_with_known_root_classification(
     index: &FSEIndex,
     query: &QueryRegion,
     root_classification: QueryBoundsClassification,
 ) -> QueryTraversalReport {
-    debug_assert_eq!(
+    assert_eq!(
         index.dimensions,
         query.dimensions(),
-        "query dimensionality should already be validated by the caller"
+        "query dimensionality must match index dimensionality"
     );
 
     let total_leaves = index.leaf_count();
