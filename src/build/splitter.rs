@@ -2,7 +2,7 @@
 
 use std::cmp::Ordering;
 
-use crate::build::metrics::{SplitQualityMetrics, split_quality_metrics_for_axis};
+use crate::build::metrics::{SplitQualityMetrics, split_quality_metrics};
 use crate::build::variance::variance_by_dimension;
 use crate::math::{Scalar, Vector};
 
@@ -58,6 +58,37 @@ impl SplitAxisScore {
     }
 }
 
+/// Median split result paired with the score that selected it.
+///
+/// # Runtime Role
+///
+/// The builder needs both the chosen split metadata and the child point sets.
+/// Keeping them together avoids scoring the selected axis and then sorting the
+/// same points again to produce the actual children.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MedianSplit {
+    /// Score for the selected split axis.
+    pub score: SplitAxisScore,
+
+    /// Points routed to the left child partition.
+    pub left_points: Vec<Vector>,
+
+    /// Points routed to the right child partition.
+    pub right_points: Vec<Vector>,
+}
+
+impl MedianSplit {
+    /// Returns the selected split dimension.
+    pub fn split_dimension(&self) -> usize {
+        self.score.split_dimension
+    }
+
+    /// Returns structural quality metrics for the selected split.
+    pub fn metrics(&self) -> SplitQualityMetrics {
+        self.score.metrics
+    }
+}
+
 /// Selects the split axis for a point set.
 ///
 /// # Runtime Role
@@ -97,19 +128,33 @@ pub fn select_split_axis(points: &[Vector]) -> usize {
 /// Panics when fewer than two points are provided or dimensionality is
 /// inconsistent.
 pub fn best_median_split_axis_score(points: &[Vector]) -> SplitAxisScore {
+    best_median_split(points).score
+}
+
+/// Returns the best median split for a point set.
+///
+/// # Runtime Role
+///
+/// This is the construction-facing helper. It evaluates candidate split axes
+/// once and returns the winning score together with the already-sorted child
+/// point sets. The builder can then recurse without re-sorting the selected
+/// axis.
+///
+/// # Panics
+///
+/// Panics when fewer than two points are provided or dimensionality is
+/// inconsistent.
+pub fn best_median_split(points: &[Vector]) -> MedianSplit {
     let dimensions = validate_points_for_split(points);
     let variances = variance_by_dimension(points);
 
-    // one scoring source or this will rot later
+    // each candidate owns the child vectors it just scored
+    // the losing candidates drop, the winner goes straight to the builder
     (0..dimensions)
         .map(|split_dimension| {
-            median_split_score_on_axis_with_variance(
-                points,
-                split_dimension,
-                variances[split_dimension],
-            )
+            median_split_on_axis_with_variance(points, split_dimension, variances[split_dimension])
         })
-        .min_by(compare_split_axis_scores)
+        .min_by(|left, right| compare_split_axis_scores(&left.score, &right.score))
         .expect("validated split input should have at least one dimension")
 }
 
@@ -132,7 +177,7 @@ pub fn median_split_score_on_axis(points: &[Vector], split_dimension: usize) -> 
         "split dimension must be inside point dimensionality"
     );
 
-    median_split_score_on_axis_with_variance(points, split_dimension, variances[split_dimension])
+    median_split_on_axis_with_variance(points, split_dimension, variances[split_dimension]).score
 }
 
 /// Splits points at the median along the selected dimension.
@@ -167,6 +212,44 @@ pub fn median_split_on_axis(
             .unwrap_or(Ordering::Equal)
     });
 
+    split_sorted_points_at_midpoint(sorted)
+}
+
+/// Splits points at the median along the best geometric split dimension.
+///
+/// # Runtime Role
+///
+/// This convenience function preserves the builder API while selecting the split
+/// dimension with the shared split-quality metric definition.
+pub fn median_split(points: &[Vector]) -> (Vec<Vector>, Vec<Vector>) {
+    let split = best_median_split(points);
+
+    (split.left_points, split.right_points)
+}
+
+fn median_split_on_axis_with_variance(
+    points: &[Vector],
+    split_dimension: usize,
+    variance: Scalar,
+) -> MedianSplit {
+    let (left_points, right_points) = median_split_on_axis(points, split_dimension);
+    let metrics = split_quality_metrics(points, &left_points, &right_points);
+
+    // metrics owns the geometry now
+    let score = SplitAxisScore {
+        split_dimension,
+        metrics,
+        variance,
+    };
+
+    MedianSplit {
+        score,
+        left_points,
+        right_points,
+    }
+}
+
+fn split_sorted_points_at_midpoint(mut sorted: Vec<Vector>) -> (Vec<Vector>, Vec<Vector>) {
     let midpoint = sorted.len() / 2;
     let right = sorted.split_off(midpoint);
     let left = sorted;
@@ -178,32 +261,6 @@ pub fn median_split_on_axis(
     );
 
     (left, right)
-}
-
-/// Splits points at the median along the best geometric split dimension.
-///
-/// # Runtime Role
-///
-/// This convenience function preserves the builder API while selecting the split
-/// dimension with the shared split-quality metric definition.
-pub fn median_split(points: &[Vector]) -> (Vec<Vector>, Vec<Vector>) {
-    let split_dimension = select_split_axis(points);
-    median_split_on_axis(points, split_dimension)
-}
-
-fn median_split_score_on_axis_with_variance(
-    points: &[Vector],
-    split_dimension: usize,
-    variance: Scalar,
-) -> SplitAxisScore {
-    let metrics = split_quality_metrics_for_axis(points, split_dimension);
-
-    // metrics owns the geometry now
-    SplitAxisScore {
-        split_dimension,
-        metrics,
-        variance,
-    }
 }
 
 fn compare_split_axis_scores(left: &SplitAxisScore, right: &SplitAxisScore) -> Ordering {

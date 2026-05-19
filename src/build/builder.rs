@@ -1,7 +1,7 @@
 //! Recursive FSE index builder.
 
 use crate::build::metrics::SplitQualityMetrics;
-use crate::build::splitter::{best_median_split_axis_score, median_split_on_axis};
+use crate::build::splitter::best_median_split;
 use crate::build::{IndexValidationReport, validate_index};
 use crate::math::Vector;
 use crate::storage::{FSEIndex, PartitionNode};
@@ -252,23 +252,22 @@ impl FSEBuilder {
     }
 
     fn accepted_median_split(&self, points: &[Vector]) -> Option<AcceptedMedianSplit> {
-        let score = best_median_split_axis_score(points);
+        let split = best_median_split(points);
         let was_forced = self.should_force_split(points.len());
+        let metrics = split.score.metrics;
 
         if self.config.require_positive_split_volume_reduction
             && !was_forced
-            && !accepts_split_quality(&score.metrics)
+            && !accepts_split_quality(&metrics)
         {
             // geometry gate only applies while we are still under the hard cap
             return None;
         }
 
-        let (left_points, right_points) = median_split_on_axis(points, score.split_dimension);
-
         Some(AcceptedMedianSplit {
-            left_points,
-            right_points,
-            metrics: score.metrics,
+            left_points: split.left_points,
+            right_points: split.right_points,
+            metrics,
             was_forced,
         })
     }
