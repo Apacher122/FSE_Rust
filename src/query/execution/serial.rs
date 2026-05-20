@@ -52,9 +52,11 @@ pub(crate) fn execute_classified_retained_leaves_serial_with_candidate_count(
 
     let mut batch_report =
         RetainedLeafBatchExecutionReport::with_candidate_capacity(candidate_count);
-    let mut reconstructed_values = Vec::with_capacity(index.dimensions);
 
-    // one scratch buffer for every retained leaf in this serial query
+    // 1d and 2d retained-leaf paths do not need this buffer
+    // let the generic path allocate it lazily only if it actually runs
+    let mut reconstructed_values = Vec::new();
+
     for retained_leaf in retained_leaves {
         let node = &index.nodes[retained_leaf.node_id];
         let shape = retained_leaf.reconstruction_shape(index);
