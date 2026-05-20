@@ -2,7 +2,7 @@
 
 use std::cmp::Ordering;
 
-use crate::build::metrics::{SplitQualityMetrics, split_quality_metrics};
+use crate::build::metrics::{SplitQualityMetrics, split_quality_metrics_from_bounds};
 use crate::build::variance::variance_by_dimension;
 use crate::math::{BoundingBox, Scalar, Vector};
 
@@ -340,8 +340,20 @@ fn split_with_score(
     left_points: Vec<Vector>,
     right_points: Vec<Vector>,
 ) -> MedianSplit {
-    let metrics = split_quality_metrics(parent_points, &left_points, &right_points);
-    let child_overlap_extent = child_overlap_extent_sum(&left_points, &right_points);
+    let parent_bounds = BoundingBox::from_points(parent_points);
+    let left_bounds = BoundingBox::from_points(&left_points);
+    let right_bounds = BoundingBox::from_points(&right_points);
+
+    let metrics = split_quality_metrics_from_bounds(
+        &parent_bounds,
+        &left_bounds,
+        &right_bounds,
+        parent_points.len(),
+        left_points.len(),
+        right_points.len(),
+    );
+
+    let child_overlap_extent = child_overlap_extent_sum(&left_bounds, &right_bounds);
 
     // metrics owns the geometry now
     let score = SplitAxisScore {
@@ -358,9 +370,12 @@ fn split_with_score(
     }
 }
 
-fn child_overlap_extent_sum(left_points: &[Vector], right_points: &[Vector]) -> Scalar {
-    let left_bounds = BoundingBox::from_points(left_points);
-    let right_bounds = BoundingBox::from_points(right_points);
+fn child_overlap_extent_sum(left_bounds: &BoundingBox, right_bounds: &BoundingBox) -> Scalar {
+    debug_assert_eq!(
+        left_bounds.dimensions(),
+        right_bounds.dimensions(),
+        "child bounds should have matching dimensionality"
+    );
 
     let mut overlap_extent = 0.0;
 

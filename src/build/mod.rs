@@ -11,9 +11,10 @@ pub mod variance;
 
 pub use builder::{BuildConfig, FSEBuilder, ValidatedFSEIndex};
 pub use metrics::{
-    IndexStructureMetrics, SplitQualityMetrics, bounding_extent_sum, index_density,
-    index_structure_metrics, partition_density, split_quality_metrics,
-    split_quality_metrics_for_axis, split_quality_metrics_from_bounds,
+    IndexStructureMetrics, SiblingOverlapMetrics, SplitQualityMetrics, bounding_extent_sum,
+    index_density, index_structure_metrics, partition_density, sibling_overlap_extent_sum,
+    sibling_overlap_metrics, split_quality_metrics, split_quality_metrics_for_axis,
+    split_quality_metrics_from_bounds,
 };
 pub use validation::{
     IndexValidationReport, validate_hierarchy_topology, validate_index, validate_leaf_cardinality,

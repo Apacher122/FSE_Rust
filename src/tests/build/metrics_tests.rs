@@ -1,7 +1,8 @@
 use crate::build::{
-    IndexStructureMetrics, SplitQualityMetrics, bounding_extent_sum, index_density,
-    index_structure_metrics, partition_density, split_quality_metrics,
-    split_quality_metrics_for_axis, split_quality_metrics_from_bounds,
+    IndexStructureMetrics, SiblingOverlapMetrics, SplitQualityMetrics, bounding_extent_sum,
+    index_density, index_structure_metrics, partition_density, sibling_overlap_extent_sum,
+    sibling_overlap_metrics, split_quality_metrics, split_quality_metrics_for_axis,
+    split_quality_metrics_from_bounds,
 };
 use crate::math::{BoundingBox, ResidualBlock, Vector};
 use crate::storage::{FSEIndex, PartitionNode};
@@ -143,6 +144,79 @@ fn index_structure_metrics_handles_single_leaf_index() {
     assert_eq!(metrics.zero_volume_leaf_count, 0);
     assert!(!metrics.is_empty());
 }
+
+#[test]
+fn sibling_overlap_extent_sum_returns_zero_for_disjoint_bounds() {
+    let left = BoundingBox::new(vec![0.0, 0.0], vec![2.0, 2.0]);
+    let right = BoundingBox::new(vec![3.0, 0.0], vec![5.0, 2.0]);
+
+    assert_eq!(sibling_overlap_extent_sum(&left, &right), 0.0);
+}
+
+#[test]
+fn sibling_overlap_extent_sum_adds_overlapping_widths() {
+    let left = BoundingBox::new(vec![0.0, 0.0], vec![4.0, 4.0]);
+    let right = BoundingBox::new(vec![2.0, 1.0], vec![6.0, 3.0]);
+
+    assert_eq!(sibling_overlap_extent_sum(&left, &right), 4.0);
+}
+
+#[test]
+fn sibling_overlap_metrics_reports_no_overlap_for_separated_siblings() {
+    let index = internal_plus_two_leaf_index();
+
+    let metrics = sibling_overlap_metrics(&index);
+
+    assert_eq!(
+        metrics,
+        SiblingOverlapMetrics {
+            sibling_pair_count: 1,
+            overlapping_sibling_pair_count: 0,
+            total_overlap_extent: 0.0,
+            average_overlap_extent: 0.0,
+        }
+    );
+    assert!(!metrics.is_empty());
+    assert!(!metrics.has_overlap());
+}
+
+#[test]
+fn sibling_overlap_metrics_reports_overlapping_sibling_pressure() {
+    let index = overlapping_sibling_index();
+
+    let metrics = sibling_overlap_metrics(&index);
+
+    assert_eq!(
+        metrics,
+        SiblingOverlapMetrics {
+            sibling_pair_count: 1,
+            overlapping_sibling_pair_count: 1,
+            total_overlap_extent: 4.0,
+            average_overlap_extent: 4.0,
+        }
+    );
+    assert!(metrics.has_overlap());
+}
+
+#[test]
+fn sibling_overlap_metrics_handles_single_leaf_index() {
+    let leaf = PartitionNode::new(
+        0,
+        vec![1.0, 1.0],
+        BoundingBox::new(vec![0.0, 0.0], vec![2.0, 2.0]),
+        ResidualBlock::new(vec![vec![0.0, 1.0], vec![0.0, 1.0]]),
+        Vec::new(),
+        true,
+    );
+
+    let index = FSEIndex::new(vec![leaf], 0);
+    let metrics = sibling_overlap_metrics(&index);
+
+    assert_eq!(metrics, SiblingOverlapMetrics::default());
+    assert!(metrics.is_empty());
+    assert!(!metrics.has_overlap());
+}
+
 #[test]
 fn bounding_extent_sum_adds_dimension_widths() {
     let bounds = BoundingBox::new(vec![0.0, 1.0, 2.0], vec![2.0, 5.0, 8.0]);
@@ -329,6 +403,38 @@ fn internal_plus_two_leaf_index() -> FSEIndex {
         2,
         vec![4.0, 4.0],
         BoundingBox::new(vec![3.0, 3.0], vec![5.0, 5.0]),
+        ResidualBlock::new(vec![vec![0.0, 1.0], vec![0.0, 1.0]]),
+        Vec::new(),
+        true,
+    );
+
+    FSEIndex::new(vec![root, left, right], 0)
+}
+
+fn overlapping_sibling_index() -> FSEIndex {
+    let root = PartitionNode::with_cardinality(
+        0,
+        vec![3.0, 2.0],
+        BoundingBox::new(vec![0.0, 0.0], vec![6.0, 4.0]),
+        ResidualBlock::new(vec![Vec::new(), Vec::new()]),
+        4,
+        vec![1, 2],
+        false,
+    );
+
+    let left = PartitionNode::new(
+        1,
+        vec![2.0, 2.0],
+        BoundingBox::new(vec![0.0, 0.0], vec![4.0, 4.0]),
+        ResidualBlock::new(vec![vec![0.0, 1.0], vec![0.0, 1.0]]),
+        Vec::new(),
+        true,
+    );
+
+    let right = PartitionNode::new(
+        2,
+        vec![4.0, 2.0],
+        BoundingBox::new(vec![2.0, 1.0], vec![6.0, 3.0]),
         ResidualBlock::new(vec![vec![0.0, 1.0], vec![0.0, 1.0]]),
         Vec::new(),
         true,
