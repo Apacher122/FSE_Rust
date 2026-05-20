@@ -1,6 +1,7 @@
 //! Terminal output rendering for benchmark reports.
 
 use std::fmt::Write;
+use std::time::Duration;
 
 use crate::benchmark::{BenchmarkSuiteReport, MultiBaselineAggregateSummary};
 use crate::build::{IndexStructureMetrics, IndexValidationReport};
@@ -59,6 +60,29 @@ impl BenchmarkRunOverview {
             QueryExecutionMode::Parallel => "parallel",
         }
     }
+}
+
+/// Formats a duration with ASCII-only unit suffixes for terminal artifacts.
+///
+/// Rust's debug formatting uses a microsecond suffix that may be misread by
+/// some shell capture paths. Benchmark artifacts use this formatter so uploaded
+/// text reports remain portable across terminals and editors.
+pub fn format_duration_ascii(duration: Duration) -> String {
+    let nanos = duration.as_nanos();
+
+    if nanos < 1_000 {
+        return format!("{}ns", nanos);
+    }
+
+    if nanos < 1_000_000 {
+        return format_scaled_duration(nanos, 1_000, 3, "us");
+    }
+
+    if nanos < 1_000_000_000 {
+        return format_scaled_duration(nanos, 1_000_000, 6, "ms");
+    }
+
+    format_scaled_duration(nanos, 1_000_000_000, 9, "s")
 }
 
 /// Renders the benchmark run overview.
@@ -205,14 +229,14 @@ pub fn render_suite_report(report: &BenchmarkSuiteReport) -> String {
         .unwrap();
         writeln!(
             output,
-            "  baseline elapsed: {:?}",
-            comparison.timing.baseline_elapsed
+            "  baseline elapsed: {}",
+            format_duration_ascii(comparison.timing.baseline_elapsed)
         )
         .unwrap();
         writeln!(
             output,
-            "  baseline average elapsed: {:?}",
-            comparison.repeated_timing.baseline.average_elapsed
+            "  baseline average elapsed: {}",
+            format_duration_ascii(comparison.repeated_timing.baseline.average_elapsed)
         )
         .unwrap();
         writeln!(
@@ -221,11 +245,16 @@ pub fn render_suite_report(report: &BenchmarkSuiteReport) -> String {
             comparison.fse_stats.visited_nodes
         )
         .unwrap();
-        writeln!(output, "  FSE elapsed: {:?}", comparison.timing.fse_elapsed).unwrap();
         writeln!(
             output,
-            "  FSE average elapsed: {:?}",
-            comparison.repeated_timing.fse.average_elapsed
+            "  FSE elapsed: {}",
+            format_duration_ascii(comparison.timing.fse_elapsed)
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "  FSE average elapsed: {}",
+            format_duration_ascii(comparison.repeated_timing.fse.average_elapsed)
         )
         .unwrap();
         writeln!(
@@ -351,14 +380,14 @@ pub fn render_multi_baseline_summary(summary: &MultiBaselineAggregateSummary) ->
         .unwrap();
         writeln!(
             output,
-            "  total baseline average elapsed: {:?}",
-            baseline.total_baseline_average_elapsed
+            "  total baseline average elapsed: {}",
+            format_duration_ascii(baseline.total_baseline_average_elapsed)
         )
         .unwrap();
         writeln!(
             output,
-            "  total FSE average elapsed: {:?}",
-            baseline.total_fse_average_elapsed
+            "  total FSE average elapsed: {}",
+            format_duration_ascii(baseline.total_fse_average_elapsed)
         )
         .unwrap();
         writeln!(output).unwrap();
@@ -449,26 +478,26 @@ fn render_aggregate_metrics(report: &BenchmarkSuiteReport, output: &mut String) 
     .unwrap();
     writeln!(
         output,
-        "total baseline average elapsed: {:?}",
-        aggregate.total_baseline_average_elapsed
+        "total baseline average elapsed: {}",
+        format_duration_ascii(aggregate.total_baseline_average_elapsed)
     )
     .unwrap();
     writeln!(
         output,
-        "total FSE average elapsed: {:?}",
-        aggregate.total_fse_average_elapsed
+        "total FSE average elapsed: {}",
+        format_duration_ascii(aggregate.total_fse_average_elapsed)
     )
     .unwrap();
     writeln!(
         output,
-        "mean baseline average elapsed: {:?}",
-        aggregate.mean_baseline_average_elapsed
+        "mean baseline average elapsed: {}",
+        format_duration_ascii(aggregate.mean_baseline_average_elapsed)
     )
     .unwrap();
     writeln!(
         output,
-        "mean FSE average elapsed: {:?}",
-        aggregate.mean_fse_average_elapsed
+        "mean FSE average elapsed: {}",
+        format_duration_ascii(aggregate.mean_fse_average_elapsed)
     )
     .unwrap();
     writeln!(
@@ -483,4 +512,26 @@ fn render_aggregate_metrics(report: &BenchmarkSuiteReport, output: &mut String) 
         aggregate.weighted_timing_ratio
     )
     .unwrap();
+}
+
+fn format_scaled_duration(
+    nanos: u128,
+    unit_nanos: u128,
+    fractional_width: usize,
+    suffix: &str,
+) -> String {
+    let whole = nanos / unit_nanos;
+    let remainder = nanos % unit_nanos;
+
+    if remainder == 0 {
+        return format!("{}{}", whole, suffix);
+    }
+
+    let mut fractional = format!("{:0width$}", remainder, width = fractional_width);
+
+    while fractional.ends_with('0') {
+        fractional.pop();
+    }
+
+    format!("{}.{}{}", whole, fractional, suffix)
 }

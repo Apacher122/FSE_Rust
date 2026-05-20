@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use crate::benchmark::reports::output::format_duration_ascii;
 use crate::benchmark::{
     AggregateWorkloadMetrics, BaselineAggregateSummary, BaselineKind, BenchmarkRunOverview,
     BenchmarkSuiteReport, MultiBaselineAggregateSummary, render_benchmark_overview,
@@ -44,6 +45,26 @@ fn benchmark_overview_reports_serial_execution_mode_name() {
 }
 
 #[test]
+fn duration_ascii_formatter_uses_portable_units() {
+    assert_eq!(format_duration_ascii(Duration::ZERO), "0ns");
+    assert_eq!(format_duration_ascii(Duration::from_nanos(999)), "999ns");
+    assert_eq!(format_duration_ascii(Duration::from_micros(2)), "2us");
+    assert_eq!(
+        format_duration_ascii(Duration::from_nanos(2_847)),
+        "2.847us"
+    );
+    assert_eq!(format_duration_ascii(Duration::from_millis(12)), "12ms");
+    assert_eq!(
+        format_duration_ascii(Duration::from_nanos(12_345_678)),
+        "12.345678ms"
+    );
+    assert_eq!(
+        format_duration_ascii(Duration::from_secs(2) + Duration::from_millis(500)),
+        "2.5s"
+    );
+}
+
+#[test]
 fn suite_report_render_includes_aggregate_heading() {
     let report = BenchmarkSuiteReport {
         comparisons: Vec::new(),
@@ -55,6 +76,29 @@ fn suite_report_render_includes_aggregate_heading() {
 
     assert!(output.contains("Aggregate workload metrics"));
     assert!(output.contains("total baseline evaluated records: 0"));
+}
+
+#[test]
+fn suite_report_render_uses_ascii_duration_units() {
+    let mut aggregate = AggregateWorkloadMetrics::default();
+    aggregate.total_baseline_average_elapsed = Duration::from_nanos(2_847);
+    aggregate.total_fse_average_elapsed = Duration::from_nanos(1_613);
+    aggregate.mean_baseline_average_elapsed = Duration::from_micros(2);
+    aggregate.mean_fse_average_elapsed = Duration::from_micros(1);
+
+    let report = BenchmarkSuiteReport {
+        comparisons: Vec::new(),
+        aggregate,
+        pruning_reports: Vec::new(),
+    };
+
+    let output = render_suite_report(&report);
+
+    assert!(output.contains("total baseline average elapsed: 2.847us"));
+    assert!(output.contains("total FSE average elapsed: 1.613us"));
+    assert!(output.contains("mean baseline average elapsed: 2us"));
+    assert!(output.contains("mean FSE average elapsed: 1us"));
+    assert!(output.is_ascii());
 }
 
 #[test]
@@ -97,6 +141,33 @@ fn multi_baseline_summary_render_includes_baseline_rows() {
     assert!(output.contains("Baseline: Flat Scan"));
     assert!(output.contains("Comparison: Flat Scan vs FSE"));
     assert!(output.contains("Highest weighted timing ratio: Flat Scan (1.25)"));
+}
+
+#[test]
+fn multi_baseline_summary_render_uses_ascii_duration_units() {
+    let summary = MultiBaselineAggregateSummary {
+        baseline_summaries: vec![BaselineAggregateSummary {
+            baseline_kind: BaselineKind::FlatScan,
+            baseline_name: "flat_scan".to_string(),
+            baseline_label: "Flat Scan".to_string(),
+            comparison_label: "Flat Scan vs FSE".to_string(),
+            workload_count: 1,
+            total_baseline_evaluated_records: 60,
+            total_fse_reconstructed_records: 10,
+            weighted_reconstruction_avoidance_ratio: 0.83,
+            weighted_candidate_ratio: 0.17,
+            mean_timing_ratio: 1.25,
+            weighted_timing_ratio: 1.25,
+            total_baseline_average_elapsed: Duration::from_nanos(3_470),
+            total_fse_average_elapsed: Duration::from_nanos(2_847),
+        }],
+    };
+
+    let output = render_multi_baseline_summary(&summary);
+
+    assert!(output.contains("total baseline average elapsed: 3.47us"));
+    assert!(output.contains("total FSE average elapsed: 2.847us"));
+    assert!(output.is_ascii());
 }
 
 fn test_overview(
