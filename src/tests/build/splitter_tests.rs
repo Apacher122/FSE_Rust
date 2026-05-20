@@ -31,6 +31,31 @@ fn select_split_axis_prefers_lower_child_bounding_volume_over_raw_variance() {
 }
 
 #[test]
+fn best_median_split_axis_score_prefers_lower_child_overlap_when_volume_ties() {
+    let points = overlap_sensitive_points();
+
+    let axis_zero_score = median_split_score_on_axis(&points, 0);
+    let axis_one_score = median_split_score_on_axis(&points, 1);
+
+    assert_eq!(
+        axis_zero_score.combined_child_volume(),
+        axis_one_score.combined_child_volume()
+    );
+    assert_eq!(
+        axis_zero_score.combined_child_extent(),
+        axis_one_score.combined_child_extent()
+    );
+    assert!(
+        axis_zero_score.child_overlap_extent() < axis_one_score.child_overlap_extent(),
+        "axis zero should have lower sibling overlap pressure"
+    );
+
+    let score = best_median_split_axis_score(&points);
+
+    assert_eq!(score.split_dimension, 0);
+}
+
+#[test]
 fn best_median_split_axis_score_reports_volume_optimized_axis() {
     let points = volume_sensitive_points();
 
@@ -70,6 +95,10 @@ fn best_median_split_axis_score_uses_shared_split_quality_metrics() {
         axis_score.extent_reduction_ratio()
     );
     assert_eq!(score.balance_penalty(), axis_score.balance_penalty());
+    assert_eq!(
+        score.child_overlap_extent(),
+        axis_score.child_overlap_extent()
+    );
 }
 
 #[test]
@@ -270,6 +299,17 @@ fn volume_sensitive_points() -> Vec<Vector> {
         Vector::new(vec![1.0, 0.0]),
         Vector::new(vec![1.0, 1.0]),
         Vector::new(vec![10.0, 0.0]),
+    ]
+}
+
+fn overlap_sensitive_points() -> Vec<Vector> {
+    vec![
+        Vector::new(vec![6.0, 6.0]),
+        Vector::new(vec![5.0, 5.0]),
+        Vector::new(vec![3.0, 6.0]),
+        Vector::new(vec![1.0, 5.0]),
+        Vector::new(vec![5.0, 1.0]),
+        Vector::new(vec![3.0, 2.0]),
     ]
 }
 

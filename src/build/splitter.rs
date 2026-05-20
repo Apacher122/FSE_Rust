@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 
 use crate::build::metrics::{SplitQualityMetrics, split_quality_metrics};
 use crate::build::variance::variance_by_dimension;
-use crate::math::{Scalar, Vector};
+use crate::math::{BoundingBox, Scalar, Vector};
 
 const STRUCTURAL_GAP_DOMINANCE_RATIO: Scalar = 4.0;
 
@@ -28,6 +28,15 @@ pub struct SplitAxisScore {
 
     /// Structural quality metrics for the split along this axis.
     pub metrics: SplitQualityMetrics,
+
+    /// Sum of overlapping child extents across dimensions.
+    ///
+    /// # Runtime Role
+    ///
+    /// This estimates sibling overlap pressure. Lower overlap is preferred when
+    /// candidate splits otherwise have equivalent child volume because overlapping
+    /// child bounds can cause the same query to retain both children.
+    pub child_overlap_extent: Scalar,
 
     /// Variance of the selected split dimension.
     pub variance: Scalar,
@@ -57,6 +66,11 @@ impl SplitAxisScore {
     /// Returns the absolute difference between child cardinalities.
     pub fn balance_penalty(&self) -> usize {
         self.metrics.balance_penalty
+    }
+
+    /// Returns sibling overlap pressure measured as summed overlapping extent.
+    pub fn child_overlap_extent(&self) -> Scalar {
+        self.child_overlap_extent
     }
 }
 
@@ -118,12 +132,13 @@ pub fn select_split_axis(points: &[Vector]) -> usize {
 /// The ordering is:
 ///
 /// 1. Lower combined child bounding volume.
-/// 2. Higher volume reduction ratio.
-/// 3. Lower combined child extent.
-/// 4. Higher extent reduction ratio.
-/// 5. Lower balance penalty.
-/// 6. Higher variance.
-/// 7. Lower dimension index.
+/// 2. Lower sibling overlap extent.
+/// 3. Higher volume reduction ratio.
+/// 4. Lower combined child extent.
+/// 5. Higher extent reduction ratio.
+/// 6. Lower balance penalty.
+/// 7. Higher variance.
+/// 8. Lower dimension index.
 ///
 /// # Panics
 ///
@@ -326,11 +341,13 @@ fn split_with_score(
     right_points: Vec<Vector>,
 ) -> MedianSplit {
     let metrics = split_quality_metrics(parent_points, &left_points, &right_points);
+    let child_overlap_extent = child_overlap_extent_sum(&left_points, &right_points);
 
     // metrics owns the geometry now
     let score = SplitAxisScore {
         split_dimension,
         metrics,
+        child_overlap_extent,
         variance,
     };
 
@@ -339,6 +356,27 @@ fn split_with_score(
         left_points,
         right_points,
     }
+}
+
+fn child_overlap_extent_sum(left_points: &[Vector], right_points: &[Vector]) -> Scalar {
+    let left_bounds = BoundingBox::from_points(left_points);
+    let right_bounds = BoundingBox::from_points(right_points);
+
+    let mut overlap_extent = 0.0;
+
+    for dimension in 0..left_bounds.dimensions() {
+        let overlap_min = left_bounds.min[dimension].max(right_bounds.min[dimension]);
+        let overlap_max = left_bounds.max[dimension].min(right_bounds.max[dimension]);
+        let overlap_width = overlap_max - overlap_min;
+
+        if overlap_width < 0.0 {
+            return 0.0;
+        }
+
+        overlap_extent += overlap_width;
+    }
+
+    overlap_extent
 }
 
 fn sorted_points_on_axis(points: &[Vector], split_dimension: usize) -> Vec<Vector> {
@@ -443,6 +481,7 @@ fn split_sorted_points_at_index(
 
 fn compare_split_axis_scores(left: &SplitAxisScore, right: &SplitAxisScore) -> Ordering {
     compare_scalar(left.combined_child_volume(), right.combined_child_volume())
+        .then_with(|| compare_scalar(left.child_overlap_extent(), right.child_overlap_extent()))
         .then_with(|| {
             compare_scalar(
                 right.volume_reduction_ratio(),
