@@ -2,6 +2,7 @@
 
 use super::context::BenchmarkApplicationContext;
 use super::result_bundle::BenchmarkApplicationResultBundle;
+use crate::benchmark::reports::output::format_duration_ascii;
 use crate::benchmark::reports::{
     BaselineAggregateSummary, BenchmarkRunOverview, MultiBaselineAggregateSummary,
     SelectivityBucket, render_benchmark_overview, render_multi_baseline_summary,
@@ -127,6 +128,8 @@ impl BenchmarkApplicationRenderer {
         self.append_sibling_overlap_debug_output(&mut output, context);
         self.append_traversal_pressure_debug_output(&mut output, result_bundle);
         self.append_low_selectivity_tree_gap_debug_output(&mut output, result_bundle);
+        self.append_weakest_low_selectivity_workload_debug_output(&mut output, result_bundle);
+        self.append_boundary_workload_pressure_debug_output(&mut output, result_bundle);
         self.append_debug_suite_terminal_output(&mut output, context, result_bundle);
 
         output
@@ -215,9 +218,7 @@ impl BenchmarkApplicationRenderer {
         output.push_str("baseline | low bucket mean timing | low weighted candidate\n");
 
         for baseline_report in &result_bundle.report.baseline_reports {
-            if baseline_report.baseline_name != "kd_tree"
-                && baseline_report.baseline_name != "r_tree"
-            {
+            if !is_tree_baseline_name(&baseline_report.baseline_name) {
                 continue;
             }
 
@@ -237,6 +238,106 @@ impl BenchmarkApplicationRenderer {
                 ));
                 rendered_any_tree_baseline = true;
             }
+        }
+
+        if !rendered_any_tree_baseline {
+            output.push_str("none\n");
+        }
+
+        output.push('\n');
+    }
+
+    fn append_weakest_low_selectivity_workload_debug_output(
+        &self,
+        output: &mut String,
+        result_bundle: &BenchmarkApplicationResultBundle,
+    ) {
+        let mut rendered_any_tree_baseline = false;
+
+        output.push_str("Weakest low-selectivity workload\n");
+        output.push_str("--------------------------------\n");
+        output.push_str(
+            "baseline | workload | mean timing | baseline avg | fse avg | visited nodes | fse records | baseline records\n",
+        );
+
+        for baseline_report in &result_bundle.report.baseline_reports {
+            if !is_tree_baseline_name(&baseline_report.baseline_name) {
+                continue;
+            }
+
+            let Some(weakest_low_workload) =
+                weakest_low_selectivity_workload(&baseline_report.report.comparisons)
+            else {
+                continue;
+            };
+
+            let comparison = &weakest_low_workload.comparison;
+
+            output.push_str(&format!(
+                "{} | {} | {} | {} | {} | {} | {} | {}\n",
+                baseline_report.baseline_name,
+                weakest_low_workload.workload_name,
+                format_f64_ratio(comparison.average_timing_ratio),
+                format_duration_ascii(comparison.repeated_timing.baseline.average_elapsed),
+                format_duration_ascii(comparison.repeated_timing.fse.average_elapsed),
+                comparison.fse_stats.visited_nodes,
+                comparison.fse_stats.reconstructed_records,
+                comparison.baseline_stats.evaluated_records,
+            ));
+            rendered_any_tree_baseline = true;
+        }
+
+        if !rendered_any_tree_baseline {
+            output.push_str("none\n");
+        }
+
+        output.push('\n');
+    }
+
+    fn append_boundary_workload_pressure_debug_output(
+        &self,
+        output: &mut String,
+        result_bundle: &BenchmarkApplicationResultBundle,
+    ) {
+        let mut rendered_any_tree_baseline = false;
+
+        output.push_str("Boundary workload pressure notes\n");
+        output.push_str("--------------------------------\n");
+        output.push_str(
+            "baseline | workload | timing | baseline records | fse visited | fse retained | fse records | matched | candidate | nodes/record\n",
+        );
+
+        for baseline_report in &result_bundle.report.baseline_reports {
+            if !is_tree_baseline_name(&baseline_report.baseline_name) {
+                continue;
+            }
+
+            let Some(weakest_low_workload) =
+                weakest_low_selectivity_workload(&baseline_report.report.comparisons)
+            else {
+                continue;
+            };
+
+            let comparison = &weakest_low_workload.comparison;
+            let visited_per_reconstructed_record = ratio_or_zero(
+                comparison.fse_stats.visited_nodes,
+                comparison.fse_stats.reconstructed_records,
+            );
+
+            output.push_str(&format!(
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {:.2}\n",
+                baseline_report.baseline_name,
+                weakest_low_workload.workload_name,
+                format_f64_ratio(comparison.average_timing_ratio),
+                comparison.baseline_stats.evaluated_records,
+                comparison.fse_stats.visited_nodes,
+                comparison.fse_stats.retained_leaves,
+                comparison.fse_stats.reconstructed_records,
+                comparison.fse_stats.matched_records,
+                format_scalar_ratio(comparison.candidate_ratio),
+                visited_per_reconstructed_record,
+            ));
+            rendered_any_tree_baseline = true;
         }
 
         if !rendered_any_tree_baseline {
@@ -379,9 +480,7 @@ fn render_scoreboard_diagnosis(summary: &MultiBaselineAggregateSummary) -> Strin
     let tree_baselines: Vec<&BaselineAggregateSummary> = summary
         .baseline_summaries
         .iter()
-        .filter(|baseline| {
-            baseline.baseline_name == "kd_tree" || baseline.baseline_name == "r_tree"
-        })
+        .filter(|baseline| is_tree_baseline_name(&baseline.baseline_name))
         .collect();
 
     if !tree_baselines.is_empty()
@@ -405,6 +504,27 @@ fn next_target_message(overview: &BenchmarkRunOverview) -> &'static str {
     }
 
     "compare leaf policy against candidate ratio"
+}
+
+fn weakest_low_selectivity_workload(
+    workload_summaries: &[crate::benchmark::WorkloadComparisonSummary],
+) -> Option<&crate::benchmark::WorkloadComparisonSummary> {
+    workload_summaries
+        .iter()
+        .filter(|summary| {
+            SelectivityBucket::from_candidate_ratio(summary.comparison.candidate_ratio)
+                == SelectivityBucket::Low
+        })
+        .min_by(|left, right| {
+            left.comparison
+                .average_timing_ratio
+                .partial_cmp(&right.comparison.average_timing_ratio)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+}
+
+fn is_tree_baseline_name(baseline_name: &str) -> bool {
+    baseline_name == "kd_tree" || baseline_name == "r_tree"
 }
 
 fn timing_result_label(weighted_timing_ratio: f64) -> &'static str {

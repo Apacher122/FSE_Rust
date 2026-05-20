@@ -6,6 +6,8 @@ use std::path::Path;
 
 use super::multi_summary::{BaselineAggregateSummary, MultiBaselineAggregateSummary};
 use super::output::BenchmarkRunOverview;
+use super::selectivity::{SelectivityBucket, summarize_workloads_by_selectivity};
+use crate::benchmark::baselines::BaselineKind;
 use crate::benchmark::runner::{BaselineBenchmarkSuiteReport, MultiBaselineBenchmarkSuiteReport};
 use crate::math::Scalar;
 
@@ -23,6 +25,9 @@ pub struct BenchmarkCsvOutputConfig {
 
     /// Optional path for writing per-workload CSV rows.
     pub workloads_path: Option<String>,
+
+    /// Optional path for writing the low-selectivity tree-gap CSV.
+    pub low_selectivity_gap_path: Option<String>,
 }
 
 impl BenchmarkCsvOutputConfig {
@@ -31,12 +36,15 @@ impl BenchmarkCsvOutputConfig {
         Self {
             summary_path,
             workloads_path,
+            low_selectivity_gap_path: None,
         }
     }
 
     /// Returns whether no CSV output paths were configured.
     pub fn is_empty(&self) -> bool {
-        self.summary_path.is_none() && self.workloads_path.is_none()
+        self.summary_path.is_none()
+            && self.workloads_path.is_none()
+            && self.low_selectivity_gap_path.is_none()
     }
 
     /// Returns whether aggregate summary CSV output was configured.
@@ -49,6 +57,11 @@ impl BenchmarkCsvOutputConfig {
         self.workloads_path.is_some()
     }
 
+    /// Returns whether low-selectivity tree-gap CSV output was configured.
+    pub fn has_low_selectivity_gap_output(&self) -> bool {
+        self.low_selectivity_gap_path.is_some()
+    }
+
     /// Sets the aggregate summary CSV output path.
     pub fn set_summary_path(&mut self, path: String) {
         // last path wins this matches the cli flag behavior
@@ -59,6 +72,12 @@ impl BenchmarkCsvOutputConfig {
     pub fn set_workloads_path(&mut self, path: String) {
         // same deal here no merge behavior for repeated flags
         self.workloads_path = Some(path);
+    }
+
+    /// Sets the low-selectivity tree-gap CSV output path.
+    pub fn set_low_selectivity_gap_path(&mut self, path: String) {
+        // repeated flags use the same last-path-wins behavior
+        self.low_selectivity_gap_path = Some(path);
     }
 }
 
@@ -224,6 +243,35 @@ pub fn multi_baseline_workload_report_to_csv_with_metadata(
     )
 }
 
+/// Converts low-selectivity tree-gap summaries into CSV text.
+///
+/// # Runtime Role
+///
+/// This export mirrors the debug report's low-selectivity tree-gap section so
+/// KD-tree and R-tree low-bucket behavior can be tracked across commits without
+/// parsing terminal text.
+pub fn multi_baseline_low_selectivity_gap_to_csv(
+    report: &MultiBaselineBenchmarkSuiteReport,
+) -> String {
+    csv_document(
+        low_selectivity_gap_header_fields(),
+        low_selectivity_gap_value_rows(report),
+    )
+}
+
+/// Converts low-selectivity tree-gap summaries into CSV text with run metadata.
+pub fn multi_baseline_low_selectivity_gap_to_csv_with_metadata(
+    metadata: &BenchmarkCsvMetadata,
+    report: &MultiBaselineBenchmarkSuiteReport,
+) -> String {
+    csv_document(
+        header_fields_with_metadata(low_selectivity_gap_header_fields()),
+        low_selectivity_gap_value_rows(report)
+            .into_iter()
+            .map(|fields| value_fields_with_metadata(metadata, fields)),
+    )
+}
+
 /// Writes a multi-baseline aggregate summary to a CSV file.
 ///
 /// # Runtime Role
@@ -272,6 +320,78 @@ pub fn write_multi_baseline_workload_report_csv_with_metadata(
         path,
         multi_baseline_workload_report_to_csv_with_metadata(metadata, report),
     )
+}
+
+/// Writes a low-selectivity tree-gap CSV file.
+pub fn write_multi_baseline_low_selectivity_gap_csv(
+    path: impl AsRef<Path>,
+    report: &MultiBaselineBenchmarkSuiteReport,
+) -> io::Result<()> {
+    fs::write(path, multi_baseline_low_selectivity_gap_to_csv(report))
+}
+
+/// Writes a low-selectivity tree-gap CSV file with run metadata.
+pub fn write_multi_baseline_low_selectivity_gap_csv_with_metadata(
+    path: impl AsRef<Path>,
+    metadata: &BenchmarkCsvMetadata,
+    report: &MultiBaselineBenchmarkSuiteReport,
+) -> io::Result<()> {
+    fs::write(
+        path,
+        multi_baseline_low_selectivity_gap_to_csv_with_metadata(metadata, report),
+    )
+}
+
+fn low_selectivity_gap_value_rows(report: &MultiBaselineBenchmarkSuiteReport) -> Vec<Vec<String>> {
+    let mut rows = Vec::new();
+
+    for baseline_report in &report.baseline_reports {
+        if !matches!(
+            baseline_report.baseline_kind,
+            BaselineKind::KdTree | BaselineKind::RTree
+        ) {
+            continue;
+        }
+
+        let selectivity_summary =
+            summarize_workloads_by_selectivity(&baseline_report.report.comparisons);
+
+        let Some(low_bucket) = selectivity_summary.bucket_summary(SelectivityBucket::Low) else {
+            continue;
+        };
+
+        let labels = baseline_report
+            .report
+            .comparisons
+            .first()
+            .map(|summary| summary.comparison.labels.clone());
+
+        let baseline_label = labels
+            .as_ref()
+            .map(|labels| labels.baseline_label.clone())
+            .unwrap_or_else(|| baseline_report.baseline_name.clone());
+
+        let comparison_label = labels
+            .map(|labels| labels.comparison_label)
+            .unwrap_or_else(|| format!("{} vs FSE", baseline_label));
+
+        rows.push(vec![
+            baseline_report.baseline_name.clone(),
+            baseline_label,
+            comparison_label,
+            low_bucket.workload_count.to_string(),
+            low_bucket.total_baseline_evaluated_records.to_string(),
+            low_bucket.total_fse_reconstructed_records.to_string(),
+            low_bucket.total_avoided_reconstructions.to_string(),
+            format_ratio(low_bucket.average_candidate_ratio as f64),
+            format_ratio(low_bucket.weighted_candidate_ratio as f64),
+            format_ratio(low_bucket.average_reconstruction_avoidance_ratio as f64),
+            format_ratio(low_bucket.weighted_reconstruction_avoidance_ratio as f64),
+            format_ratio(low_bucket.mean_timing_ratio),
+        ]);
+    }
+
+    rows
 }
 
 fn workload_value_rows(report: &MultiBaselineBenchmarkSuiteReport) -> Vec<Vec<String>> {
@@ -453,6 +573,23 @@ fn workload_header_fields() -> Vec<&'static str> {
         "fse_elapsed_ns",
         "baseline_average_elapsed_ns",
         "fse_average_elapsed_ns",
+    ]
+}
+
+fn low_selectivity_gap_header_fields() -> Vec<&'static str> {
+    vec![
+        "baseline_name",
+        "baseline_label",
+        "comparison_label",
+        "low_workload_count",
+        "low_baseline_evaluated_records",
+        "low_fse_reconstructed_records",
+        "low_avoided_reconstructions",
+        "low_average_candidate_ratio",
+        "low_weighted_candidate_ratio",
+        "low_average_reconstruction_avoidance_ratio",
+        "low_weighted_reconstruction_avoidance_ratio",
+        "low_mean_timing_ratio",
     ]
 }
 

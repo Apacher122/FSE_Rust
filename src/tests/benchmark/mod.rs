@@ -14,6 +14,7 @@ mod fse_execution_mode_tests;
 mod fse_parallel_threshold_tests;
 mod kd_tree_tests;
 mod kd_workload_tests;
+mod low_selectivity_gap_csv_tests;
 mod multi_summary_tests;
 mod ordering_tests;
 mod output_tests;

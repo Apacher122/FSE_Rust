@@ -40,7 +40,11 @@ fn test_metadata() -> BenchmarkCsvMetadata {
 fn benchmark_csv_output_writer_returns_empty_report_when_no_paths_are_configured() {
     let fixture = small_benchmark_fixture();
     let registry = BaselineRegistry::new();
-    let baseline_kinds = [BaselineKind::FlatScan];
+    let baseline_kinds = [
+        BaselineKind::FlatScan,
+        BaselineKind::KdTree,
+        BaselineKind::RTree,
+    ];
 
     let report = run_multi_baseline_benchmark_suite(
         &fixture.index,
@@ -66,7 +70,11 @@ fn benchmark_csv_output_writer_returns_empty_report_when_no_paths_are_configured
 fn benchmark_csv_output_writer_writes_configured_outputs() {
     let fixture = small_benchmark_fixture();
     let registry = BaselineRegistry::new();
-    let baseline_kinds = [BaselineKind::FlatScan];
+    let baseline_kinds = [
+        BaselineKind::FlatScan,
+        BaselineKind::KdTree,
+        BaselineKind::RTree,
+    ];
 
     let report = run_multi_baseline_benchmark_suite(
         &fixture.index,
@@ -87,14 +95,20 @@ fn benchmark_csv_output_writer_writes_configured_outputs() {
         "fse_csv_output_workloads_test_{}.csv",
         std::process::id()
     ));
+    let low_selectivity_gap_path = std::env::temp_dir().join(format!(
+        "fse_csv_output_low_selectivity_gap_test_{}.csv",
+        std::process::id()
+    ));
 
     let summary_path_text = summary_path.to_string_lossy().to_string();
     let workloads_path_text = workloads_path.to_string_lossy().to_string();
+    let low_selectivity_gap_path_text = low_selectivity_gap_path.to_string_lossy().to_string();
 
-    let csv_output = BenchmarkCsvOutputConfig::new(
+    let mut csv_output = BenchmarkCsvOutputConfig::new(
         Some(summary_path_text.clone()),
         Some(workloads_path_text.clone()),
     );
+    csv_output.set_low_selectivity_gap_path(low_selectivity_gap_path_text.clone());
 
     let write_report =
         write_benchmark_csv_outputs(&csv_output, &test_metadata(), &aggregate_summary, &report)
@@ -105,9 +119,14 @@ fn benchmark_csv_output_writer_writes_configured_outputs() {
         write_report.workloads_path,
         Some(workloads_path_text.clone())
     );
+    assert_eq!(
+        write_report.low_selectivity_gap_path,
+        Some(low_selectivity_gap_path_text.clone())
+    );
 
     let summary_csv = fs::read_to_string(&summary_path).unwrap();
     let workloads_csv = fs::read_to_string(&workloads_path).unwrap();
+    let low_selectivity_gap_csv = fs::read_to_string(&low_selectivity_gap_path).unwrap();
 
     assert!(summary_csv.contains("baseline_name,baseline_label,comparison_label"));
     assert!(summary_csv.contains("target_leaf_size,max_leaf_size,max_depth"));
@@ -117,9 +136,13 @@ fn benchmark_csv_output_writer_writes_configured_outputs() {
     assert!(workloads_csv.contains("target_leaf_size,max_leaf_size,max_depth"));
     assert!(workloads_csv.contains("index_leaf_count,index_internal_node_count"));
     assert!(workloads_csv.contains("parallel,2,8,7,60,4,8,7.500000"));
+    assert!(low_selectivity_gap_csv.contains("baseline_name,baseline_label,comparison_label"));
+    assert!(low_selectivity_gap_csv.contains("low_weighted_candidate_ratio"));
+    assert!(low_selectivity_gap_csv.contains("parallel,2,8,7,60,4,8,7.500000"));
 
     let _ = fs::remove_file(summary_path);
     let _ = fs::remove_file(workloads_path);
+    let _ = fs::remove_file(low_selectivity_gap_path);
 }
 
 #[test]
@@ -127,6 +150,7 @@ fn benchmark_csv_output_writer_reports_status_lines_in_write_order() {
     let write_report = crate::benchmark::BenchmarkCsvWriteReport {
         summary_path: Some("summary.csv".to_string()),
         workloads_path: Some("workloads.csv".to_string()),
+        low_selectivity_gap_path: Some("low-gap.csv".to_string()),
     };
 
     // keep this matching the old main output exactly
@@ -135,6 +159,7 @@ fn benchmark_csv_output_writer_reports_status_lines_in_write_order() {
         vec![
             "CSV summary written: summary.csv".to_string(),
             "Workload CSV written: workloads.csv".to_string(),
+            "Low-selectivity gap CSV written: low-gap.csv".to_string(),
         ]
     );
 }

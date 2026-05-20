@@ -210,6 +210,10 @@ impl BenchmarkCliParseState {
         self.csv_output.set_workloads_path(value);
     }
 
+    fn set_csv_low_selectivity_gap_path(&mut self, value: String) {
+        self.csv_output.set_low_selectivity_gap_path(value);
+    }
+
     fn enable_debug_report(&mut self) {
         self.terminal_output_mode = BenchmarkTerminalOutputMode::DebugReport;
     }
@@ -276,6 +280,7 @@ impl BenchmarkCliParseState {
 /// - `--csv-summary PATH`
 /// - `--csv PATH`
 /// - `--csv-workloads PATH`
+/// - `--csv-low-selectivity-gap PATH`
 /// - `--debug-report`
 pub fn parse_benchmark_cli_config<I, S>(args: I) -> Result<BenchmarkCliConfig, String>
 where
@@ -334,6 +339,10 @@ where
                 let value = next_value(&mut args, "--csv-workloads")?;
                 state.set_csv_workloads_path(value);
             }
+            "--csv-low-selectivity-gap" | "--csv-low-gap" | "--csv-tree-gap" => {
+                let value = next_value(&mut args, arg.as_str())?;
+                state.set_csv_low_selectivity_gap_path(value);
+            }
             "--debug-report" => {
                 state.enable_debug_report();
             }
@@ -386,6 +395,7 @@ pub fn benchmark_usage() -> String {
         "  --csv-summary <PATH>",
         "  --csv <PATH>",
         "  --csv-workloads <PATH>",
+        "  --csv-low-selectivity-gap <PATH>",
         "  --debug-report",
     ]
     .join("\n")

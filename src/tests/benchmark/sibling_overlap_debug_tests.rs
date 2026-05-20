@@ -37,6 +37,40 @@ fn debug_report_renders_traversal_pressure_summary() {
 }
 
 #[test]
+fn debug_report_renders_weakest_low_selectivity_workload() {
+    let context = BenchmarkApplicationContext::from_cli_config(debug_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert!(output.contains("Weakest low-selectivity workload"));
+    assert!(output.contains(
+        "baseline | workload | mean timing | baseline avg | fse avg | visited nodes | fse records | baseline records"
+    ));
+    assert!(output.contains("kd_tree |"));
+    assert!(output.contains("r_tree |"));
+    assert!(output.contains("cluster_boundary_range"));
+}
+
+#[test]
+fn debug_report_renders_boundary_workload_pressure_notes() {
+    let context = BenchmarkApplicationContext::from_cli_config(debug_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert!(output.contains("Boundary workload pressure notes"));
+    assert!(output.contains(
+        "baseline | workload | timing | baseline records | fse visited | fse retained | fse records | matched | candidate | nodes/record"
+    ));
+    assert!(output.contains("kd_tree |"));
+    assert!(output.contains("r_tree |"));
+    assert!(output.contains("cluster_boundary_range"));
+}
+
+#[test]
 fn compact_report_does_not_render_debug_structure_metrics() {
     let context = BenchmarkApplicationContext::from_cli_config(summary_cli_config());
     let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
@@ -49,6 +83,8 @@ fn compact_report_does_not_render_debug_structure_metrics() {
     assert!(!output.contains("overlapping sibling pairs:"));
     assert!(!output.contains("Traversal pressure summary"));
     assert!(!output.contains("visited nodes per retained leaf:"));
+    assert!(!output.contains("Weakest low-selectivity workload"));
+    assert!(!output.contains("Boundary workload pressure notes"));
 }
 
 fn summary_cli_config() -> BenchmarkCliConfig {

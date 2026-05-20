@@ -22,10 +22,14 @@ pub use comparison::{
 };
 pub use csv::{
     BenchmarkCsvMetadata, BenchmarkCsvOutputConfig, multi_baseline_aggregate_summary_to_csv,
-    multi_baseline_aggregate_summary_to_csv_with_metadata, multi_baseline_workload_report_to_csv,
+    multi_baseline_aggregate_summary_to_csv_with_metadata,
+    multi_baseline_low_selectivity_gap_to_csv,
+    multi_baseline_low_selectivity_gap_to_csv_with_metadata, multi_baseline_workload_report_to_csv,
     multi_baseline_workload_report_to_csv_with_metadata,
     write_multi_baseline_aggregate_summary_csv,
     write_multi_baseline_aggregate_summary_csv_with_metadata,
+    write_multi_baseline_low_selectivity_gap_csv,
+    write_multi_baseline_low_selectivity_gap_csv_with_metadata,
     write_multi_baseline_workload_report_csv,
     write_multi_baseline_workload_report_csv_with_metadata,
 };

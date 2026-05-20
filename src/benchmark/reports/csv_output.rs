@@ -7,6 +7,7 @@ use std::io;
 use super::csv::{
     BenchmarkCsvMetadata, BenchmarkCsvOutputConfig,
     write_multi_baseline_aggregate_summary_csv_with_metadata,
+    write_multi_baseline_low_selectivity_gap_csv_with_metadata,
     write_multi_baseline_workload_report_csv_with_metadata,
 };
 use super::multi_summary::MultiBaselineAggregateSummary;
@@ -25,6 +26,9 @@ pub enum BenchmarkCsvOutputKind {
 
     /// Per-workload CSV output.
     Workloads,
+
+    /// Low-selectivity tree-gap CSV output.
+    LowSelectivityGap,
 }
 
 impl BenchmarkCsvOutputKind {
@@ -33,6 +37,7 @@ impl BenchmarkCsvOutputKind {
         match self {
             BenchmarkCsvOutputKind::Summary => "CSV summary",
             BenchmarkCsvOutputKind::Workloads => "workload CSV",
+            BenchmarkCsvOutputKind::LowSelectivityGap => "low-selectivity gap CSV",
         }
     }
 }
@@ -50,12 +55,17 @@ pub struct BenchmarkCsvWriteReport {
 
     /// Path written for the per-workload CSV.
     pub workloads_path: Option<String>,
+
+    /// Path written for the low-selectivity tree-gap CSV.
+    pub low_selectivity_gap_path: Option<String>,
 }
 
 impl BenchmarkCsvWriteReport {
     /// Returns whether no CSV files were written.
     pub fn is_empty(&self) -> bool {
-        self.summary_path.is_none() && self.workloads_path.is_none()
+        self.summary_path.is_none()
+            && self.workloads_path.is_none()
+            && self.low_selectivity_gap_path.is_none()
     }
 
     /// Returns user-facing status lines for completed CSV writes.
@@ -68,6 +78,10 @@ impl BenchmarkCsvWriteReport {
 
         if let Some(path) = &self.workloads_path {
             lines.push(format!("Workload CSV written: {}", path));
+        }
+
+        if let Some(path) = &self.low_selectivity_gap_path {
+            lines.push(format!("Low-selectivity gap CSV written: {}", path));
         }
 
         lines
@@ -153,6 +167,16 @@ pub fn write_benchmark_csv_outputs(
         )?;
 
         write_report.workloads_path = Some(path.clone());
+    }
+
+    if let Some(path) = &csv_output.low_selectivity_gap_path {
+        // the gap export is compact and derived from the completed workload report
+        write_multi_baseline_low_selectivity_gap_csv_with_metadata(path, metadata, report)
+            .map_err(|source| {
+                BenchmarkCsvWriteError::new(BenchmarkCsvOutputKind::LowSelectivityGap, path, source)
+            })?;
+
+        write_report.low_selectivity_gap_path = Some(path.clone());
     }
 
     Ok(write_report)
