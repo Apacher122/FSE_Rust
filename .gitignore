@@ -3,6 +3,7 @@
 **/*.rs.bk
 /dev_notes
 *.csv
+/benchmark_artifacts
 
 # VS Code
 .vscode/*
