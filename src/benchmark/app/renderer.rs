@@ -108,7 +108,9 @@ impl BenchmarkApplicationRenderer {
         output.push_str(&render_scoreboard_diagnosis(aggregate_summary));
         output.push('\n');
         output.push_str("Next target:\n");
-        output.push_str("  compare leaf policy against candidate ratio\n");
+        output.push_str("  ");
+        output.push_str(next_target_message(overview));
+        output.push('\n');
 
         output
     }
@@ -273,6 +275,18 @@ fn render_scoreboard_diagnosis(summary: &MultiBaselineAggregateSummary) -> Strin
     }
 
     output
+}
+
+fn next_target_message(overview: &BenchmarkRunOverview) -> &'static str {
+    if overview.target_leaf_size <= 4 {
+        return "compare tighter 4/8 geometry against traversal overhead";
+    }
+
+    if overview.target_leaf_size == overview.max_leaf_size {
+        return "compare 8/8 timing against 4/8 candidate reduction";
+    }
+
+    "compare leaf policy against candidate ratio"
 }
 
 fn timing_result_label(weighted_timing_ratio: f64) -> &'static str {
