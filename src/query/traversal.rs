@@ -335,7 +335,6 @@ pub(crate) fn traverse_with_known_root_classification(
     );
 
     let total_leaves = index.leaf_count();
-    let dimensions = index.dimensions;
 
     let mut stats = QueryTraversalStats {
         total_leaves,
@@ -393,9 +392,7 @@ pub(crate) fn traverse_with_known_root_classification(
             continue;
         }
 
-        // traversal already proved the query and index dimensions agree
-        // dont pay that check again for every boundary node
-        match query.classify_bounds_prevalidated(&node.bounds, dimensions) {
+        match query.classify_bounds(&node.bounds) {
             QueryBoundsClassification::Covered => {
                 retain_or_descend_covered_node(
                     index,
