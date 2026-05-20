@@ -121,6 +121,34 @@ impl QueryRegion {
             return QueryBoundsClassification::Disjoint;
         }
 
+        self.classify_bounds_prevalidated(bounds, dimensions)
+    }
+
+    /// Classifies bounds after dimensionality has already been validated.
+    ///
+    /// # Runtime Role
+    ///
+    /// Traversal validates query and index dimensionality before it starts
+    /// walking the hierarchy. This helper lets the traversal hot path reuse that
+    /// fact instead of repeating the public dimensionality check for every
+    /// visited node.
+    pub(crate) fn classify_bounds_prevalidated(
+        &self,
+        bounds: &BoundingBox,
+        dimensions: usize,
+    ) -> QueryBoundsClassification {
+        debug_assert_eq!(
+            self.dimensions(),
+            dimensions,
+            "prevalidated query dimensionality should match"
+        );
+        debug_assert_eq!(
+            bounds.dimensions(),
+            dimensions,
+            "prevalidated bounds dimensionality should match"
+        );
+
+        // this is tiny but it sits right in the boundary workload path
         match dimensions {
             1 => self.classify_bounds_1d(bounds),
             2 => self.classify_bounds_2d(bounds),

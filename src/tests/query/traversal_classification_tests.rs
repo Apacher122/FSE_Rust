@@ -2,6 +2,7 @@ use crate::math::{BoundingBox, ResidualBlock, Vector};
 use crate::query::execution::{
     execute_classified_retained_leaves_with_options, query_contains_bounds,
 };
+use crate::query::region::QueryBoundsClassification;
 use crate::query::{
     QueryExecutionOptions, QueryRegion, RetainedLeaf, RetainedLeafCoverage, traverse_with_stats,
 };
@@ -55,6 +56,42 @@ fn query_region_does_not_intersect_bounds_when_dimensions_differ() {
     let bounds = BoundingBox::new(vec![0.0], vec![10.0]);
 
     assert!(!query.intersects_bounds(&bounds));
+}
+
+#[test]
+fn prevalidated_bounds_classification_matches_public_classification() {
+    let query = QueryRegion::new(vec![0.0, 0.0], vec![10.0, 10.0]);
+
+    let covered_bounds = BoundingBox::new(vec![2.0, 2.0], vec![8.0, 8.0]);
+    let partial_bounds = BoundingBox::new(vec![8.0, 8.0], vec![12.0, 12.0]);
+    let disjoint_bounds = BoundingBox::new(vec![11.0, 3.0], vec![12.0, 5.0]);
+
+    // same answer just skipping the public dimension check
+    assert_eq!(
+        query.classify_bounds_prevalidated(&covered_bounds, 2),
+        query.classify_bounds(&covered_bounds)
+    );
+    assert_eq!(
+        query.classify_bounds_prevalidated(&partial_bounds, 2),
+        query.classify_bounds(&partial_bounds)
+    );
+    assert_eq!(
+        query.classify_bounds_prevalidated(&disjoint_bounds, 2),
+        query.classify_bounds(&disjoint_bounds)
+    );
+
+    assert_eq!(
+        query.classify_bounds_prevalidated(&covered_bounds, 2),
+        QueryBoundsClassification::Covered
+    );
+    assert_eq!(
+        query.classify_bounds_prevalidated(&partial_bounds, 2),
+        QueryBoundsClassification::Partial
+    );
+    assert_eq!(
+        query.classify_bounds_prevalidated(&disjoint_bounds, 2),
+        QueryBoundsClassification::Disjoint
+    );
 }
 
 #[test]
