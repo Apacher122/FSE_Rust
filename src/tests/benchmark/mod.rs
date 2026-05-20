@@ -23,6 +23,7 @@ mod r_tree_tests;
 mod r_tree_workload_tests;
 mod runner_tests;
 mod selectivity_tests;
+mod sibling_overlap_debug_tests;
 mod summary_tests;
 mod timing_tests;
 mod workload_tests;

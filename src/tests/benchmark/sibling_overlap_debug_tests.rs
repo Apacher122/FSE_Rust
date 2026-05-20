@@ -1,0 +1,81 @@
+use crate::benchmark::{
+    BenchmarkApplicationContext, BenchmarkApplicationRenderer, BenchmarkApplicationResultBundle,
+    BenchmarkBaselineSet, BenchmarkCliConfig, BenchmarkCsvOutputConfig, BenchmarkDatasetKind,
+    BenchmarkSuiteConfig, BenchmarkTerminalOutputMode,
+};
+
+#[test]
+fn debug_report_renders_sibling_overlap_metrics() {
+    let context = BenchmarkApplicationContext::from_cli_config(debug_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert!(output.contains("Sibling overlap metrics"));
+    assert!(output.contains("sibling pairs:"));
+    assert!(output.contains("overlapping sibling pairs:"));
+    assert!(output.contains("total overlap extent:"));
+    assert!(output.contains("average overlap extent:"));
+    assert!(output.contains("has overlap:"));
+}
+
+#[test]
+fn debug_report_renders_traversal_pressure_summary() {
+    let context = BenchmarkApplicationContext::from_cli_config(debug_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert!(output.contains("Traversal pressure summary"));
+    assert!(output.contains("total visited nodes:"));
+    assert!(output.contains("total retained leaves:"));
+    assert!(output.contains("total reconstructed records:"));
+    assert!(output.contains("visited nodes per retained leaf:"));
+    assert!(output.contains("visited nodes per reconstructed record:"));
+}
+
+#[test]
+fn compact_report_does_not_render_debug_structure_metrics() {
+    let context = BenchmarkApplicationContext::from_cli_config(summary_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert!(!output.contains("Sibling overlap metrics"));
+    assert!(!output.contains("sibling pairs:"));
+    assert!(!output.contains("overlapping sibling pairs:"));
+    assert!(!output.contains("Traversal pressure summary"));
+    assert!(!output.contains("visited nodes per retained leaf:"));
+}
+
+fn summary_cli_config() -> BenchmarkCliConfig {
+    BenchmarkCliConfig {
+        suite_config: small_fast_suite_config(),
+        baseline_set: BenchmarkBaselineSet::AllExact,
+        baseline_kinds: BenchmarkBaselineSet::AllExact.selected_kinds(),
+        csv_output: BenchmarkCsvOutputConfig::default(),
+        terminal_output_mode: BenchmarkTerminalOutputMode::Summary,
+    }
+}
+
+fn debug_cli_config() -> BenchmarkCliConfig {
+    let mut config = summary_cli_config();
+
+    config.terminal_output_mode = BenchmarkTerminalOutputMode::DebugReport;
+
+    config
+}
+
+fn small_fast_suite_config() -> BenchmarkSuiteConfig {
+    let mut config = BenchmarkSuiteConfig::default();
+
+    config.dataset_kind = BenchmarkDatasetKind::SmallClustered2D;
+    config.timing_iterations = 1;
+    config.max_leaf_size = 8;
+    config.max_depth = 8;
+
+    config
+}
