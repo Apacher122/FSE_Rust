@@ -265,6 +265,19 @@ fn append_partially_covered_2d_results(
     query: &QueryRegion,
     batch_report: &mut RetainedLeafBatchExecutionReport,
 ) {
+    match first_partial_check_dimension_2d(node, query) {
+        0 => append_partially_covered_2d_results_x_first(node, shape, query, batch_report),
+        _ => append_partially_covered_2d_results_y_first(node, shape, query, batch_report),
+    }
+}
+
+#[inline]
+fn append_partially_covered_2d_results_x_first(
+    node: &PartitionNode,
+    shape: LeafReconstructionShape,
+    query: &QueryRegion,
+    batch_report: &mut RetainedLeafBatchExecutionReport,
+) {
     let centroid_0 = node.centroid[0];
     let centroid_1 = node.centroid[1];
 
@@ -291,6 +304,73 @@ fn append_partially_covered_2d_results(
                 .push(Vector::new(vec![value_0, value_1]));
         }
     }
+}
+
+#[inline]
+fn append_partially_covered_2d_results_y_first(
+    node: &PartitionNode,
+    shape: LeafReconstructionShape,
+    query: &QueryRegion,
+    batch_report: &mut RetainedLeafBatchExecutionReport,
+) {
+    let centroid_0 = node.centroid[0];
+    let centroid_1 = node.centroid[1];
+
+    let residual_0 = &node.residuals.dimensions[0];
+    let residual_1 = &node.residuals.dimensions[1];
+
+    let query_min_0 = query.min[0];
+    let query_max_0 = query.max[0];
+    let query_min_1 = query.min[1];
+    let query_max_1 = query.max[1];
+
+    for row in 0..shape.cardinality {
+        let value_1 = centroid_1 + residual_1[row];
+
+        if value_1 < query_min_1 || value_1 > query_max_1 {
+            continue;
+        }
+
+        let value_0 = centroid_0 + residual_0[row];
+
+        if value_0 >= query_min_0 && value_0 <= query_max_0 {
+            batch_report
+                .results
+                .push(Vector::new(vec![value_0, value_1]));
+        }
+    }
+}
+
+#[inline]
+fn first_partial_check_dimension_2d(node: &PartitionNode, query: &QueryRegion) -> usize {
+    let dimension_0_overlap_ratio = query_leaf_overlap_ratio(node, query, 0);
+    let dimension_1_overlap_ratio = query_leaf_overlap_ratio(node, query, 1);
+
+    // smaller overlap means that dimension should reject more rows first
+    if dimension_1_overlap_ratio < dimension_0_overlap_ratio {
+        1
+    } else {
+        0
+    }
+}
+
+#[inline]
+fn query_leaf_overlap_ratio(node: &PartitionNode, query: &QueryRegion, dimension: usize) -> Scalar {
+    let leaf_min = node.bounds.min[dimension];
+    let leaf_max = node.bounds.max[dimension];
+
+    let leaf_width = leaf_max - leaf_min;
+
+    if leaf_width <= 0.0 {
+        return 1.0;
+    }
+
+    let overlap_min = query.min[dimension].max(leaf_min);
+    let overlap_max = query.max[dimension].min(leaf_max);
+
+    let overlap_width = (overlap_max - overlap_min).max(0.0);
+
+    overlap_width / leaf_width
 }
 
 #[inline]
