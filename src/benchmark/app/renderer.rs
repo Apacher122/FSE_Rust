@@ -4,9 +4,9 @@ use super::context::BenchmarkApplicationContext;
 use super::result_bundle::BenchmarkApplicationResultBundle;
 use crate::benchmark::reports::{
     BaselineAggregateSummary, BenchmarkRunOverview, MultiBaselineAggregateSummary,
-    render_benchmark_overview, render_multi_baseline_summary, render_named_baseline_suite_report,
-    render_selectivity_bucketed_workload_summary, render_suite_report,
-    summarize_workloads_by_selectivity,
+    SelectivityBucket, render_benchmark_overview, render_multi_baseline_summary,
+    render_named_baseline_suite_report, render_selectivity_bucketed_workload_summary,
+    render_suite_report, summarize_workloads_by_selectivity,
 };
 use crate::build::sibling_overlap_metrics;
 
@@ -126,6 +126,7 @@ impl BenchmarkApplicationRenderer {
         output.push_str(&render_benchmark_overview(&result_bundle.overview));
         self.append_sibling_overlap_debug_output(&mut output, context);
         self.append_traversal_pressure_debug_output(&mut output, result_bundle);
+        self.append_low_selectivity_tree_gap_debug_output(&mut output, result_bundle);
         self.append_debug_suite_terminal_output(&mut output, context, result_bundle);
 
         output
@@ -199,6 +200,49 @@ impl BenchmarkApplicationRenderer {
             "visited nodes per reconstructed record: {:.2}\n",
             visited_per_reconstructed_record
         ));
+        output.push('\n');
+    }
+
+    fn append_low_selectivity_tree_gap_debug_output(
+        &self,
+        output: &mut String,
+        result_bundle: &BenchmarkApplicationResultBundle,
+    ) {
+        let mut rendered_any_tree_baseline = false;
+
+        output.push_str("Low-selectivity tree gap\n");
+        output.push_str("------------------------\n");
+        output.push_str("baseline | low bucket mean timing | low weighted candidate\n");
+
+        for baseline_report in &result_bundle.report.baseline_reports {
+            if baseline_report.baseline_name != "kd_tree"
+                && baseline_report.baseline_name != "r_tree"
+            {
+                continue;
+            }
+
+            let selectivity_summary =
+                summarize_workloads_by_selectivity(&baseline_report.report.comparisons);
+
+            if let Some(low_bucket) = selectivity_summary
+                .bucket_summaries
+                .iter()
+                .find(|bucket| bucket.bucket == SelectivityBucket::Low)
+            {
+                output.push_str(&format!(
+                    "{} | {:.2} | {:.2}\n",
+                    baseline_report.baseline_name,
+                    low_bucket.mean_timing_ratio,
+                    low_bucket.weighted_candidate_ratio,
+                ));
+                rendered_any_tree_baseline = true;
+            }
+        }
+
+        if !rendered_any_tree_baseline {
+            output.push_str("none\n");
+        }
+
         output.push('\n');
     }
 
