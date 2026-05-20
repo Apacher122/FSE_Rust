@@ -1,9 +1,9 @@
 # Project/language specific
 /target
 **/*.rs.bk
-/dev_notes
 *.csv
 /benchmark_artifacts
+/dev_notes
 
 # VS Code
 .vscode/*
