@@ -1,9 +1,7 @@
 //! Retained-leaf row execution.
 
 use crate::math::{Scalar, Vector};
-use crate::query::reconstruction::{
-    reconstruct_point_prevalidated, reconstruct_row_into_prevalidated,
-};
+use crate::query::reconstruction::reconstruct_row_into_prevalidated;
 use crate::query::{QueryRegion, RetainedLeafCoverage};
 use crate::storage::{LeafReconstructionShape, PartitionNode};
 
@@ -94,7 +92,9 @@ pub(crate) fn execute_retained_leaf_into_batch_report(
 /// # Runtime Role
 ///
 /// The query already contains the leaf bounds, so every reconstructed row can be
-/// appended directly without exact predicate evaluation.
+/// appended directly without exact predicate evaluation. The dimensional branch
+/// is hoisted once per leaf so the row loop does not repeatedly dispatch through
+/// the generic reconstruction helper.
 pub(crate) fn append_covered_retained_leaf_results(
     node: &PartitionNode,
     shape: LeafReconstructionShape,
@@ -113,24 +113,81 @@ pub(crate) fn append_covered_retained_leaf_results(
 
     reserve_additional_results(&mut batch_report.results, shape.cardinality);
 
-    // geometry already proved these rows match
-    for row in 0..shape.cardinality {
-        batch_report
-            .results
-            .push(reconstruct_point_prevalidated(node, row, shape.dimensions));
+    match shape.dimensions {
+        1 => append_covered_1d_results(node, shape, batch_report),
+        2 => append_covered_2d_results(node, shape, batch_report),
+        _ => append_covered_generic_results(node, shape, batch_report),
     }
 
     batch_report.reconstructed_records += shape.cardinality;
     batch_report.matched_records += shape.cardinality;
 }
 
+#[inline]
+fn append_covered_1d_results(
+    node: &PartitionNode,
+    shape: LeafReconstructionShape,
+    batch_report: &mut RetainedLeafBatchExecutionReport,
+) {
+    let centroid_0 = node.centroid[0];
+    let residual_0 = &node.residuals.dimensions[0];
+
+    // covered geometry means every row is already accepted
+    for row in 0..shape.cardinality {
+        batch_report
+            .results
+            .push(Vector::new(vec![centroid_0 + residual_0[row]]));
+    }
+}
+
+#[inline]
+fn append_covered_2d_results(
+    node: &PartitionNode,
+    shape: LeafReconstructionShape,
+    batch_report: &mut RetainedLeafBatchExecutionReport,
+) {
+    let centroid_0 = node.centroid[0];
+    let centroid_1 = node.centroid[1];
+
+    let residual_0 = &node.residuals.dimensions[0];
+    let residual_1 = &node.residuals.dimensions[1];
+
+    // same exact reconstruction, just with the shape branch outside the row loop
+    for row in 0..shape.cardinality {
+        batch_report.results.push(Vector::new(vec![
+            centroid_0 + residual_0[row],
+            centroid_1 + residual_1[row],
+        ]));
+    }
+}
+
+#[inline]
+fn append_covered_generic_results(
+    node: &PartitionNode,
+    shape: LeafReconstructionShape,
+    batch_report: &mut RetainedLeafBatchExecutionReport,
+) {
+    for row in 0..shape.cardinality {
+        let mut values = Vec::with_capacity(shape.dimensions);
+
+        for (centroid_value, residual_dimension) in
+            node.centroid.iter().zip(&node.residuals.dimensions)
+        {
+            values.push(*centroid_value + residual_dimension[row]);
+        }
+
+        batch_report.results.push(Vector::new(values));
+    }
+}
+
 /// Appends matching rows from a partially covered retained leaf into the batch report.
 ///
 /// # Runtime Role
 ///
-/// Partial leaves still use the exact predicate path. The retained-leaf shape is
-/// read from the index cache before the row loop, then each candidate row is
-/// reconstructed into the reusable scratch buffer before exact query evaluation.
+/// Partial leaves still use exact predicate semantics. For the common 1D and 2D
+/// paths, reconstruction and predicate checks are fused so non-matching rows do
+/// not allocate temporary coordinate vectors. Higher-dimensional queries keep
+/// the generic scratch-buffer path.
 pub(crate) fn append_partially_covered_retained_leaf_results(
     node: &PartitionNode,
     shape: LeafReconstructionShape,
@@ -156,8 +213,95 @@ pub(crate) fn append_partially_covered_retained_leaf_results(
 
     let original_match_count = batch_report.results.len();
 
-    // keep the restored buffered reconstruction path
-    // only the exact predicate check uses the prevalidated hot helper
+    match shape.dimensions {
+        1 => append_partially_covered_1d_results(node, shape, query, batch_report),
+        2 => append_partially_covered_2d_results(node, shape, query, batch_report),
+        _ => append_partially_covered_generic_results(
+            node,
+            shape,
+            query,
+            batch_report,
+            reconstructed_values,
+        ),
+    }
+
+    let matched_records = batch_report.results.len() - original_match_count;
+
+    batch_report.reconstructed_records += shape.cardinality;
+    #[cfg(test)]
+    {
+        batch_report.predicate_evaluated_records += shape.cardinality;
+    }
+    batch_report.matched_records += matched_records;
+}
+
+#[inline]
+fn append_partially_covered_1d_results(
+    node: &PartitionNode,
+    shape: LeafReconstructionShape,
+    query: &QueryRegion,
+    batch_report: &mut RetainedLeafBatchExecutionReport,
+) {
+    let centroid_0 = node.centroid[0];
+    let residual_0 = &node.residuals.dimensions[0];
+
+    let query_min_0 = query.min[0];
+    let query_max_0 = query.max[0];
+
+    // dont allocate a row vec unless this row actually matches
+    for row in 0..shape.cardinality {
+        let value_0 = centroid_0 + residual_0[row];
+
+        if value_0 >= query_min_0 && value_0 <= query_max_0 {
+            batch_report.results.push(Vector::new(vec![value_0]));
+        }
+    }
+}
+
+#[inline]
+fn append_partially_covered_2d_results(
+    node: &PartitionNode,
+    shape: LeafReconstructionShape,
+    query: &QueryRegion,
+    batch_report: &mut RetainedLeafBatchExecutionReport,
+) {
+    let centroid_0 = node.centroid[0];
+    let centroid_1 = node.centroid[1];
+
+    let residual_0 = &node.residuals.dimensions[0];
+    let residual_1 = &node.residuals.dimensions[1];
+
+    let query_min_0 = query.min[0];
+    let query_max_0 = query.max[0];
+    let query_min_1 = query.min[1];
+    let query_max_1 = query.max[1];
+
+    for row in 0..shape.cardinality {
+        let value_0 = centroid_0 + residual_0[row];
+
+        if value_0 < query_min_0 || value_0 > query_max_0 {
+            continue;
+        }
+
+        let value_1 = centroid_1 + residual_1[row];
+
+        if value_1 >= query_min_1 && value_1 <= query_max_1 {
+            batch_report
+                .results
+                .push(Vector::new(vec![value_0, value_1]));
+        }
+    }
+}
+
+#[inline]
+fn append_partially_covered_generic_results(
+    node: &PartitionNode,
+    shape: LeafReconstructionShape,
+    query: &QueryRegion,
+    batch_report: &mut RetainedLeafBatchExecutionReport,
+    reconstructed_values: &mut Vec<Scalar>,
+) {
+    // keep the generic buffered reconstruction path for higher-dimensional data
     for row in 0..shape.cardinality {
         reconstruct_row_into_prevalidated(node, row, shape.dimensions, reconstructed_values);
 
@@ -169,15 +313,6 @@ pub(crate) fn append_partially_covered_retained_leaf_results(
             );
         }
     }
-
-    let matched_records = batch_report.results.len() - original_match_count;
-
-    batch_report.reconstructed_records += shape.cardinality;
-    #[cfg(test)]
-    {
-        batch_report.predicate_evaluated_records += shape.cardinality;
-    }
-    batch_report.matched_records += matched_records;
 }
 
 /// Moves a reconstructed row buffer into the final result set.

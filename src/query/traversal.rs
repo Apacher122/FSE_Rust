@@ -478,15 +478,31 @@ fn retain_or_descend_covered_node(
 
 #[inline]
 fn push_child_frames(children: &[usize], inherited_covered: bool, stack: &mut Vec<TraversalFrame>) {
-    // preserve current left to right traversal order
-    for child in children.iter().rev() {
-        let frame = if inherited_covered {
-            TraversalFrame::covered(*child)
-        } else {
-            TraversalFrame::normal(*child)
-        };
+    match children.len() {
+        0 => {}
+        1 => {
+            stack.push(child_frame(children[0], inherited_covered));
+        }
+        2 => {
+            // preserve left to right pop order without the iterator path
+            stack.push(child_frame(children[1], inherited_covered));
+            stack.push(child_frame(children[0], inherited_covered));
+        }
+        _ => {
+            // keep the generic fallback in case future splitters use wider fanout
+            for child in children.iter().rev() {
+                stack.push(child_frame(*child, inherited_covered));
+            }
+        }
+    }
+}
 
-        stack.push(frame);
+#[inline]
+fn child_frame(node_id: usize, inherited_covered: bool) -> TraversalFrame {
+    if inherited_covered {
+        TraversalFrame::covered(node_id)
+    } else {
+        TraversalFrame::normal(node_id)
     }
 }
 
