@@ -5,6 +5,9 @@ use crate::query::QueryRegion;
 use crate::query::region::QueryBoundsClassification;
 use crate::storage::{FSEIndex, LeafReconstructionShape};
 
+const DEFAULT_RETAINED_LEAF_CAPACITY: usize = 4;
+const DEFAULT_TRAVERSAL_STACK_CAPACITY: usize = 8;
+
 /// Coverage classification for a retained leaf.
 ///
 /// # Runtime Role
@@ -424,24 +427,27 @@ pub(crate) fn traverse_with_known_root_classification(
 ///
 /// # Runtime Role
 ///
-/// Most benchmark runs retain a small number of leaves, but full or broad
-/// queries can retain them all. This gives small indexes enough room without
-/// forcing a huge allocation for larger future indexes.
+/// Small selective queries usually retain only a couple of leaves. Starting
+/// with a small buffer avoids overallocating for those hot paths while still
+/// allowing broad partial queries to grow normally.
 #[inline]
 fn retained_leaf_capacity(total_leaves: usize) -> usize {
-    total_leaves.min(64)
+    total_leaves.min(DEFAULT_RETAINED_LEAF_CAPACITY)
 }
 
 /// Returns initial capacity for the traversal stack.
 ///
 /// # Runtime Role
 ///
-/// The stack may grow as traversal descends, especially with smaller leaf
-/// policies. A modest preallocation avoids repeated tiny reallocations while
-/// keeping the buffer bounded for larger indexes.
+/// Most binary-tree range traversals only need a small active stack even when
+/// the index has more total nodes. Starting smaller reduces per-query allocation
+/// pressure for selective workloads.
 #[inline]
 fn traversal_stack_capacity(index: &FSEIndex) -> usize {
-    index.node_count().min(64).max(1)
+    index
+        .node_count()
+        .min(DEFAULT_TRAVERSAL_STACK_CAPACITY)
+        .max(1)
 }
 
 #[inline]
