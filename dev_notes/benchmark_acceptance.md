@@ -1114,3 +1114,118 @@ The single-run low-gap regression notes are useful, but they are not the final d
 For boundary-focused commits, the target workload summary and target workload comparison artifact are required because the aggregate low-selectivity bucket can hide whether `cluster_boundary_range` actually improved.
 
 The workload trial summary and workload comparison artifact are still required to confirm whether `cluster_boundary_range` remains the weakest workload.
+
+## Boundary optimization decision after retained-record diagnostics
+
+The retained-record diagnostics completed through Commit 177 show that the active KD-tree boundary pressure is not caused by sibling overlap, incorrect pruning, or excessive retained leaves.
+
+The current target workload remains:
+
+```text
+cluster_boundary_range
+```
+
+The retained boundary shape is:
+
+```text
+query min: [18.00, 18.00]
+query max: [52.00, 52.00]
+retained leaves: 2
+```
+
+The retained leaves are:
+
+```text
+leaf 7:
+  coverage: partial
+  records: 5
+  matched: 2
+  rejected: 3
+  overlap volume: 1.00
+  leaf volume: 16.00
+  overlap ratio: 0.0625
+  bounds min: [15.00, 15.00]
+  bounds max: [19.00, 19.00]
+
+leaf 11:
+  coverage: partial
+  records: 5
+  matched: 3
+  rejected: 2
+  overlap volume: 4.00
+  leaf volume: 16.00
+  overlap ratio: 0.2500
+  bounds min: [50.00, 50.00]
+  bounds max: [54.00, 54.00]
+```
+
+The retained record breakdown is:
+
+```text
+leaf | row | result | values
+7 | 0 | reject | [15.00, 15.00]
+7 | 1 | reject | [16.00, 16.00]
+7 | 2 | reject | [17.00, 17.00]
+7 | 3 | match | [18.00, 18.00]
+7 | 4 | match | [19.00, 19.00]
+11 | 0 | match | [50.00, 50.00]
+11 | 1 | match | [51.00, 51.00]
+11 | 2 | match | [52.00, 52.00]
+11 | 3 | reject | [53.00, 53.00]
+11 | 4 | reject | [54.00, 54.00]
+```
+
+This confirms:
+
+```text
+FSE visited nodes: 13
+FSE retained leaves: 2
+FSE reconstructed records: 10
+FSE matched records: 5
+FSE rejected records after reconstruction: 5
+KD-tree baseline evaluated records: 9
+candidate ratio: 0.166667
+nodes per record: 1.300000
+```
+
+The query execution path already fuses reconstruction and exact evaluation for partially covered 1D and 2D retained leaves. Non-matching rows are checked from scalar reconstructed values and are not materialized into final result vectors.
+
+Therefore, do not create a new performance commit that claims to fuse partial-leaf reconstruction and evaluation unless the implementation has regressed.
+
+The current conclusion is:
+
+```text
+the remaining boundary cost is leaf granularity pressure
+```
+
+Do not target:
+
+```text
+sibling overlap tuning
+boundary-specific traversal hacks
+partial-leaf materialization fusion
+```
+
+unless new benchmark evidence changes the diagnosis.
+
+The next valid performance direction should compare leaf policy effects using repeated-trial evidence, especially the 8/8 policy against the tighter 4/8 policy, because the compact benchmark output repeatedly identifies this as the next useful target:
+
+```text
+compare 8/8 timing against 4/8 candidate reduction
+```
+
+A future optimization should only be accepted if it improves repeated-trial timing beyond:
+
+```text
++0.030000
+```
+
+while preserving:
+
+```text
+validation pass
+matched records unchanged
+candidate counts intentionally explained
+FSE visited nodes unchanged or intentionally explained
+FSE reconstructed records unchanged or intentionally explained
+```

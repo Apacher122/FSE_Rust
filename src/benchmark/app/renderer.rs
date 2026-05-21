@@ -10,6 +10,9 @@ use crate::benchmark::reports::{
     render_suite_report, summarize_workloads_by_selectivity,
 };
 use crate::build::sibling_overlap_metrics;
+use crate::math::{BoundingBox, Scalar};
+use crate::query::{QueryRegion, RetainedLeafCoverage, reconstruct_row_into, traverse_with_stats};
+use crate::storage::PartitionNode;
 
 /// Terminal renderer for benchmark application output.
 ///
@@ -130,6 +133,9 @@ impl BenchmarkApplicationRenderer {
         self.append_low_selectivity_tree_gap_debug_output(&mut output, result_bundle);
         self.append_weakest_low_selectivity_workload_debug_output(&mut output, result_bundle);
         self.append_boundary_workload_pressure_debug_output(&mut output, result_bundle);
+        // keep this as debug-only until the boundary data says what to optimize
+        self.append_target_workload_retained_leaf_debug_output(&mut output, context);
+        self.append_target_workload_retained_record_debug_output(&mut output, context);
         self.append_debug_suite_terminal_output(&mut output, context, result_bundle);
 
         output
@@ -347,6 +353,124 @@ impl BenchmarkApplicationRenderer {
         output.push('\n');
     }
 
+    fn append_target_workload_retained_leaf_debug_output(
+        &self,
+        output: &mut String,
+        context: &BenchmarkApplicationContext,
+    ) {
+        output.push_str("Target workload retained leaf details\n");
+        output.push_str("-------------------------------------\n");
+
+        let Some(workload) = context
+            .workloads
+            .iter()
+            .find(|workload| workload.name == TARGET_BOUNDARY_WORKLOAD_NAME)
+        else {
+            output.push_str(&format!("workload: {}\n", TARGET_BOUNDARY_WORKLOAD_NAME));
+            output.push_str("status: workload not found\n\n");
+            return;
+        };
+
+        let traversal = traverse_with_stats(&context.index, &workload.query);
+
+        output.push_str(&format!("workload: {}\n", workload.name));
+        output.push_str(&format!(
+            "query min: {}\n",
+            format_coordinate_values(&workload.query.min)
+        ));
+        output.push_str(&format!(
+            "query max: {}\n",
+            format_coordinate_values(&workload.query.max)
+        ));
+        output.push_str(&format!(
+            "retained leaves: {}\n",
+            traversal.stats.retained_leaves
+        ));
+        output.push_str(
+            "leaf | coverage | records | matched | rejected | overlap volume | leaf volume | overlap ratio | bounds min | bounds max\n",
+        );
+
+        if traversal.retained_leaves.is_empty() {
+            output.push_str("none\n");
+            output.push('\n');
+            return;
+        }
+
+        for retained_leaf in &traversal.retained_leaves {
+            let node = &context.index.nodes[retained_leaf.node_id];
+            let match_counts = retained_leaf_match_counts(node, &workload.query);
+            let leaf_volume = node.bounds.volume();
+            let overlap_volume = bounds_query_overlap_volume(&node.bounds, &workload.query);
+            let overlap_ratio = scalar_ratio_or_zero(overlap_volume, leaf_volume);
+
+            output.push_str(&format!(
+                "{} | {} | {} | {} | {} | {:.2} | {:.2} | {:.4} | {} | {}\n",
+                retained_leaf.node_id,
+                retained_leaf_coverage_label(retained_leaf.coverage),
+                node.stored_cardinality(),
+                match_counts.matched_records,
+                match_counts.rejected_records,
+                overlap_volume,
+                leaf_volume,
+                overlap_ratio,
+                format_bounds_min(&node.bounds),
+                format_bounds_max(&node.bounds),
+            ));
+        }
+
+        output.push('\n');
+    }
+
+    fn append_target_workload_retained_record_debug_output(
+        &self,
+        output: &mut String,
+        context: &BenchmarkApplicationContext,
+    ) {
+        output.push_str("Target workload retained record details\n");
+        output.push_str("---------------------------------------\n");
+
+        let Some(workload) = context
+            .workloads
+            .iter()
+            .find(|workload| workload.name == TARGET_BOUNDARY_WORKLOAD_NAME)
+        else {
+            output.push_str(&format!("workload: {}\n", TARGET_BOUNDARY_WORKLOAD_NAME));
+            output.push_str("status: workload not found\n\n");
+            return;
+        };
+
+        let traversal = traverse_with_stats(&context.index, &workload.query);
+
+        output.push_str(&format!("workload: {}\n", workload.name));
+        output.push_str("leaf | row | result | values\n");
+
+        if traversal.retained_leaves.is_empty() {
+            output.push_str("none\n");
+            output.push('\n');
+            return;
+        }
+
+        let mut scratch = Vec::with_capacity(workload.query.dimensions());
+
+        for retained_leaf in &traversal.retained_leaves {
+            let node = &context.index.nodes[retained_leaf.node_id];
+
+            for row in 0..node.stored_cardinality() {
+                reconstruct_row_into(node, row, &mut scratch);
+
+                output.push_str(&format!(
+                    "{} | {} | {} | {}\n",
+                    retained_leaf.node_id,
+                    row,
+                    retained_record_result_label(&scratch, &workload.query),
+                    format_coordinate_values(&scratch),
+                ));
+            }
+        }
+
+        output.push('\n');
+    }
+
     fn append_debug_suite_terminal_output(
         &self,
         output: &mut String,
@@ -416,6 +540,101 @@ pub fn render_benchmark_application_terminal_output(
     result_bundle: &BenchmarkApplicationResultBundle,
 ) -> String {
     BenchmarkApplicationRenderer::new().render_terminal_output(context, result_bundle)
+}
+
+const TARGET_BOUNDARY_WORKLOAD_NAME: &str = "cluster_boundary_range";
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct RetainedLeafMatchCounts {
+    matched_records: usize,
+    rejected_records: usize,
+}
+
+fn retained_leaf_match_counts(
+    node: &PartitionNode,
+    query: &QueryRegion,
+) -> RetainedLeafMatchCounts {
+    let mut scratch = Vec::with_capacity(query.dimensions());
+    let mut matched_records = 0;
+
+    for row in 0..node.stored_cardinality() {
+        reconstruct_row_into(node, row, &mut scratch);
+
+        if query.contains_values(&scratch) {
+            matched_records += 1;
+        }
+    }
+
+    RetainedLeafMatchCounts {
+        matched_records,
+        rejected_records: node.stored_cardinality() - matched_records,
+    }
+}
+
+fn retained_record_result_label(values: &[Scalar], query: &QueryRegion) -> &'static str {
+    if query.contains_values(values) {
+        "match"
+    } else {
+        "reject"
+    }
+}
+
+fn bounds_query_overlap_volume(bounds: &BoundingBox, query: &QueryRegion) -> Scalar {
+    let dimensions = bounds
+        .min
+        .len()
+        .min(bounds.max.len())
+        .min(query.min.len())
+        .min(query.max.len());
+
+    if dimensions == 0 {
+        return 0.0;
+    }
+
+    let mut volume = 1.0;
+
+    for dimension in 0..dimensions {
+        let overlap_min = bounds.min[dimension].max(query.min[dimension]);
+        let overlap_max = bounds.max[dimension].min(query.max[dimension]);
+
+        if overlap_max <= overlap_min {
+            return 0.0;
+        }
+
+        volume *= overlap_max - overlap_min;
+    }
+
+    volume
+}
+
+fn scalar_ratio_or_zero(numerator: Scalar, denominator: Scalar) -> Scalar {
+    if denominator == 0.0 {
+        return 0.0;
+    }
+
+    numerator / denominator
+}
+
+fn retained_leaf_coverage_label(coverage: RetainedLeafCoverage) -> &'static str {
+    match coverage {
+        RetainedLeafCoverage::Covered => "covered",
+        RetainedLeafCoverage::Partial => "partial",
+    }
+}
+
+fn format_bounds_min(bounds: &BoundingBox) -> String {
+    format_coordinate_values(&bounds.min)
+}
+
+fn format_bounds_max(bounds: &BoundingBox) -> String {
+    format_coordinate_values(&bounds.max)
+}
+
+fn format_coordinate_values(values: &[Scalar]) -> String {
+    let formatted_values: Vec<String> =
+        values.iter().map(|value| format!("{:.2}", value)).collect();
+
+    format!("[{}]", formatted_values.join(", "))
 }
 
 fn render_scoreboard_row(summary: &BaselineAggregateSummary) -> String {
