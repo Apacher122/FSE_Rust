@@ -1229,3 +1229,160 @@ candidate counts intentionally explained
 FSE visited nodes unchanged or intentionally explained
 FSE reconstructed records unchanged or intentionally explained
 ```
+
+## Leaf policy decision after repeated 8/8 versus 4/8 trials
+
+Commit 179 added a repeated-trial leaf policy runner to compare the current `8/8` policy against a tighter `4/8` policy.
+
+The tested policies were:
+
+```text
+8/8:
+  target leaf size: 8
+  max leaf size: 8
+
+4/8:
+  target leaf size: 4
+  max leaf size: 8
+```
+
+The trial command was:
+
+```powershell
+.\scripts\run-leaf-policy-trials.ps1 `
+  -Label "commit-179" `
+  -Trials 5 `
+  -Iterations 10000
+```
+
+The generated artifacts were:
+
+```text
+benchmark_artifacts\leaf-policy-trials-commit-179
+benchmark_artifacts\leaf-policy-trials-commit-179\leaf-policy-trial-output-commit-179.txt
+benchmark_artifacts\leaf-policy-trial-details-commit-179.csv
+benchmark_artifacts\leaf-policy-trial-summary-commit-179.csv
+benchmark_artifacts\leaf-policy-target-trial-details-commit-179.csv
+benchmark_artifacts\leaf-policy-target-trial-summary-commit-179.csv
+benchmark_artifacts\leaf-policy-trial-notes-commit-179.txt
+```
+
+The important result is:
+
+```text
+4/8 reduced candidate work.
+4/8 reduced reconstructed records for cluster_boundary_range.
+4/8 increased traversal pressure.
+4/8 regressed repeated-trial timing against 8/8.
+```
+
+Low-selectivity aggregate comparison:
+
+```text
+kd_tree:
+  8/8 mean low timing: 0.987727
+  4/8 mean low timing: 0.955443
+  delta: -0.032284
+  classification: regressed
+
+r_tree:
+  8/8 mean low timing: 1.186939
+  4/8 mean low timing: 1.135887
+  delta: -0.051052
+  classification: regressed
+```
+
+Low-selectivity candidate comparison:
+
+```text
+kd_tree:
+  8/8 weighted candidate ratio: 0.930233
+  4/8 weighted candidate ratio: 0.674419
+  delta: -0.255814
+
+r_tree:
+  8/8 weighted candidate ratio: 0.625000
+  4/8 weighted candidate ratio: 0.453125
+  delta: -0.171875
+```
+
+Target workload comparison for `cluster_boundary_range`:
+
+```text
+kd_tree:
+  8/8 mean target timing: 0.928793
+  4/8 mean target timing: 0.858482
+  delta: -0.070311
+  classification: regressed
+
+r_tree:
+  8/8 mean target timing: 1.118069
+  4/8 mean target timing: 1.076121
+  delta: -0.041949
+  classification: regressed
+```
+
+Target workload structural comparison:
+
+```text
+8/8:
+  FSE visited nodes: 13
+  FSE retained leaves: 2
+  FSE reconstructed records: 10
+  FSE matched records: 5
+  candidate ratio: 0.166667
+  nodes per record: 1.300000
+
+4/8:
+  FSE visited nodes: 17
+  FSE retained leaves: 3
+  FSE reconstructed records: 8
+  FSE matched records: 5
+  candidate ratio: 0.133333
+  nodes per record: 2.125000
+```
+
+The decision is:
+
+```text
+Do not change the default leaf policy from 8/8 to 4/8 for the current small benchmark.
+```
+
+Reason:
+
+```text
+The tighter 4/8 policy reduces candidate work, but the extra traversal pressure costs more than the candidate reduction saves.
+```
+
+For the current benchmark, `8/8` remains the better default.
+
+Do not revisit `4/8` as an obvious optimization unless one of these changes:
+
+```text
+a larger benchmark shows candidate reduction dominates traversal overhead
+an adaptive policy can choose tighter leaves only where it helps
+the traversal overhead of tighter policies is reduced
+new benchmark evidence shows 4/8 improves repeated-trial timing beyond +0.030000
+```
+
+A future leaf-policy optimization should not simply switch the default to `4/8`.
+
+A future valid direction would be one of:
+
+```text
+adaptive leaf policy selection
+larger benchmark datasets where candidate reduction matters more
+traversal overhead reduction for tighter leaf policies
+policy-specific workload routing
+```
+
+Acceptance rule for future leaf-policy changes:
+
+```text
+validation passes
+matched records remain exact
+candidate count changes are intentionally explained
+kd_tree target workload timing improves by at least +0.030000
+aggregate low-selectivity timing does not regress beyond -0.030000
+visited-node increases are justified by repeated-trial timing improvement
+```
