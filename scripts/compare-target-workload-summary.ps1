@@ -1,0 +1,490 @@
+param(
+  [string]$Label = "local",
+  [string]$PreviousTargetSummaryCsv,
+  [string]$CurrentTargetSummaryCsv,
+  [string]$OutputDir = "benchmark_artifacts",
+  [double]$NoiseThreshold = 0.03
+)
+
+$ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($PreviousTargetSummaryCsv)) {
+  throw "`-PreviousTargetSummaryCsv` is required"
+}
+
+if ([string]::IsNullOrWhiteSpace($CurrentTargetSummaryCsv)) {
+  throw "`-CurrentTargetSummaryCsv` is required"
+}
+
+if (!(Test-Path -LiteralPath $PreviousTargetSummaryCsv)) {
+  throw "previous target workload summary CSV was not found: $PreviousTargetSummaryCsv"
+}
+
+if (!(Test-Path -LiteralPath $CurrentTargetSummaryCsv)) {
+  throw "current target workload summary CSV was not found: $CurrentTargetSummaryCsv"
+}
+
+New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+
+$ComparisonCsvPath = Join-Path $OutputDir "target-workload-trial-comparison-$Label.csv"
+$ComparisonNotesPath = Join-Path $OutputDir "target-workload-trial-comparison-$Label.txt"
+
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$InvariantCulture = [System.Globalization.CultureInfo]::InvariantCulture
+$TreeBaselines = @("kd_tree", "r_tree")
+
+function Set-Utf8Text {
+  param(
+    [string]$Path,
+    [string]$Text
+  )
+
+  [System.IO.File]::WriteAllText($Path, $Text, $Utf8NoBom)
+}
+
+function Add-Utf8Text {
+  param(
+    [string]$Path,
+    [string]$Text
+  )
+
+  [System.IO.File]::AppendAllText($Path, $Text, $Utf8NoBom)
+}
+
+function Convert-ToInvariantDouble {
+  param(
+    [string]$Value
+  )
+
+  return [double]::Parse($Value, $InvariantCulture)
+}
+
+function Format-InvariantDouble {
+  param(
+    [object]$Value
+  )
+
+  if ($null -eq $Value) {
+    return "unavailable"
+  }
+
+  try {
+    $DoubleValue = [System.Convert]::ToDouble($Value, $InvariantCulture)
+    return $DoubleValue.ToString("0.000000", $InvariantCulture)
+  }
+  catch {
+    return "unavailable"
+  }
+}
+
+function Escape-CsvField {
+  param(
+    [object]$Value
+  )
+
+  if ($null -eq $Value) {
+    return ""
+  }
+
+  $Text = $Value.ToString()
+
+  if ($Text.Contains(",") -or $Text.Contains('"') -or $Text.Contains("`n") -or $Text.Contains("`r")) {
+    $Escaped = $Text.Replace('"', '""')
+    return "`"$Escaped`""
+  }
+
+  return $Text
+}
+
+function Join-CsvFields {
+  param(
+    [object[]]$Fields
+  )
+
+  return (($Fields | ForEach-Object { Escape-CsvField -Value $_ }) -join ",")
+}
+
+function Write-CsvDocument {
+  param(
+    [string]$Path,
+    [object[]]$Header,
+    [object[]]$Rows
+  )
+
+  Set-Utf8Text -Path $Path -Text "$(Join-CsvFields -Fields $Header)`r`n"
+
+  foreach ($Row in $Rows) {
+    Add-Utf8Text -Path $Path -Text "$(Join-CsvFields -Fields $Row)`r`n"
+  }
+}
+
+function Get-SummaryRow {
+  param(
+    [object[]]$Rows,
+    [string]$BaselineName
+  )
+
+  return $Rows | Where-Object { $_.baseline_name -eq $BaselineName } | Select-Object -First 1
+}
+
+function Get-Metric {
+  param(
+    [object]$Row,
+    [string]$FieldName
+  )
+
+  if ($null -eq $Row) {
+    return $null
+  }
+
+  $RawValue = $Row.$FieldName
+
+  if ([string]::IsNullOrWhiteSpace($RawValue)) {
+    return $null
+  }
+
+  return Convert-ToInvariantDouble -Value $RawValue
+}
+
+function Get-TextField {
+  param(
+    [object]$Row,
+    [string]$FieldName
+  )
+
+  if ($null -eq $Row) {
+    return "unavailable"
+  }
+
+  $RawValue = $Row.$FieldName
+
+  if ($null -eq $RawValue) {
+    return "unavailable"
+  }
+
+  if ([string]::IsNullOrWhiteSpace($RawValue.ToString())) {
+    return "unavailable"
+  }
+
+  return $RawValue.ToString()
+}
+
+function Get-Delta {
+  param(
+    [object]$CurrentValue,
+    [object]$PreviousValue
+  )
+
+  if ($null -eq $CurrentValue -or $null -eq $PreviousValue) {
+    return $null
+  }
+
+  return [double]$CurrentValue - [double]$PreviousValue
+}
+
+function Get-Classification {
+  param(
+    [object]$Delta,
+    [double]$Threshold
+  )
+
+  if ($null -eq $Delta) {
+    return "unavailable"
+  }
+
+  if ($Delta -ge $Threshold) {
+    return "improved"
+  }
+
+  if ($Delta -le (-1.0 * $Threshold)) {
+    return "regressed"
+  }
+
+  return "stable/noise"
+}
+
+function New-ComparisonRow {
+  param(
+    [string]$BaselineName,
+    [object]$PreviousRow,
+    [object]$CurrentRow
+  )
+
+  $PreviousWorkloadName = Get-TextField -Row $PreviousRow -FieldName "workload_name"
+  $CurrentWorkloadName = Get-TextField -Row $CurrentRow -FieldName "workload_name"
+
+  $PreviousMeanTiming = Get-Metric -Row $PreviousRow -FieldName "mean_timing_ratio"
+  $CurrentMeanTiming = Get-Metric -Row $CurrentRow -FieldName "mean_timing_ratio"
+  $MeanTimingDelta = Get-Delta -CurrentValue $CurrentMeanTiming -PreviousValue $PreviousMeanTiming
+  $TimingClassification = Get-Classification -Delta $MeanTimingDelta -Threshold $NoiseThreshold
+
+  $PreviousRange = Get-Metric -Row $PreviousRow -FieldName "range_timing_ratio"
+  $CurrentRange = Get-Metric -Row $CurrentRow -FieldName "range_timing_ratio"
+  $RangeDelta = Get-Delta -CurrentValue $CurrentRange -PreviousValue $PreviousRange
+
+  $PreviousStdDev = Get-Metric -Row $PreviousRow -FieldName "sample_stddev_timing_ratio"
+  $CurrentStdDev = Get-Metric -Row $CurrentRow -FieldName "sample_stddev_timing_ratio"
+  $StdDevDelta = Get-Delta -CurrentValue $CurrentStdDev -PreviousValue $PreviousStdDev
+
+  $PreviousBaselineAverage = Get-Metric -Row $PreviousRow -FieldName "mean_baseline_average_elapsed_ns"
+  $CurrentBaselineAverage = Get-Metric -Row $CurrentRow -FieldName "mean_baseline_average_elapsed_ns"
+  $BaselineAverageDelta = Get-Delta -CurrentValue $CurrentBaselineAverage -PreviousValue $PreviousBaselineAverage
+
+  $PreviousFseAverage = Get-Metric -Row $PreviousRow -FieldName "mean_fse_average_elapsed_ns"
+  $CurrentFseAverage = Get-Metric -Row $CurrentRow -FieldName "mean_fse_average_elapsed_ns"
+  $FseAverageDelta = Get-Delta -CurrentValue $CurrentFseAverage -PreviousValue $PreviousFseAverage
+
+  $PreviousVisitedNodes = Get-Metric -Row $PreviousRow -FieldName "mean_fse_visited_nodes"
+  $CurrentVisitedNodes = Get-Metric -Row $CurrentRow -FieldName "mean_fse_visited_nodes"
+  $VisitedNodeDelta = Get-Delta -CurrentValue $CurrentVisitedNodes -PreviousValue $PreviousVisitedNodes
+
+  $PreviousRetainedLeaves = Get-Metric -Row $PreviousRow -FieldName "mean_fse_retained_leaves"
+  $CurrentRetainedLeaves = Get-Metric -Row $CurrentRow -FieldName "mean_fse_retained_leaves"
+  $RetainedLeafDelta = Get-Delta -CurrentValue $CurrentRetainedLeaves -PreviousValue $PreviousRetainedLeaves
+
+  $PreviousReconstructedRecords = Get-Metric -Row $PreviousRow -FieldName "mean_fse_reconstructed_records"
+  $CurrentReconstructedRecords = Get-Metric -Row $CurrentRow -FieldName "mean_fse_reconstructed_records"
+  $ReconstructedRecordDelta = Get-Delta -CurrentValue $CurrentReconstructedRecords -PreviousValue $PreviousReconstructedRecords
+
+  $PreviousMatchedRecords = Get-Metric -Row $PreviousRow -FieldName "mean_fse_matched_records"
+  $CurrentMatchedRecords = Get-Metric -Row $CurrentRow -FieldName "mean_fse_matched_records"
+  $MatchedRecordDelta = Get-Delta -CurrentValue $CurrentMatchedRecords -PreviousValue $PreviousMatchedRecords
+
+  $PreviousBaselineEvaluated = Get-Metric -Row $PreviousRow -FieldName "mean_baseline_evaluated_records"
+  $CurrentBaselineEvaluated = Get-Metric -Row $CurrentRow -FieldName "mean_baseline_evaluated_records"
+  $BaselineEvaluatedDelta = Get-Delta -CurrentValue $CurrentBaselineEvaluated -PreviousValue $PreviousBaselineEvaluated
+
+  $PreviousBaselineMatched = Get-Metric -Row $PreviousRow -FieldName "mean_baseline_matched_records"
+  $CurrentBaselineMatched = Get-Metric -Row $CurrentRow -FieldName "mean_baseline_matched_records"
+  $BaselineMatchedDelta = Get-Delta -CurrentValue $CurrentBaselineMatched -PreviousValue $PreviousBaselineMatched
+
+  $PreviousCandidateRatio = Get-Metric -Row $PreviousRow -FieldName "mean_candidate_ratio"
+  $CurrentCandidateRatio = Get-Metric -Row $CurrentRow -FieldName "mean_candidate_ratio"
+  $CandidateRatioDelta = Get-Delta -CurrentValue $CurrentCandidateRatio -PreviousValue $PreviousCandidateRatio
+
+  $PreviousAvoidanceRatio = Get-Metric -Row $PreviousRow -FieldName "mean_reconstruction_avoidance_ratio"
+  $CurrentAvoidanceRatio = Get-Metric -Row $CurrentRow -FieldName "mean_reconstruction_avoidance_ratio"
+  $AvoidanceRatioDelta = Get-Delta -CurrentValue $CurrentAvoidanceRatio -PreviousValue $PreviousAvoidanceRatio
+
+  $PreviousNodesPerRecord = Get-Metric -Row $PreviousRow -FieldName "mean_nodes_per_record"
+  $CurrentNodesPerRecord = Get-Metric -Row $CurrentRow -FieldName "mean_nodes_per_record"
+  $NodesPerRecordDelta = Get-Delta -CurrentValue $CurrentNodesPerRecord -PreviousValue $PreviousNodesPerRecord
+
+  return [PSCustomObject]@{
+    BaselineName                 = $BaselineName
+    PreviousWorkloadName         = $PreviousWorkloadName
+    CurrentWorkloadName          = $CurrentWorkloadName
+    PreviousMeanTiming           = $PreviousMeanTiming
+    CurrentMeanTiming            = $CurrentMeanTiming
+    MeanTimingDelta              = $MeanTimingDelta
+    TimingClassification         = $TimingClassification
+    PreviousRange                = $PreviousRange
+    CurrentRange                 = $CurrentRange
+    RangeDelta                   = $RangeDelta
+    PreviousStdDev               = $PreviousStdDev
+    CurrentStdDev                = $CurrentStdDev
+    StdDevDelta                  = $StdDevDelta
+    PreviousBaselineAverage      = $PreviousBaselineAverage
+    CurrentBaselineAverage       = $CurrentBaselineAverage
+    BaselineAverageDelta         = $BaselineAverageDelta
+    PreviousFseAverage           = $PreviousFseAverage
+    CurrentFseAverage            = $CurrentFseAverage
+    FseAverageDelta              = $FseAverageDelta
+    PreviousVisitedNodes         = $PreviousVisitedNodes
+    CurrentVisitedNodes          = $CurrentVisitedNodes
+    VisitedNodeDelta             = $VisitedNodeDelta
+    PreviousRetainedLeaves       = $PreviousRetainedLeaves
+    CurrentRetainedLeaves        = $CurrentRetainedLeaves
+    RetainedLeafDelta            = $RetainedLeafDelta
+    PreviousReconstructedRecords = $PreviousReconstructedRecords
+    CurrentReconstructedRecords  = $CurrentReconstructedRecords
+    ReconstructedRecordDelta     = $ReconstructedRecordDelta
+    PreviousMatchedRecords       = $PreviousMatchedRecords
+    CurrentMatchedRecords        = $CurrentMatchedRecords
+    MatchedRecordDelta           = $MatchedRecordDelta
+    PreviousBaselineEvaluated    = $PreviousBaselineEvaluated
+    CurrentBaselineEvaluated     = $CurrentBaselineEvaluated
+    BaselineEvaluatedDelta       = $BaselineEvaluatedDelta
+    PreviousBaselineMatched      = $PreviousBaselineMatched
+    CurrentBaselineMatched       = $CurrentBaselineMatched
+    BaselineMatchedDelta         = $BaselineMatchedDelta
+    PreviousCandidateRatio       = $PreviousCandidateRatio
+    CurrentCandidateRatio        = $CurrentCandidateRatio
+    CandidateRatioDelta          = $CandidateRatioDelta
+    PreviousAvoidanceRatio       = $PreviousAvoidanceRatio
+    CurrentAvoidanceRatio        = $CurrentAvoidanceRatio
+    AvoidanceRatioDelta          = $AvoidanceRatioDelta
+    PreviousNodesPerRecord       = $PreviousNodesPerRecord
+    CurrentNodesPerRecord        = $CurrentNodesPerRecord
+    NodesPerRecordDelta          = $NodesPerRecordDelta
+  }
+}
+
+$PreviousResolvedPath = (Resolve-Path -LiteralPath $PreviousTargetSummaryCsv).Path
+$CurrentResolvedPath = (Resolve-Path -LiteralPath $CurrentTargetSummaryCsv).Path
+
+$PreviousRows = @(Import-Csv -LiteralPath $PreviousResolvedPath)
+$CurrentRows = @(Import-Csv -LiteralPath $CurrentResolvedPath)
+
+$ComparisonObjects = @()
+
+foreach ($BaselineName in $TreeBaselines) {
+  $PreviousRow = Get-SummaryRow -Rows $PreviousRows -BaselineName $BaselineName
+  $CurrentRow = Get-SummaryRow -Rows $CurrentRows -BaselineName $BaselineName
+
+  $ComparisonObjects += New-ComparisonRow `
+    -BaselineName $BaselineName `
+    -PreviousRow $PreviousRow `
+    -CurrentRow $CurrentRow
+}
+
+$ComparisonRows = @()
+
+foreach ($Comparison in $ComparisonObjects) {
+  $ComparisonRows += , @(
+    $Comparison.BaselineName,
+    $Comparison.PreviousWorkloadName,
+    $Comparison.CurrentWorkloadName,
+    $(Format-InvariantDouble -Value $Comparison.PreviousMeanTiming),
+    $(Format-InvariantDouble -Value $Comparison.CurrentMeanTiming),
+    $(Format-InvariantDouble -Value $Comparison.MeanTimingDelta),
+    $Comparison.TimingClassification,
+    $(Format-InvariantDouble -Value $Comparison.PreviousRange),
+    $(Format-InvariantDouble -Value $Comparison.CurrentRange),
+    $(Format-InvariantDouble -Value $Comparison.RangeDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousStdDev),
+    $(Format-InvariantDouble -Value $Comparison.CurrentStdDev),
+    $(Format-InvariantDouble -Value $Comparison.StdDevDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousBaselineAverage),
+    $(Format-InvariantDouble -Value $Comparison.CurrentBaselineAverage),
+    $(Format-InvariantDouble -Value $Comparison.BaselineAverageDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousFseAverage),
+    $(Format-InvariantDouble -Value $Comparison.CurrentFseAverage),
+    $(Format-InvariantDouble -Value $Comparison.FseAverageDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousVisitedNodes),
+    $(Format-InvariantDouble -Value $Comparison.CurrentVisitedNodes),
+    $(Format-InvariantDouble -Value $Comparison.VisitedNodeDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousRetainedLeaves),
+    $(Format-InvariantDouble -Value $Comparison.CurrentRetainedLeaves),
+    $(Format-InvariantDouble -Value $Comparison.RetainedLeafDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousReconstructedRecords),
+    $(Format-InvariantDouble -Value $Comparison.CurrentReconstructedRecords),
+    $(Format-InvariantDouble -Value $Comparison.ReconstructedRecordDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousMatchedRecords),
+    $(Format-InvariantDouble -Value $Comparison.CurrentMatchedRecords),
+    $(Format-InvariantDouble -Value $Comparison.MatchedRecordDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousBaselineEvaluated),
+    $(Format-InvariantDouble -Value $Comparison.CurrentBaselineEvaluated),
+    $(Format-InvariantDouble -Value $Comparison.BaselineEvaluatedDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousBaselineMatched),
+    $(Format-InvariantDouble -Value $Comparison.CurrentBaselineMatched),
+    $(Format-InvariantDouble -Value $Comparison.BaselineMatchedDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousCandidateRatio),
+    $(Format-InvariantDouble -Value $Comparison.CurrentCandidateRatio),
+    $(Format-InvariantDouble -Value $Comparison.CandidateRatioDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousAvoidanceRatio),
+    $(Format-InvariantDouble -Value $Comparison.CurrentAvoidanceRatio),
+    $(Format-InvariantDouble -Value $Comparison.AvoidanceRatioDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousNodesPerRecord),
+    $(Format-InvariantDouble -Value $Comparison.CurrentNodesPerRecord),
+    $(Format-InvariantDouble -Value $Comparison.NodesPerRecordDelta)
+  )
+}
+
+Write-CsvDocument `
+  -Path $ComparisonCsvPath `
+  -Header @(
+  "baseline_name",
+  "previous_workload_name",
+  "current_workload_name",
+  "previous_mean_timing_ratio",
+  "current_mean_timing_ratio",
+  "mean_timing_delta",
+  "timing_classification",
+  "previous_range_timing_ratio",
+  "current_range_timing_ratio",
+  "range_timing_delta",
+  "previous_sample_stddev_timing_ratio",
+  "current_sample_stddev_timing_ratio",
+  "sample_stddev_timing_delta",
+  "previous_mean_baseline_average_elapsed_ns",
+  "current_mean_baseline_average_elapsed_ns",
+  "mean_baseline_average_elapsed_ns_delta",
+  "previous_mean_fse_average_elapsed_ns",
+  "current_mean_fse_average_elapsed_ns",
+  "mean_fse_average_elapsed_ns_delta",
+  "previous_mean_fse_visited_nodes",
+  "current_mean_fse_visited_nodes",
+  "mean_fse_visited_nodes_delta",
+  "previous_mean_fse_retained_leaves",
+  "current_mean_fse_retained_leaves",
+  "mean_fse_retained_leaves_delta",
+  "previous_mean_fse_reconstructed_records",
+  "current_mean_fse_reconstructed_records",
+  "mean_fse_reconstructed_records_delta",
+  "previous_mean_fse_matched_records",
+  "current_mean_fse_matched_records",
+  "mean_fse_matched_records_delta",
+  "previous_mean_baseline_evaluated_records",
+  "current_mean_baseline_evaluated_records",
+  "mean_baseline_evaluated_records_delta",
+  "previous_mean_baseline_matched_records",
+  "current_mean_baseline_matched_records",
+  "mean_baseline_matched_records_delta",
+  "previous_mean_candidate_ratio",
+  "current_mean_candidate_ratio",
+  "mean_candidate_ratio_delta",
+  "previous_mean_reconstruction_avoidance_ratio",
+  "current_mean_reconstruction_avoidance_ratio",
+  "mean_reconstruction_avoidance_ratio_delta",
+  "previous_mean_nodes_per_record",
+  "current_mean_nodes_per_record",
+  "mean_nodes_per_record_delta"
+) `
+  -Rows $ComparisonRows
+
+Set-Utf8Text -Path $ComparisonNotesPath -Text "Target workload trial comparison`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "================================`r`n`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "Label: $Label`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "Noise threshold: +/- $(Format-InvariantDouble -Value $NoiseThreshold)`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "Previous target summary: $PreviousTargetSummaryCsv`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "Previous resolved path: $PreviousResolvedPath`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "Current target summary: $CurrentTargetSummaryCsv`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "Current resolved path: $CurrentResolvedPath`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "Timing ratio meaning: baseline elapsed / FSE elapsed; higher is better for FSE.`r`n"
+
+foreach ($Comparison in $ComparisonObjects) {
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "`r`n$($Comparison.BaselineName)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text ("-" * $Comparison.BaselineName.Length)
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "previous workload: $($Comparison.PreviousWorkloadName)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "current workload: $($Comparison.CurrentWorkloadName)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "previous mean timing: $(Format-InvariantDouble -Value $Comparison.PreviousMeanTiming)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "current mean timing: $(Format-InvariantDouble -Value $Comparison.CurrentMeanTiming)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean timing delta: $(Format-InvariantDouble -Value $Comparison.MeanTimingDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "classification: $($Comparison.TimingClassification)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "range delta: $(Format-InvariantDouble -Value $Comparison.RangeDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "sample stddev delta: $(Format-InvariantDouble -Value $Comparison.StdDevDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean baseline average ns delta: $(Format-InvariantDouble -Value $Comparison.BaselineAverageDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean FSE average ns delta: $(Format-InvariantDouble -Value $Comparison.FseAverageDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean FSE visited nodes delta: $(Format-InvariantDouble -Value $Comparison.VisitedNodeDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean FSE retained leaves delta: $(Format-InvariantDouble -Value $Comparison.RetainedLeafDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean FSE reconstructed records delta: $(Format-InvariantDouble -Value $Comparison.ReconstructedRecordDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean FSE matched records delta: $(Format-InvariantDouble -Value $Comparison.MatchedRecordDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean baseline evaluated records delta: $(Format-InvariantDouble -Value $Comparison.BaselineEvaluatedDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean baseline matched records delta: $(Format-InvariantDouble -Value $Comparison.BaselineMatchedDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean candidate ratio delta: $(Format-InvariantDouble -Value $Comparison.CandidateRatioDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean reconstruction avoidance delta: $(Format-InvariantDouble -Value $Comparison.AvoidanceRatioDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean nodes per record delta: $(Format-InvariantDouble -Value $Comparison.NodesPerRecordDelta)`r`n"
+}
+
+Add-Utf8Text -Path $ComparisonNotesPath -Text "`r`nDecision guidance`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "-----------------`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "Use this comparison when a performance commit intentionally targets a specific workload.`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "A target workload improvement is stronger when timing improves beyond the noise threshold without increasing visited nodes, reconstructed records, candidate ratio, or matched-record differences.`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "This comparison remains useful even if the target workload stops being the weakest workload after an optimization.`r`n"
+
+Write-Host ""
+Write-Host "Target workload comparison artifacts written:"
+Write-Host "  $ComparisonCsvPath"
+Write-Host "  $ComparisonNotesPath"
