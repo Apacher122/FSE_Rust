@@ -87,6 +87,96 @@ fn debug_report_renders_target_workload_retained_leaf_details() {
 }
 
 #[test]
+fn debug_report_renders_target_workload_stage_timing_estimate() {
+    let context = BenchmarkApplicationContext::from_cli_config(debug_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert!(output.contains("Target workload stage timing estimate"));
+    assert!(output.contains("workload: cluster_boundary_range"));
+    assert!(output.contains("timing iterations:"));
+    assert!(output.contains("average traversal elapsed:"));
+    assert!(output.contains("average full FSE elapsed:"));
+    assert!(output.contains("estimated non-traversal elapsed:"));
+    assert!(output.contains("estimated traversal share:"));
+    assert!(output.contains("retained leaves:"));
+    assert!(output.contains("candidate records:"));
+    assert!(output.contains("matched records:"));
+}
+
+#[test]
+fn debug_report_renders_target_workload_retained_execution_phase_estimate() {
+    let context = BenchmarkApplicationContext::from_cli_config(debug_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert!(output.contains("Target workload retained execution phase estimate"));
+    assert!(output.contains("workload: cluster_boundary_range"));
+    assert!(output.contains("timing iterations:"));
+    assert!(output.contains("average retained reconstruction elapsed:"));
+    assert!(output.contains("average retained predicate elapsed:"));
+    assert!(output.contains("average retained result collection elapsed:"));
+    assert!(output.contains("average retained execution elapsed:"));
+    assert!(output.contains("candidate records:"));
+    assert!(output.contains("matched records:"));
+    assert!(output.contains("covered leaves:"));
+    assert!(output.contains("partial leaves:"));
+    assert!(output.contains("covered records:"));
+    assert!(output.contains("partial records:"));
+}
+
+#[test]
+fn debug_report_renders_target_workload_retained_allocation_estimate() {
+    let context = BenchmarkApplicationContext::from_cli_config(debug_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert!(output.contains("Target workload retained allocation estimate"));
+    assert!(output.contains("workload: cluster_boundary_range"));
+    assert!(output.contains("timing iterations:"));
+    assert!(output.contains("candidate records:"));
+    assert!(output.contains("matched records:"));
+    assert!(output.contains("covered leaves:"));
+    assert!(output.contains("partial leaves:"));
+    assert!(output.contains("covered records:"));
+    assert!(output.contains("partial records:"));
+    assert!(output.contains("average empty result allocation elapsed:"));
+    assert!(output.contains("average matched result allocation elapsed:"));
+    assert!(output.contains("average candidate result allocation elapsed:"));
+    assert!(output.contains("average vector clone collection elapsed:"));
+    assert!(output.contains("average retained execution elapsed:"));
+}
+
+#[test]
+fn debug_report_renders_target_workload_reconstruction_timing_estimate() {
+    let context = BenchmarkApplicationContext::from_cli_config(debug_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert!(output.contains("Target workload reconstruction timing estimate"));
+    assert!(output.contains("workload: cluster_boundary_range"));
+    assert!(output.contains("timing iterations:"));
+    assert!(output.contains("average retained execution elapsed:"));
+    assert!(output.contains("average full FSE elapsed:"));
+    assert!(output.contains("estimated retained execution share:"));
+    assert!(output.contains("retained leaves:"));
+    assert!(output.contains("covered leaves:"));
+    assert!(output.contains("partial leaves:"));
+    assert!(output.contains("candidate records:"));
+    assert!(output.contains("covered records:"));
+    assert!(output.contains("partial records:"));
+    assert!(output.contains("matched records:"));
+}
+
+#[test]
 fn compact_report_does_not_render_debug_structure_metrics() {
     let context = BenchmarkApplicationContext::from_cli_config(summary_cli_config());
     let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
@@ -102,6 +192,19 @@ fn compact_report_does_not_render_debug_structure_metrics() {
     assert!(!output.contains("Weakest low-selectivity workload"));
     assert!(!output.contains("Boundary workload pressure notes"));
     assert!(!output.contains("Target workload retained leaf details"));
+    assert!(!output.contains("Target workload stage timing estimate"));
+    assert!(!output.contains("average traversal elapsed:"));
+    assert!(!output.contains("Target workload reconstruction timing estimate"));
+    assert!(!output.contains("average retained execution elapsed:"));
+    assert!(!output.contains("Target workload retained execution phase estimate"));
+    assert!(!output.contains("average retained reconstruction elapsed:"));
+    assert!(!output.contains("average retained predicate elapsed:"));
+    assert!(!output.contains("average retained result collection elapsed:"));
+    assert!(!output.contains("Target workload retained allocation estimate"));
+    assert!(!output.contains("average empty result allocation elapsed:"));
+    assert!(!output.contains("average matched result allocation elapsed:"));
+    assert!(!output.contains("average candidate result allocation elapsed:"));
+    assert!(!output.contains("average vector clone collection elapsed:"));
 }
 
 fn summary_cli_config() -> BenchmarkCliConfig {

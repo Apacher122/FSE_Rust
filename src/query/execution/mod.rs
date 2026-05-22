@@ -18,6 +18,8 @@ pub use api::{
     execute_query_with_stats_and_options,
 };
 
+pub(crate) use api::execute_retained_leaf_batch_for_diagnostics;
+
 pub use options::{
     DEFAULT_PARALLEL_MIN_RETAINED_LEAVES, QueryExecutionMode, QueryExecutionOptions,
 };

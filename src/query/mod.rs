@@ -15,6 +15,8 @@ pub use execution::{
     execute_query, execute_query_with_options, execute_query_with_stats,
     execute_query_with_stats_and_options,
 };
+
+pub(crate) use execution::execute_retained_leaf_batch_for_diagnostics;
 pub use reconstruction::{reconstruct_partition, reconstruct_point, reconstruct_row_into};
 pub use region::QueryRegion;
 pub use traversal::{

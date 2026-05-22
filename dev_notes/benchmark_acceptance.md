@@ -1230,6 +1230,151 @@ FSE visited nodes unchanged or intentionally explained
 FSE reconstructed records unchanged or intentionally explained
 ```
 
+## Boundary fixed-cost conclusion after stage timing diagnostics
+
+Recent debug-only timing probes were added to prevent further query hot-path changes from being based on guesses.
+
+The active target workload remains:
+
+```text
+cluster_boundary_range
+```
+
+The stable target workload shape is:
+
+```text
+query min: [18.00, 18.00]
+query max: [52.00, 52.00]
+retained leaves: 2
+```
+
+The retained leaves remain:
+
+```text
+leaf 7:
+  coverage: partial
+  records: 5
+  bounds min: [15.00, 15.00]
+  bounds max: [19.00, 19.00]
+  volume: 16.00
+
+leaf 11:
+  coverage: partial
+  records: 5
+  bounds min: [50.00, 50.00]
+  bounds max: [54.00, 54.00]
+  volume: 16.00
+```
+
+The stable structural counters are:
+
+```text
+FSE visited nodes: 13
+FSE retained leaves: 2
+FSE reconstructed records: 10
+FSE matched records: 5
+candidate ratio: 0.166667
+nodes per record: 1.300000
+covered leaves: 0
+partial leaves: 2
+covered records: 0
+partial records: 10
+```
+
+The stage timing diagnostics showed that traversal is not the only meaningful cost:
+
+```text
+average traversal elapsed: about 92ns to 94ns
+average full FSE elapsed: about 243ns to 263ns
+estimated traversal share: about 35% to 39%
+estimated non-traversal share: about 61% to 65%
+```
+
+The retained execution diagnostics showed that most of the non-traversal cost is retained-leaf execution:
+
+```text
+average retained execution elapsed: about 162ns to 171ns
+estimated retained execution share: about 65% to 70%
+```
+
+The retained execution phase probe should not be interpreted as an additive decomposition because the diagnostic reconstruction path allocates owned intermediate rows. In particular, the diagnostic reconstruction estimate was larger than the retained execution estimate:
+
+```text
+average retained reconstruction elapsed: about 271ns to 272ns
+average retained execution elapsed: about 162ns to 167ns
+```
+
+This means the diagnostic reconstruction probe is allocation-contaminated and should not be used as direct evidence for a reconstruction hot-path optimization.
+
+The allocation probe showed:
+
+```text
+average empty result allocation elapsed: about 20ns
+average matched result allocation elapsed: about 42ns
+average candidate result allocation elapsed: about 41ns
+average vector clone collection elapsed: about 152ns
+average retained execution elapsed: about 167ns
+```
+
+The useful conclusion is:
+
+```text
+plain result Vec allocation is small
+predicate checks over 10 candidate records are cheap
+owned Vector result construction is visible at this query size
+the remaining target workload cost is mostly tiny-query fixed overhead and result ownership cost
+```
+
+This refines the earlier boundary diagnosis. The target workload is geometrically tight, but the remaining cost is not obviously solved by tighter pruning, sibling-overlap tuning, or another boundary-specific traversal hack.
+
+Do not target these without new repeated-trial evidence:
+
+```text
+sibling overlap tuning
+boundary-specific traversal specialization
+partial-leaf materialization fusion
+covered-leaf fast paths for cluster_boundary_range
+default leaf policy switch from 8/8 to 4/8
+```
+
+Reasons:
+
+```text
+sibling overlap is repeatedly zero
+cluster_boundary_range has no covered leaves
+candidate records are already only 10
+matched records are only 5
+4/8 reduced candidate work but increased traversal pressure and regressed timing
+previous retained-leaf hot-path simplifications regressed timing
+```
+
+The current fixed-cost conclusion is:
+
+```text
+cluster_boundary_range is near the practical floor for the current small benchmark and owned-result API shape
+```
+
+A future optimization should only be attempted if it changes one of these with repeated-trial support:
+
+```text
+larger datasets show candidate reduction dominates fixed overhead
+result ownership or result representation is intentionally redesigned
+adaptive leaf policy improves target timing without increasing traversal pressure too much
+a broader benchmark suite shows the same cost pattern outside the tiny small dataset
+```
+
+Acceptance rule for future boundary work remains:
+
+```text
+validation passes
+matched records remain exact
+candidate count changes are intentionally explained
+kd_tree target workload timing improves by at least +0.030000
+aggregate low-selectivity timing does not regress beyond -0.030000
+FSE visited nodes do not increase unless repeated-trial timing justifies it
+FSE reconstructed records do not increase unless intentionally explained
+```
+
 ## Leaf policy decision after repeated 8/8 versus 4/8 trials
 
 Commit 179 added a repeated-trial leaf policy runner to compare the current `8/8` policy against a tighter `4/8` policy.
