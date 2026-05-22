@@ -21,7 +21,7 @@ pub(crate) fn execute_retained_leaf_with_cached_shape(
     shape: LeafReconstructionShape,
     coverage: RetainedLeafCoverage,
 ) -> RetainedLeafExecutionReport {
-    debug_assert!(
+    assert!(
         node.is_leaf,
         "retained leaf execution helper requires a leaf node"
     );
@@ -60,10 +60,6 @@ pub(crate) fn execute_retained_leaf_with_cached_shape(
 ///
 /// This is the serial execution hot path. It preserves retained-leaf ordering
 /// while avoiding a temporary result vector and merge step for each leaf.
-///
-/// Traversal and debug validation guarantee that retained entries reference
-/// leaf nodes. The leaf assertion is debug-only so release query execution does
-/// not repeat an invariant that was already established before Stage II.
 pub(crate) fn execute_retained_leaf_into_batch_report(
     node: &PartitionNode,
     shape: LeafReconstructionShape,
@@ -72,7 +68,7 @@ pub(crate) fn execute_retained_leaf_into_batch_report(
     batch_report: &mut RetainedLeafBatchExecutionReport,
     reconstructed_values: &mut Vec<Scalar>,
 ) {
-    debug_assert!(
+    assert!(
         node.is_leaf,
         "retained leaf streaming helper requires a leaf node"
     );
