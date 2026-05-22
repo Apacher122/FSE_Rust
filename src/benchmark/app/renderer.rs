@@ -2,6 +2,7 @@
 
 use super::context::BenchmarkApplicationContext;
 use super::result_bundle::BenchmarkApplicationResultBundle;
+use crate::benchmark::BenchmarkDatasetKind;
 use crate::benchmark::reports::output::format_duration_ascii;
 use crate::benchmark::reports::{
     BaselineAggregateSummary, BenchmarkRunOverview, MultiBaselineAggregateSummary,
@@ -368,12 +369,14 @@ impl BenchmarkApplicationRenderer {
         output.push_str("Target workload retained leaf details\n");
         output.push_str("-------------------------------------\n");
 
+        let target_workload_name = target_boundary_workload_name(context);
+
         let Some(workload) = context
             .workloads
             .iter()
-            .find(|workload| workload.name == TARGET_BOUNDARY_WORKLOAD_NAME)
+            .find(|workload| workload.name == target_workload_name)
         else {
-            output.push_str(&format!("workload: {}\n", TARGET_BOUNDARY_WORKLOAD_NAME));
+            output.push_str(&format!("workload: {}\n", target_workload_name));
             output.push_str("status: workload not found\n\n");
             return;
         };
@@ -426,12 +429,14 @@ impl BenchmarkApplicationRenderer {
         output.push_str("Target workload stage timing estimate\n");
         output.push_str("-------------------------------------\n");
 
+        let target_workload_name = target_boundary_workload_name(context);
+
         let Some(workload) = context
             .workloads
             .iter()
-            .find(|workload| workload.name == TARGET_BOUNDARY_WORKLOAD_NAME)
+            .find(|workload| workload.name == target_workload_name)
         else {
-            output.push_str(&format!("workload: {}\n", TARGET_BOUNDARY_WORKLOAD_NAME));
+            output.push_str(&format!("workload: {}\n", target_workload_name));
             output.push_str("status: workload not found\n\n");
             return;
         };
@@ -507,12 +512,14 @@ impl BenchmarkApplicationRenderer {
         output.push_str("Target workload reconstruction timing estimate\n");
         output.push_str("----------------------------------------------\n");
 
+        let target_workload_name = target_boundary_workload_name(context);
+
         let Some(workload) = context
             .workloads
             .iter()
-            .find(|workload| workload.name == TARGET_BOUNDARY_WORKLOAD_NAME)
+            .find(|workload| workload.name == target_workload_name)
         else {
-            output.push_str(&format!("workload: {}\n", TARGET_BOUNDARY_WORKLOAD_NAME));
+            output.push_str(&format!("workload: {}\n", target_workload_name));
             output.push_str("status: workload not found\n\n");
             return;
         };
@@ -609,12 +616,14 @@ impl BenchmarkApplicationRenderer {
         output.push_str("Target workload retained execution phase estimate\n");
         output.push_str("-------------------------------------------------\n");
 
+        let target_workload_name = target_boundary_workload_name(context);
+
         let Some(workload) = context
             .workloads
             .iter()
-            .find(|workload| workload.name == TARGET_BOUNDARY_WORKLOAD_NAME)
+            .find(|workload| workload.name == target_workload_name)
         else {
-            output.push_str(&format!("workload: {}\n", TARGET_BOUNDARY_WORKLOAD_NAME));
+            output.push_str(&format!("workload: {}\n", target_workload_name));
             output.push_str("status: workload not found\n\n");
             return;
         };
@@ -719,12 +728,14 @@ impl BenchmarkApplicationRenderer {
         output.push_str("Target workload retained allocation estimate\n");
         output.push_str("--------------------------------------------\n");
 
+        let target_workload_name = target_boundary_workload_name(context);
+
         let Some(workload) = context
             .workloads
             .iter()
-            .find(|workload| workload.name == TARGET_BOUNDARY_WORKLOAD_NAME)
+            .find(|workload| workload.name == target_workload_name)
         else {
-            output.push_str(&format!("workload: {}\n", TARGET_BOUNDARY_WORKLOAD_NAME));
+            output.push_str(&format!("workload: {}\n", target_workload_name));
             output.push_str("status: workload not found\n\n");
             return;
         };
@@ -889,7 +900,15 @@ pub fn render_benchmark_application_terminal_output(
     BenchmarkApplicationRenderer::new().render_terminal_output(context, result_bundle)
 }
 
-const TARGET_BOUNDARY_WORKLOAD_NAME: &str = "cluster_boundary_range";
+const SMALL_TARGET_BOUNDARY_WORKLOAD_NAME: &str = "cluster_boundary_range";
+const LARGE_TARGET_BOUNDARY_WORKLOAD_NAME: &str = "large_cross_cluster_boundary";
+
+fn target_boundary_workload_name(context: &BenchmarkApplicationContext) -> &'static str {
+    match context.suite_config.dataset_kind {
+        BenchmarkDatasetKind::SmallClustered2D => SMALL_TARGET_BOUNDARY_WORKLOAD_NAME,
+        BenchmarkDatasetKind::LargeClustered2D => LARGE_TARGET_BOUNDARY_WORKLOAD_NAME,
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct RetainedCandidateBreakdown {

@@ -87,6 +87,22 @@ fn debug_report_renders_target_workload_retained_leaf_details() {
 }
 
 #[test]
+fn debug_report_uses_large_dataset_target_workload() {
+    let context = BenchmarkApplicationContext::from_cli_config(large_debug_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert!(output.contains("Target workload retained leaf details"));
+    assert!(output.contains("workload: large_cross_cluster_boundary"));
+    assert!(output.contains("query min:"));
+    assert!(output.contains("query max:"));
+    assert!(output.contains("retained leaves:"));
+    assert!(!output.contains("workload: cluster_boundary_range\nstatus: workload not found"));
+}
+
+#[test]
 fn debug_report_renders_target_workload_stage_timing_estimate() {
     let context = BenchmarkApplicationContext::from_cli_config(debug_cli_config());
     let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
@@ -225,10 +241,29 @@ fn debug_cli_config() -> BenchmarkCliConfig {
     config
 }
 
+fn large_debug_cli_config() -> BenchmarkCliConfig {
+    let mut config = debug_cli_config();
+
+    config.suite_config = large_fast_suite_config();
+
+    config
+}
+
 fn small_fast_suite_config() -> BenchmarkSuiteConfig {
     let mut config = BenchmarkSuiteConfig::default();
 
     config.dataset_kind = BenchmarkDatasetKind::SmallClustered2D;
+    config.timing_iterations = 1;
+    config.max_leaf_size = 8;
+    config.max_depth = 8;
+
+    config
+}
+
+fn large_fast_suite_config() -> BenchmarkSuiteConfig {
+    let mut config = BenchmarkSuiteConfig::default();
+
+    config.dataset_kind = BenchmarkDatasetKind::LargeClustered2D;
     config.timing_iterations = 1;
     config.max_leaf_size = 8;
     config.max_depth = 8;

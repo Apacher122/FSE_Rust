@@ -1,5 +1,7 @@
 param(
     [string]$Label = "local",
+    [ValidateSet("small", "large")]
+    [string]$Dataset = "small",
     [int]$Trials = 5,
     [int]$Iterations = 10000,
     [string]$OutputDir = "benchmark_artifacts",
@@ -389,7 +391,7 @@ function Invoke-LowGapTrial {
         "--release",
         "--",
         "--dataset",
-        "small",
+        $Dataset,
         "--all-baselines",
         "--iterations",
         $Iterations.ToString(),
@@ -400,6 +402,7 @@ function Invoke-LowGapTrial {
     )
 
     Add-Utf8Text -Path $TrialLogPath -Text "`r`n---`r`n`r`nTrial $TrialNumber`r`n"
+    Add-Utf8Text -Path $TrialLogPath -Text "Dataset: $Dataset`r`n"
     Add-Utf8Text -Path $TrialLogPath -Text "Low-gap CSV: $LowGapCsvPath`r`n"
     Add-Utf8Text -Path $TrialLogPath -Text "Workloads CSV: $WorkloadsCsvPath`r`n`r`n"
 
@@ -973,11 +976,12 @@ Add-Utf8Text -Path $NotesPath -Text "`r`nDecision guidance`r`n"
 Add-Utf8Text -Path $NotesPath -Text "-----------------`r`n"
 Add-Utf8Text -Path $NotesPath -Text "Use this script before accepting another query performance optimization.`r`n"
 Add-Utf8Text -Path $NotesPath -Text "Prefer changes that move the repeated-trial mean beyond the noise threshold.`r`n"
-Add-Utf8Text -Path $NotesPath -Text "Use weakest-workload rows to confirm whether cluster_boundary_range is consistently the problem.`r`n"
+Add-Utf8Text -Path $NotesPath -Text "Use weakest-workload rows to confirm which low-selectivity workload is consistently the problem for the selected dataset.`r`n"
 Add-Utf8Text -Path $NotesPath -Text "Do not treat one noisy trial as proof that the boundary workload improved.`r`n"
 
 Write-Host ""
 Write-Host "Low-gap trial artifacts written:"
+Write-Host "  Dataset: $Dataset"
 Write-Host "  $TrialOutputDir"
 Write-Host "  $TrialLogPath"
 Write-Host "  $DetailCsvPath"

@@ -1,13 +1,15 @@
 param(
   [string]$Label = "local",
   [string]$PreviousLabel = "",
+  [ValidateSet("small", "large")]
+  [string]$Dataset = "small",
   [int]$Trials = 5,
   [int]$Iterations = 10000,
   [string]$OutputDir = "benchmark_artifacts",
   [string]$PreviousLowSelectivityGapCsv = "",
   [string]$PreviousTrialSummaryCsv = "",
   [string]$PreviousWorkloadSummaryCsv = "",
-  [string]$TargetWorkloadName = "cluster_boundary_range",
+  [string]$TargetWorkloadName = "",
   [string]$PreviousTargetSummaryCsv = "",
   [switch]$SkipTargetWorkloadReview,
   [double]$NoiseThreshold = 0.03
@@ -24,7 +26,12 @@ if ($Trials -lt 1) {
 }
 
 if ([string]::IsNullOrWhiteSpace($TargetWorkloadName)) {
-  throw "`-TargetWorkloadName` cannot be empty"
+  if ($Dataset -eq "large") {
+    $TargetWorkloadName = "large_cross_cluster_boundary"
+  }
+  else {
+    $TargetWorkloadName = "cluster_boundary_range"
+  }
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
@@ -284,6 +291,7 @@ function Write-ReviewManifest {
   Add-Utf8Text -Path $ReviewManifestPath -Text "`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Label: $Label`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Previous label: $PreviousLabel`r`n"
+  Add-Utf8Text -Path $ReviewManifestPath -Text "Dataset: $Dataset`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Trials: $Trials`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Iterations: $Iterations`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Target workload: $TargetWorkloadName`r`n"
@@ -455,6 +463,7 @@ Add-ReviewLine "========================"
 Add-ReviewLine ""
 Add-ReviewLine "Label: $Label"
 Add-ReviewLine "Previous label: $PreviousLabel"
+Add-ReviewLine "Dataset: $Dataset"
 Add-ReviewLine "Trials: $Trials"
 Add-ReviewLine "Iterations: $Iterations"
 Add-ReviewLine "Output directory: $OutputDir"
@@ -476,6 +485,7 @@ Add-PreviousInputStatusLines `
 Write-Host ""
 Write-Host "Running normal benchmark artifact bundle"
 Write-Host "  label: $Label"
+Write-Host "  dataset: $Dataset"
 
 Add-ReviewLine "Normal benchmark artifact bundle"
 Add-ReviewLine "-------------------------------"
@@ -493,6 +503,7 @@ else {
 
 & $SmallBenchmarkScript `
   -Label $Label `
+  -Dataset $Dataset `
   -Iterations $Iterations `
   -OutputDir $OutputDir `
   -PreviousLowSelectivityGapCsv $PreviousLowSelectivityGapCsv `
@@ -517,6 +528,7 @@ Add-ReviewLine ""
 Write-Host ""
 Write-Host "Running repeated low-gap trials"
 Write-Host "  label: $Label"
+Write-Host "  dataset: $Dataset"
 Write-Host "  trials: $Trials"
 
 Add-ReviewLine "Repeated low-gap trials"
@@ -525,6 +537,7 @@ Add-ReviewLine "status: running"
 
 & $LowGapTrialsScript `
   -Label $Label `
+  -Dataset $Dataset `
   -Trials $Trials `
   -Iterations $Iterations `
   -OutputDir $OutputDir `
@@ -550,6 +563,7 @@ Add-ReviewLine ""
 
 Write-Host ""
 Write-Host "Running target workload trial summary"
+Write-Host "  dataset: $Dataset"
 Write-Host "  target workload: $TargetWorkloadName"
 
 Add-ReviewLine "Target workload trial summary"

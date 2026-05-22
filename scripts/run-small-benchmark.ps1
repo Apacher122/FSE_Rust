@@ -1,5 +1,7 @@
 param(
     [string]$Label = "local",
+    [ValidateSet("small", "large")]
+    [string]$Dataset = "small",
     [int]$Iterations = 10000,
     [string]$OutputDir = "benchmark_artifacts",
     [string]$PreviousLowSelectivityGapCsv = "",
@@ -99,7 +101,8 @@ function Format-InvariantDouble {
     try {
         $DoubleValue = [System.Convert]::ToDouble($Value, $InvariantCulture)
         return $DoubleValue.ToString("0.000000", $InvariantCulture)
-    } catch {
+    }
+    catch {
         return "unavailable"
     }
 }
@@ -156,21 +159,21 @@ function Get-PreviousCsvLoadStatus {
 
     if ([string]::IsNullOrWhiteSpace($PreviousPath)) {
         return [PSCustomObject]@{
-            Status = "not provided"
-            Exists = $false
-            Loaded = $false
+            Status       = "not provided"
+            Exists       = $false
+            Loaded       = $false
             ResolvedPath = ""
-            Rows = @()
+            Rows         = @()
         }
     }
 
     if (!(Test-Path -LiteralPath $PreviousPath)) {
         return [PSCustomObject]@{
-            Status = "path not found"
-            Exists = $false
-            Loaded = $false
+            Status       = "path not found"
+            Exists       = $false
+            Loaded       = $false
             ResolvedPath = ""
-            Rows = @()
+            Rows         = @()
         }
     }
 
@@ -178,11 +181,11 @@ function Get-PreviousCsvLoadStatus {
     $Rows = @(Import-Csv -LiteralPath $ResolvedPath)
 
     return [PSCustomObject]@{
-        Status = "loaded"
-        Exists = $true
-        Loaded = $true
+        Status       = "loaded"
+        Exists       = $true
+        Loaded       = $true
         ResolvedPath = $ResolvedPath
-        Rows = $Rows
+        Rows         = $Rows
     }
 }
 
@@ -260,14 +263,16 @@ function Write-LowGapBaselineNotes {
     if ($null -ne $CurrentWeightedCandidate -and $null -ne $PreviousWeightedCandidate) {
         $CandidateDelta = $CurrentWeightedCandidate - $PreviousWeightedCandidate
         Add-Utf8Text -Path $OutputPath -Text "low weighted candidate delta: $(Format-InvariantDouble -Value $CandidateDelta)`r`n"
-    } else {
+    }
+    else {
         Add-Utf8Text -Path $OutputPath -Text "low weighted candidate delta: unavailable`r`n"
     }
 
     if ($null -ne $CurrentWeightedAvoidance -and $null -ne $PreviousWeightedAvoidance) {
         $AvoidanceDelta = $CurrentWeightedAvoidance - $PreviousWeightedAvoidance
         Add-Utf8Text -Path $OutputPath -Text "low weighted avoidance delta: $(Format-InvariantDouble -Value $AvoidanceDelta)`r`n"
-    } else {
+    }
+    else {
         Add-Utf8Text -Path $OutputPath -Text "low weighted avoidance delta: unavailable`r`n"
     }
 
@@ -291,7 +296,8 @@ function Write-LowGapRegressionNotes {
 
     if ([string]::IsNullOrWhiteSpace($PreviousPath)) {
         Add-Utf8Text -Path $OutputPath -Text "Previous CSV: not provided`r`n"
-    } else {
+    }
+    else {
         Add-Utf8Text -Path $OutputPath -Text "Previous CSV: $PreviousPath`r`n"
     }
 
@@ -355,7 +361,7 @@ $BaseBenchmarkArgs = @(
     "--release",
     "--",
     "--dataset",
-    "small",
+    $Dataset,
     "--all-baselines",
     "--iterations",
     $Iterations.ToString()
@@ -363,7 +369,7 @@ $BaseBenchmarkArgs = @(
 
 Invoke-BenchmarkCommand `
     -OutputPath $TextOutputPath `
-    -Title "Default 8/8 policy:" `
+    -Title "Default $Dataset dataset policy:" `
     -CargoArguments $BaseBenchmarkArgs `
     -First
 
@@ -407,13 +413,14 @@ Write-LowGapRegressionNotes `
 
 Invoke-BenchmarkCommand `
     -OutputPath $DebugOutputPath `
-    -Title "Default 8/8 debug report:" `
+    -Title "Default $Dataset dataset debug report:" `
     -CargoArguments ($BaseBenchmarkArgs + @(
         "--debug-report"
     )) `
     -First
 
 Add-Utf8Text -Path $TextOutputPath -Text "`r`n---`r`n`r`nArtifacts:`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Dataset:                        $Dataset`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Benchmark output:               $TextOutputPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Debug output:                   $DebugOutputPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Summary CSV:                    $SummaryCsvPath`r`n"
@@ -422,6 +429,7 @@ Add-Utf8Text -Path $TextOutputPath -Text "  Low-selectivity gap CSV:        $Low
 Add-Utf8Text -Path $TextOutputPath -Text "  Low-gap regression notes:       $LowGapRegressionNotesPath`r`n"
 
 Add-Utf8Text -Path $DebugOutputPath -Text "`r`n---`r`n`r`nArtifacts:`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Dataset:                        $Dataset`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Benchmark output:               $TextOutputPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Debug output:                   $DebugOutputPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Summary CSV:                    $SummaryCsvPath`r`n"
@@ -431,6 +439,7 @@ Add-Utf8Text -Path $DebugOutputPath -Text "  Low-gap regression notes:       $Lo
 
 Write-Host ""
 Write-Host "Benchmark artifacts written:"
+Write-Host "  Dataset: $Dataset"
 Write-Host "  $TextOutputPath"
 Write-Host "  $DebugOutputPath"
 Write-Host "  $SummaryCsvPath"
