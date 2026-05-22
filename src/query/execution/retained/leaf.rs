@@ -15,18 +15,13 @@ use super::merge::reserve_additional_results;
 /// This is the leaf-local execution path used by parallel retained-leaf
 /// execution. The index already validated and cached the leaf shape, so this
 /// function avoids per-query shape validation.
-///
-/// Traversal validation already guarantees that retained work units reference
-/// leaf nodes. The leaf check remains debug-only so development builds still
-/// catch invariant violations without keeping the duplicate guard in release
-/// timing.
 pub(crate) fn execute_retained_leaf_with_cached_shape(
     node: &PartitionNode,
     query: &QueryRegion,
     shape: LeafReconstructionShape,
     coverage: RetainedLeafCoverage,
 ) -> RetainedLeafExecutionReport {
-    debug_assert!(
+    assert!(
         node.is_leaf,
         "retained leaf execution helper requires a leaf node"
     );
@@ -65,10 +60,6 @@ pub(crate) fn execute_retained_leaf_with_cached_shape(
 ///
 /// This is the serial execution hot path. It preserves retained-leaf ordering
 /// while avoiding a temporary result vector and merge step for each leaf.
-///
-/// Traversal validation already guarantees that retained entries reference leaf
-/// nodes. The leaf check remains debug-only because release execution should not
-/// pay for the same invariant twice.
 pub(crate) fn execute_retained_leaf_into_batch_report(
     node: &PartitionNode,
     shape: LeafReconstructionShape,
@@ -77,7 +68,7 @@ pub(crate) fn execute_retained_leaf_into_batch_report(
     batch_report: &mut RetainedLeafBatchExecutionReport,
     reconstructed_values: &mut Vec<Scalar>,
 ) {
-    debug_assert!(
+    assert!(
         node.is_leaf,
         "retained leaf streaming helper requires a leaf node"
     );
