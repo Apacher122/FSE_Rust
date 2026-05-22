@@ -6,7 +6,7 @@ use crate::query::region::QueryBoundsClassification;
 use crate::storage::{FSEIndex, LeafReconstructionShape};
 
 const DEFAULT_RETAINED_LEAF_CAPACITY: usize = 4;
-const DEFAULT_TRAVERSAL_STACK_CAPACITY: usize = 8;
+const INLINE_TRAVERSAL_STACK_CAPACITY: usize = 16;
 
 /// Coverage classification for a retained leaf.
 ///
@@ -254,6 +254,56 @@ impl TraversalFrame {
     }
 }
 
+/// Small LIFO stack used by hierarchy traversal.
+///
+/// # Runtime Role
+///
+/// Selective range queries usually keep only a few child frames active at once.
+/// `TraversalStack` stores those common frames inline and only allocates an
+/// overflow vector if a wider or deeper future hierarchy exceeds the inline
+/// capacity.
+struct TraversalStack {
+    inline_frames: [Option<TraversalFrame>; INLINE_TRAVERSAL_STACK_CAPACITY],
+    inline_len: usize,
+    overflow_frames: Vec<TraversalFrame>,
+}
+
+impl TraversalStack {
+    fn new() -> Self {
+        Self {
+            inline_frames: [None; INLINE_TRAVERSAL_STACK_CAPACITY],
+            inline_len: 0,
+            overflow_frames: Vec::new(),
+        }
+    }
+
+    #[inline]
+    fn push(&mut self, frame: TraversalFrame) {
+        if self.overflow_frames.is_empty() && self.inline_len < INLINE_TRAVERSAL_STACK_CAPACITY {
+            self.inline_frames[self.inline_len] = Some(frame);
+            self.inline_len += 1;
+            return;
+        }
+
+        // rare path for deeper traversals, keep the common path allocation free
+        self.overflow_frames.push(frame);
+    }
+
+    #[inline]
+    fn pop(&mut self) -> Option<TraversalFrame> {
+        if let Some(frame) = self.overflow_frames.pop() {
+            return Some(frame);
+        }
+
+        if self.inline_len == 0 {
+            return None;
+        }
+
+        self.inline_len -= 1;
+        self.inline_frames[self.inline_len].take()
+    }
+}
+
 /// Traverses the FSE hierarchy and returns retained leaf partitions.
 ///
 /// # Runtime Role
@@ -342,7 +392,7 @@ pub(crate) fn traverse_with_known_root_classification(
     };
 
     let mut retained_leaves = Vec::with_capacity(retained_leaf_capacity(total_leaves));
-    let mut stack = Vec::with_capacity(traversal_stack_capacity(index));
+    let mut stack = TraversalStack::new();
 
     stats.visited_nodes += 1;
 
@@ -435,21 +485,6 @@ fn retained_leaf_capacity(total_leaves: usize) -> usize {
     total_leaves.min(DEFAULT_RETAINED_LEAF_CAPACITY)
 }
 
-/// Returns initial capacity for the traversal stack.
-///
-/// # Runtime Role
-///
-/// Most binary-tree range traversals only need a small active stack even when
-/// the index has more total nodes. Starting smaller reduces per-query allocation
-/// pressure for selective workloads.
-#[inline]
-fn traversal_stack_capacity(index: &FSEIndex) -> usize {
-    index
-        .node_count()
-        .min(DEFAULT_TRAVERSAL_STACK_CAPACITY)
-        .max(1)
-}
-
 #[inline]
 fn retained_leaf_ratio(retained_leaves: usize, total_leaves: usize) -> Scalar {
     if total_leaves == 0 {
@@ -465,7 +500,7 @@ fn retain_or_descend_covered_node(
     node_id: usize,
     retained_leaves: &mut Vec<RetainedLeaf>,
     stats: &mut QueryTraversalStats,
-    stack: &mut Vec<TraversalFrame>,
+    stack: &mut TraversalStack,
 ) {
     let node = &index.nodes[node_id];
 
@@ -483,7 +518,7 @@ fn retain_or_descend_covered_node(
 }
 
 #[inline]
-fn push_child_frames(children: &[usize], inherited_covered: bool, stack: &mut Vec<TraversalFrame>) {
+fn push_child_frames(children: &[usize], inherited_covered: bool, stack: &mut TraversalStack) {
     match children.len() {
         0 => {}
         1 => {
