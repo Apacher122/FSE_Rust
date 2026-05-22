@@ -83,25 +83,7 @@ fn debug_report_renders_target_workload_retained_leaf_details() {
     assert!(output.contains("query min:"));
     assert!(output.contains("query max:"));
     assert!(output.contains("retained leaves:"));
-    assert!(output.contains(
-        "leaf | coverage | records | matched | rejected | overlap volume | leaf volume | overlap ratio | bounds min | bounds max"
-    ));
-}
-
-#[test]
-fn debug_report_renders_target_workload_retained_record_details() {
-    let context = BenchmarkApplicationContext::from_cli_config(debug_cli_config());
-    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
-    let renderer = BenchmarkApplicationRenderer::new();
-
-    let output = renderer.render_terminal_output(&context, &result_bundle);
-
-    assert!(output.contains("Target workload retained record details"));
-    assert!(output.contains("leaf | row | result | values"));
-    assert!(output.contains("match"));
-    assert!(output.contains("reject"));
-    assert!(output.contains("[15.00, 15.00]"));
-    assert!(output.contains("[54.00, 54.00]"));
+    assert!(output.contains("leaf | coverage | records | bounds min | bounds max | volume"));
 }
 
 #[test]
@@ -120,7 +102,6 @@ fn compact_report_does_not_render_debug_structure_metrics() {
     assert!(!output.contains("Weakest low-selectivity workload"));
     assert!(!output.contains("Boundary workload pressure notes"));
     assert!(!output.contains("Target workload retained leaf details"));
-    assert!(!output.contains("Target workload retained record details"));
 }
 
 fn summary_cli_config() -> BenchmarkCliConfig {

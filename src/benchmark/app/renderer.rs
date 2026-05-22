@@ -9,10 +9,9 @@ use crate::benchmark::reports::{
     render_named_baseline_suite_report, render_selectivity_bucketed_workload_summary,
     render_suite_report, summarize_workloads_by_selectivity,
 };
-use crate::build::{index_validation_diagnostics, sibling_overlap_metrics};
+use crate::build::sibling_overlap_metrics;
 use crate::math::{BoundingBox, Scalar};
-use crate::query::{QueryRegion, RetainedLeafCoverage, reconstruct_row_into, traverse_with_stats};
-use crate::storage::PartitionNode;
+use crate::query::{RetainedLeafCoverage, traverse_with_stats};
 
 /// Terminal renderer for benchmark application output.
 ///
@@ -41,7 +40,6 @@ impl BenchmarkApplicationRenderer {
         }
 
         self.render_summary_terminal_output(
-            context,
             &result_bundle.overview,
             &result_bundle.aggregate_summary,
         )
@@ -49,7 +47,6 @@ impl BenchmarkApplicationRenderer {
 
     fn render_summary_terminal_output(
         &self,
-        context: &BenchmarkApplicationContext,
         overview: &BenchmarkRunOverview,
         aggregate_summary: &MultiBaselineAggregateSummary,
     ) -> String {
@@ -99,8 +96,6 @@ impl BenchmarkApplicationRenderer {
             }
         ));
 
-        self.append_index_validation_failure_details(&mut output, context);
-
         output.push_str("Result\n");
         output.push_str("------\n");
         output.push_str(
@@ -132,7 +127,6 @@ impl BenchmarkApplicationRenderer {
         let mut output = String::new();
 
         output.push_str(&render_benchmark_overview(&result_bundle.overview));
-        self.append_index_validation_failure_details(&mut output, context);
         self.append_sibling_overlap_debug_output(&mut output, context);
         self.append_traversal_pressure_debug_output(&mut output, result_bundle);
         self.append_low_selectivity_tree_gap_debug_output(&mut output, result_bundle);
@@ -140,140 +134,9 @@ impl BenchmarkApplicationRenderer {
         self.append_boundary_workload_pressure_debug_output(&mut output, result_bundle);
         // keep this as debug-only until the boundary data says what to optimize
         self.append_target_workload_retained_leaf_debug_output(&mut output, context);
-        self.append_target_workload_retained_record_debug_output(&mut output, context);
         self.append_debug_suite_terminal_output(&mut output, context, result_bundle);
 
         output
-    }
-
-    fn append_index_validation_failure_details(
-        &self,
-        output: &mut String,
-        context: &BenchmarkApplicationContext,
-    ) {
-        if context.validation.is_valid() {
-            return;
-        }
-
-        let diagnostics =
-            index_validation_diagnostics(&context.index, context.suite_config.max_leaf_size);
-
-        output.push_str("Index validation failure details\n");
-        output.push_str("--------------------------------\n");
-        output.push_str(&format!(
-            "leaf cardinality valid: {}\n",
-            context.validation.leaf_cardinality_valid
-        ));
-        output.push_str(&format!(
-            "hierarchy topology valid: {}\n",
-            context.validation.hierarchy_topology_valid
-        ));
-        output.push_str(&format!(
-            "parent-child bounds valid: {}\n",
-            context.validation.parent_child_bounds_valid
-        ));
-        output.push_str(&format!(
-            "leaf cardinality violations: {}\n",
-            diagnostics.leaf_cardinality_violations.len()
-        ));
-        output.push_str(&format!(
-            "parent-child bounds violations: {}\n",
-            diagnostics.parent_child_bounds_violations.len()
-        ));
-        output.push_str(&format!(
-            "invalid child references: {}\n",
-            diagnostics
-                .hierarchy_topology
-                .invalid_child_references
-                .len()
-        ));
-        output.push_str(&format!(
-            "self references: {}\n",
-            diagnostics.hierarchy_topology.self_reference_count
-        ));
-        output.push_str(&format!(
-            "leaf nodes with children: {}\n",
-            diagnostics
-                .hierarchy_topology
-                .leaf_nodes_with_children_count
-        ));
-        output.push_str(&format!(
-            "internal nodes without children: {}\n",
-            diagnostics
-                .hierarchy_topology
-                .internal_nodes_without_children_count
-        ));
-        output.push_str(&format!(
-            "unreachable nodes: {}\n",
-            diagnostics.hierarchy_topology.unreachable_node_count
-        ));
-
-        if let Some(worst_leaf) = diagnostics
-            .leaf_cardinality_violations
-            .iter()
-            .max_by_key(|violation| violation.cardinality)
-        {
-            output.push_str(&format!(
-                "worst leaf: {} has {} records, max {}, overflow {}\n",
-                worst_leaf.node_id,
-                worst_leaf.cardinality,
-                worst_leaf.max_leaf_size,
-                worst_leaf.overflow_by
-            ));
-        }
-
-        if !diagnostics.leaf_cardinality_violations.is_empty() {
-            output.push_str("leaf | records | max | overflow | bounds min | bounds max\n");
-
-            for violation in diagnostics.leaf_cardinality_violations.iter().take(10) {
-                let node = &context.index.nodes[violation.node_id];
-
-                output.push_str(&format!(
-                    "{} | {} | {} | {} | {} | {}\n",
-                    violation.node_id,
-                    violation.cardinality,
-                    violation.max_leaf_size,
-                    violation.overflow_by,
-                    format_bounds_min(&node.bounds),
-                    format_bounds_max(&node.bounds),
-                ));
-            }
-
-            if diagnostics.leaf_cardinality_violations.len() > 10 {
-                output.push_str(&format!(
-                    "... {} additional leaf cardinality violations omitted\n",
-                    diagnostics.leaf_cardinality_violations.len() - 10
-                ));
-            }
-        }
-
-        if !diagnostics.parent_child_bounds_violations.is_empty() {
-            output.push_str("parent | child | parent bounds min | parent bounds max | child bounds min | child bounds max\n");
-
-            for violation in diagnostics.parent_child_bounds_violations.iter().take(10) {
-                let parent = &context.index.nodes[violation.parent_id];
-                let child = &context.index.nodes[violation.child_id];
-
-                output.push_str(&format!(
-                    "{} | {} | {} | {} | {} | {}\n",
-                    violation.parent_id,
-                    violation.child_id,
-                    format_bounds_min(&parent.bounds),
-                    format_bounds_max(&parent.bounds),
-                    format_bounds_min(&child.bounds),
-                    format_bounds_max(&child.bounds),
-                ));
-            }
-
-            if diagnostics.parent_child_bounds_violations.len() > 10 {
-                output.push_str(&format!(
-                    "... {} additional parent-child bounds violations omitted\n",
-                    diagnostics.parent_child_bounds_violations.len() - 10
-                ));
-            }
-        }
-
-        output.push('\n');
     }
 
     fn append_sibling_overlap_debug_output(
@@ -521,9 +384,7 @@ impl BenchmarkApplicationRenderer {
             "retained leaves: {}\n",
             traversal.stats.retained_leaves
         ));
-        output.push_str(
-            "leaf | coverage | records | matched | rejected | overlap volume | leaf volume | overlap ratio | bounds min | bounds max\n",
-        );
+        output.push_str("leaf | coverage | records | bounds min | bounds max | volume\n");
 
         if traversal.retained_leaves.is_empty() {
             output.push_str("none\n");
@@ -533,74 +394,16 @@ impl BenchmarkApplicationRenderer {
 
         for retained_leaf in &traversal.retained_leaves {
             let node = &context.index.nodes[retained_leaf.node_id];
-            let match_counts = retained_leaf_match_counts(node, &workload.query);
-            let leaf_volume = node.bounds.volume();
-            let overlap_volume = bounds_query_overlap_volume(&node.bounds, &workload.query);
-            let overlap_ratio = scalar_ratio_or_zero(overlap_volume, leaf_volume);
 
             output.push_str(&format!(
-                "{} | {} | {} | {} | {} | {:.2} | {:.2} | {:.4} | {} | {}\n",
+                "{} | {} | {} | {} | {} | {:.2}\n",
                 retained_leaf.node_id,
                 retained_leaf_coverage_label(retained_leaf.coverage),
                 node.stored_cardinality(),
-                match_counts.matched_records,
-                match_counts.rejected_records,
-                overlap_volume,
-                leaf_volume,
-                overlap_ratio,
                 format_bounds_min(&node.bounds),
                 format_bounds_max(&node.bounds),
+                node.bounds.volume(),
             ));
-        }
-
-        output.push('\n');
-    }
-
-    fn append_target_workload_retained_record_debug_output(
-        &self,
-        output: &mut String,
-        context: &BenchmarkApplicationContext,
-    ) {
-        output.push_str("Target workload retained record details\n");
-        output.push_str("---------------------------------------\n");
-
-        let Some(workload) = context
-            .workloads
-            .iter()
-            .find(|workload| workload.name == TARGET_BOUNDARY_WORKLOAD_NAME)
-        else {
-            output.push_str(&format!("workload: {}\n", TARGET_BOUNDARY_WORKLOAD_NAME));
-            output.push_str("status: workload not found\n\n");
-            return;
-        };
-
-        let traversal = traverse_with_stats(&context.index, &workload.query);
-
-        output.push_str(&format!("workload: {}\n", workload.name));
-        output.push_str("leaf | row | result | values\n");
-
-        if traversal.retained_leaves.is_empty() {
-            output.push_str("none\n");
-            output.push('\n');
-            return;
-        }
-
-        let mut scratch = Vec::with_capacity(workload.query.dimensions());
-
-        for retained_leaf in &traversal.retained_leaves {
-            let node = &context.index.nodes[retained_leaf.node_id];
-
-            for row in 0..node.stored_cardinality() {
-                reconstruct_row_into(node, row, &mut scratch);
-
-                output.push_str(&format!(
-                    "{} | {} | {} | {}\n",
-                    retained_leaf.node_id,
-                    row,
-                    retained_record_result_label(&scratch, &workload.query),
-                    format_coordinate_values(&scratch),
-                ));
-            }
         }
 
         output.push('\n');
@@ -678,77 +481,6 @@ pub fn render_benchmark_application_terminal_output(
 }
 
 const TARGET_BOUNDARY_WORKLOAD_NAME: &str = "cluster_boundary_range";
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct RetainedLeafMatchCounts {
-    matched_records: usize,
-    rejected_records: usize,
-}
-
-fn retained_leaf_match_counts(
-    node: &PartitionNode,
-    query: &QueryRegion,
-) -> RetainedLeafMatchCounts {
-    let mut scratch = Vec::with_capacity(query.dimensions());
-    let mut matched_records = 0;
-
-    for row in 0..node.stored_cardinality() {
-        reconstruct_row_into(node, row, &mut scratch);
-
-        if query.contains_values(&scratch) {
-            matched_records += 1;
-        }
-    }
-
-    RetainedLeafMatchCounts {
-        matched_records,
-        rejected_records: node.stored_cardinality() - matched_records,
-    }
-}
-
-fn retained_record_result_label(values: &[Scalar], query: &QueryRegion) -> &'static str {
-    if query.contains_values(values) {
-        "match"
-    } else {
-        "reject"
-    }
-}
-
-fn bounds_query_overlap_volume(bounds: &BoundingBox, query: &QueryRegion) -> Scalar {
-    let dimensions = bounds
-        .min
-        .len()
-        .min(bounds.max.len())
-        .min(query.min.len())
-        .min(query.max.len());
-
-    if dimensions == 0 {
-        return 0.0;
-    }
-
-    let mut volume = 1.0;
-
-    for dimension in 0..dimensions {
-        let overlap_min = bounds.min[dimension].max(query.min[dimension]);
-        let overlap_max = bounds.max[dimension].min(query.max[dimension]);
-
-        if overlap_max <= overlap_min {
-            return 0.0;
-        }
-
-        volume *= overlap_max - overlap_min;
-    }
-
-    volume
-}
-
-fn scalar_ratio_or_zero(numerator: Scalar, denominator: Scalar) -> Scalar {
-    if denominator == 0.0 {
-        return 0.0;
-    }
-
-    numerator / denominator
-}
 
 fn retained_leaf_coverage_label(coverage: RetainedLeafCoverage) -> &'static str {
     match coverage {
