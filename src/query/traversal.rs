@@ -364,21 +364,21 @@ pub fn traverse_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryTraver
 /// partial path reuse that classification instead of repeating root bounds
 /// math inside traversal.
 ///
-/// Public traversal and the full query execution API already validate
-/// dimensionality before entering this helper. The release assertion is kept
-/// here anyway because this helper is still the boundary where retained leaves
-/// are produced from geometry. Keeping the guard is safer than relying on every
-/// future internal caller to preserve that precondition.
+/// Public traversal and the full query execution API validate dimensionality
+/// before entering this helper. The check remains as a debug assertion so
+/// development builds still catch invariant violations without keeping the
+/// duplicate guard in release query timing.
 ///
 /// # Panics
 ///
-/// Panics when the query dimensionality does not match the index dimensionality.
+/// This helper does not perform release-time validation. Public callers panic
+/// before reaching it when dimensionality does not match.
 pub(crate) fn traverse_with_known_root_classification(
     index: &FSEIndex,
     query: &QueryRegion,
     root_classification: QueryBoundsClassification,
 ) -> QueryTraversalReport {
-    assert_eq!(
+    debug_assert_eq!(
         index.dimensions,
         query.dimensions(),
         "query dimensionality must match index dimensionality"
