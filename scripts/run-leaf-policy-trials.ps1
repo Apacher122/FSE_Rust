@@ -754,6 +754,142 @@ function New-TargetSummaryRow {
   }
 }
 
+function Get-BaselineClassificationText {
+  param(
+    [object[]]$Rows,
+    [string]$PolicyName,
+    [string]$ClassificationFieldName
+  )
+
+  $Parts = @()
+
+  foreach ($BaselineName in $TreeBaselines) {
+    $Row = $Rows | Where-Object {
+      $_.PolicyName -eq $PolicyName -and $_.BaselineName -eq $BaselineName
+    } | Select-Object -First 1
+
+    if ($null -eq $Row) {
+      $Parts += "$BaselineName=missing"
+      continue
+    }
+
+    $Parts += "$BaselineName=$($Row.$ClassificationFieldName)"
+  }
+
+  return ($Parts -join ", ")
+}
+
+function Get-PolicyRows {
+  param(
+    [object[]]$Rows,
+    [string]$PolicyName
+  )
+
+  return @($Rows | Where-Object { $_.PolicyName -eq $PolicyName })
+}
+
+function Test-AnyPolicyRegression {
+  param(
+    [object[]]$Rows,
+    [string]$PolicyName,
+    [string]$ClassificationFieldName
+  )
+
+  $PolicyRows = Get-PolicyRows -Rows $Rows -PolicyName $PolicyName
+
+  foreach ($Row in $PolicyRows) {
+    if ($Row.$ClassificationFieldName -eq "regressed") {
+      return $true
+    }
+  }
+
+  return $false
+}
+
+function Test-AllPolicyImproved {
+  param(
+    [object[]]$Rows,
+    [string]$PolicyName,
+    [string]$ClassificationFieldName
+  )
+
+  $PolicyRows = Get-PolicyRows -Rows $Rows -PolicyName $PolicyName
+
+  if ($PolicyRows.Count -eq 0) {
+    return $false
+  }
+
+  foreach ($Row in $PolicyRows) {
+    if ($Row.$ClassificationFieldName -ne "improved") {
+      return $false
+    }
+  }
+
+  return $true
+}
+
+function Write-PolicyVerdictNotes {
+  param(
+    [object[]]$LowGapSummaryRows,
+    [object[]]$TargetSummaryRows
+  )
+
+  Add-Utf8Text -Path $NotesPath -Text "`r`nPolicy verdict`r`n"
+  Add-Utf8Text -Path $NotesPath -Text "--------------`r`n"
+
+  foreach ($Policy in $LeafPolicies) {
+    if ($Policy.PolicyName -eq "8/8") {
+      continue
+    }
+
+    $LowClassifications = Get-BaselineClassificationText `
+      -Rows $LowGapSummaryRows `
+      -PolicyName $Policy.PolicyName `
+      -ClassificationFieldName "LowTimingClassificationVsReference"
+
+    $TargetClassifications = Get-BaselineClassificationText `
+      -Rows $TargetSummaryRows `
+      -PolicyName $Policy.PolicyName `
+      -ClassificationFieldName "TimingClassificationVsReference"
+
+    $HasLowRegression = Test-AnyPolicyRegression `
+      -Rows $LowGapSummaryRows `
+      -PolicyName $Policy.PolicyName `
+      -ClassificationFieldName "LowTimingClassificationVsReference"
+
+    $HasTargetRegression = Test-AnyPolicyRegression `
+      -Rows $TargetSummaryRows `
+      -PolicyName $Policy.PolicyName `
+      -ClassificationFieldName "TimingClassificationVsReference"
+
+    $AllLowImproved = Test-AllPolicyImproved `
+      -Rows $LowGapSummaryRows `
+      -PolicyName $Policy.PolicyName `
+      -ClassificationFieldName "LowTimingClassificationVsReference"
+
+    $AllTargetImproved = Test-AllPolicyImproved `
+      -Rows $TargetSummaryRows `
+      -PolicyName $Policy.PolicyName `
+      -ClassificationFieldName "TimingClassificationVsReference"
+
+    Add-Utf8Text -Path $NotesPath -Text "`r`ncandidate policy: $($Policy.PolicyName)`r`n"
+    Add-Utf8Text -Path $NotesPath -Text "low-selectivity timing classifications: $LowClassifications`r`n"
+    Add-Utf8Text -Path $NotesPath -Text "target timing classifications: $TargetClassifications`r`n"
+
+    if ($HasLowRegression -or $HasTargetRegression) {
+      Add-Utf8Text -Path $NotesPath -Text "verdict: keep 8/8; $($Policy.PolicyName) regresses timing beyond the noise threshold despite any candidate reduction.`r`n"
+      continue
+    }
+
+    if ($AllLowImproved -and $AllTargetImproved) {
+      Add-Utf8Text -Path $NotesPath -Text "verdict: $($Policy.PolicyName) is a promotion candidate; low-selectivity and target timing both improved beyond the noise threshold.`r`n"
+      continue
+    }
+
+    Add-Utf8Text -Path $NotesPath -Text "verdict: keep 8/8 pending manual review; $($Policy.PolicyName) did not clearly improve both low-selectivity and target timing.`r`n"
+  }
+}
+
 function Write-Notes {
   param(
     [object[]]$LowGapSummaryRows,
@@ -799,6 +935,10 @@ function Write-Notes {
     Add-Utf8Text -Path $NotesPath -Text "delta vs reference: $(Format-InvariantDouble -Value $Row.TimingDeltaVsReference)`r`n"
     Add-Utf8Text -Path $NotesPath -Text "classification vs reference: $($Row.TimingClassificationVsReference)`r`n"
   }
+
+  Write-PolicyVerdictNotes `
+    -LowGapSummaryRows $LowGapSummaryRows `
+    -TargetSummaryRows $TargetSummaryRows
 
   Add-Utf8Text -Path $NotesPath -Text "`r`nDecision guidance`r`n"
   Add-Utf8Text -Path $NotesPath -Text "-----------------`r`n"
