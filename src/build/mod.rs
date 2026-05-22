@@ -7,6 +7,7 @@ pub mod builder;
 pub mod metrics;
 pub mod splitter;
 pub mod validation;
+pub mod validation_diagnostics;
 pub mod variance;
 
 pub use builder::{BuildConfig, FSEBuilder, ValidatedFSEIndex};
@@ -19,4 +20,8 @@ pub use metrics::{
 pub use validation::{
     IndexValidationReport, validate_hierarchy_topology, validate_index, validate_leaf_cardinality,
     validate_parent_child_bounds,
+};
+pub use validation_diagnostics::{
+    HierarchyTopologyDiagnostics, IndexValidationDiagnostics, InvalidChildReference,
+    LeafCardinalityViolation, ParentChildBoundsViolation, index_validation_diagnostics,
 };

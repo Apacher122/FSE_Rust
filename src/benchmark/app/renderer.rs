@@ -9,7 +9,7 @@ use crate::benchmark::reports::{
     render_named_baseline_suite_report, render_selectivity_bucketed_workload_summary,
     render_suite_report, summarize_workloads_by_selectivity,
 };
-use crate::build::sibling_overlap_metrics;
+use crate::build::{index_validation_diagnostics, sibling_overlap_metrics};
 use crate::math::{BoundingBox, Scalar};
 use crate::query::{QueryRegion, RetainedLeafCoverage, reconstruct_row_into, traverse_with_stats};
 use crate::storage::PartitionNode;
@@ -41,6 +41,7 @@ impl BenchmarkApplicationRenderer {
         }
 
         self.render_summary_terminal_output(
+            context,
             &result_bundle.overview,
             &result_bundle.aggregate_summary,
         )
@@ -48,6 +49,7 @@ impl BenchmarkApplicationRenderer {
 
     fn render_summary_terminal_output(
         &self,
+        context: &BenchmarkApplicationContext,
         overview: &BenchmarkRunOverview,
         aggregate_summary: &MultiBaselineAggregateSummary,
     ) -> String {
@@ -97,6 +99,8 @@ impl BenchmarkApplicationRenderer {
             }
         ));
 
+        self.append_index_validation_failure_details(&mut output, context);
+
         output.push_str("Result\n");
         output.push_str("------\n");
         output.push_str(
@@ -128,6 +132,7 @@ impl BenchmarkApplicationRenderer {
         let mut output = String::new();
 
         output.push_str(&render_benchmark_overview(&result_bundle.overview));
+        self.append_index_validation_failure_details(&mut output, context);
         self.append_sibling_overlap_debug_output(&mut output, context);
         self.append_traversal_pressure_debug_output(&mut output, result_bundle);
         self.append_low_selectivity_tree_gap_debug_output(&mut output, result_bundle);
@@ -139,6 +144,136 @@ impl BenchmarkApplicationRenderer {
         self.append_debug_suite_terminal_output(&mut output, context, result_bundle);
 
         output
+    }
+
+    fn append_index_validation_failure_details(
+        &self,
+        output: &mut String,
+        context: &BenchmarkApplicationContext,
+    ) {
+        if context.validation.is_valid() {
+            return;
+        }
+
+        let diagnostics =
+            index_validation_diagnostics(&context.index, context.suite_config.max_leaf_size);
+
+        output.push_str("Index validation failure details\n");
+        output.push_str("--------------------------------\n");
+        output.push_str(&format!(
+            "leaf cardinality valid: {}\n",
+            context.validation.leaf_cardinality_valid
+        ));
+        output.push_str(&format!(
+            "hierarchy topology valid: {}\n",
+            context.validation.hierarchy_topology_valid
+        ));
+        output.push_str(&format!(
+            "parent-child bounds valid: {}\n",
+            context.validation.parent_child_bounds_valid
+        ));
+        output.push_str(&format!(
+            "leaf cardinality violations: {}\n",
+            diagnostics.leaf_cardinality_violations.len()
+        ));
+        output.push_str(&format!(
+            "parent-child bounds violations: {}\n",
+            diagnostics.parent_child_bounds_violations.len()
+        ));
+        output.push_str(&format!(
+            "invalid child references: {}\n",
+            diagnostics
+                .hierarchy_topology
+                .invalid_child_references
+                .len()
+        ));
+        output.push_str(&format!(
+            "self references: {}\n",
+            diagnostics.hierarchy_topology.self_reference_count
+        ));
+        output.push_str(&format!(
+            "leaf nodes with children: {}\n",
+            diagnostics
+                .hierarchy_topology
+                .leaf_nodes_with_children_count
+        ));
+        output.push_str(&format!(
+            "internal nodes without children: {}\n",
+            diagnostics
+                .hierarchy_topology
+                .internal_nodes_without_children_count
+        ));
+        output.push_str(&format!(
+            "unreachable nodes: {}\n",
+            diagnostics.hierarchy_topology.unreachable_node_count
+        ));
+
+        if let Some(worst_leaf) = diagnostics
+            .leaf_cardinality_violations
+            .iter()
+            .max_by_key(|violation| violation.cardinality)
+        {
+            output.push_str(&format!(
+                "worst leaf: {} has {} records, max {}, overflow {}\n",
+                worst_leaf.node_id,
+                worst_leaf.cardinality,
+                worst_leaf.max_leaf_size,
+                worst_leaf.overflow_by
+            ));
+        }
+
+        if !diagnostics.leaf_cardinality_violations.is_empty() {
+            output.push_str("leaf | records | max | overflow | bounds min | bounds max\n");
+
+            for violation in diagnostics.leaf_cardinality_violations.iter().take(10) {
+                let node = &context.index.nodes[violation.node_id];
+
+                output.push_str(&format!(
+                    "{} | {} | {} | {} | {} | {}\n",
+                    violation.node_id,
+                    violation.cardinality,
+                    violation.max_leaf_size,
+                    violation.overflow_by,
+                    format_bounds_min(&node.bounds),
+                    format_bounds_max(&node.bounds),
+                ));
+            }
+
+            if diagnostics.leaf_cardinality_violations.len() > 10 {
+                output.push_str(&format!(
+                    "... {} additional leaf cardinality violations omitted\n",
+                    diagnostics.leaf_cardinality_violations.len() - 10
+                ));
+            }
+        }
+
+        if !diagnostics.parent_child_bounds_violations.is_empty() {
+            output.push_str("parent | child | parent bounds min | parent bounds max | child bounds min | child bounds max\n");
+
+            for violation in diagnostics.parent_child_bounds_violations.iter().take(10) {
+                let parent = &context.index.nodes[violation.parent_id];
+                let child = &context.index.nodes[violation.child_id];
+
+                output.push_str(&format!(
+                    "{} | {} | {} | {} | {} | {}\n",
+                    violation.parent_id,
+                    violation.child_id,
+                    format_bounds_min(&parent.bounds),
+                    format_bounds_max(&parent.bounds),
+                    format_bounds_min(&child.bounds),
+                    format_bounds_max(&child.bounds),
+                ));
+            }
+
+            if diagnostics.parent_child_bounds_violations.len() > 10 {
+                output.push_str(&format!(
+                    "... {} additional parent-child bounds violations omitted\n",
+                    diagnostics.parent_child_bounds_violations.len() - 10
+                ));
+            }
+        }
+
+        output.push('\n');
     }
 
     fn append_sibling_overlap_debug_output(
