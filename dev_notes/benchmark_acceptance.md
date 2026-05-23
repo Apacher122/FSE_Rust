@@ -1491,6 +1491,111 @@ FSE visited nodes do not increase unless repeated-trial timing justifies it
 FSE reconstructed records do not increase unless intentionally explained
 ```
 
+## Result ownership timing conclusion
+
+Recent resultless target workload diagnostics split retained execution into two cases:
+
+```text
+owned-result retained execution:
+  reconstruct matching rows
+  evaluate predicates
+  allocate and return owned Vector results
+
+resultless retained execution:
+  reconstruct/check candidate values only far enough to count matches
+  do not allocate returned Vector results
+```
+
+The resultless diagnostic was added to answer whether target workload cost is mostly query work or result materialization work.
+
+The small target workload result was:
+
+```text
+dataset: small
+target workload: cluster_boundary_range
+candidate records: 10
+matched records: 5
+covered leaves: 0
+partial leaves: 2
+covered records: 0
+partial records: 10
+average resultless retained elapsed: about 30ns
+average retained execution elapsed: about 161ns
+estimated result ownership overhead: about 131ns
+estimated resultless retained share: about 19%
+```
+
+The large target workload result was:
+
+```text
+dataset: large
+target workload: large_cross_cluster_boundary
+candidate records: 78
+matched records: 71
+covered leaves: 8
+partial leaves: 2
+covered records: 62
+partial records: 16
+average resultless retained elapsed: about 38ns
+average retained execution elapsed: about 1.65us
+estimated result ownership overhead: about 1.61us
+estimated resultless retained share: about 2%
+```
+
+The useful conclusion is:
+
+```text
+target workload traversal is not the dominant cost
+predicate checking is not the dominant cost
+plain result Vec allocation is small
+owned Vector materialization dominates retained execution when many rows match
+```
+
+This means future performance work should not be framed as another boundary traversal fix unless new evidence changes the diagnosis.
+
+Do not pursue these as the next target without new repeated-trial evidence:
+
+```text
+boundary-specific traversal specialization
+sibling-overlap tuning
+covered-leaf fast paths as the primary target
+partial-leaf reconstruction rewrites based only on target workload timing
+default leaf-policy changes based only on the small boundary workload
+```
+
+The next meaningful optimization direction is a result representation or query API decision.
+
+Potential future directions are:
+
+```text
+count-only query API
+exists-any query API
+visitor/callback-based query API
+borrowed row-view result API
+separate benchmark mode for materialized results versus count-only results
+```
+
+These should be treated as API or result-representation changes, not incidental hot-path cleanup.
+
+Acceptance rule for result-representation work:
+
+```text
+validation passes
+matched record counts remain exact
+owned-result query behavior remains unchanged unless the commit explicitly changes the API
+count-only or resultless APIs must be tested separately from owned-result APIs
+large dataset target workload should remain valid at max depth 16
+small dataset target workload should remain valid at max depth 8
+performance claims must use repeated-trial evidence
+```
+
+The current benchmark interpretation is:
+
+```text
+FSE pruning is doing its job on the target workloads
+remaining target workload cost is primarily result ownership under the current owned Vector API
+```
+
 ## Leaf policy decision after repeated 8/8 versus 4/8 trials
 
 Commit 179 added a repeated-trial leaf policy runner to compare the current `8/8` policy against a tighter `4/8` policy.

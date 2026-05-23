@@ -484,6 +484,121 @@ impl BenchmarkApplicationRenderer {
         ));
         output.push('\n');
     }
+
+    pub(crate) fn append_target_workload_resultless_timing_debug_output(
+        &self,
+        output: &mut String,
+        context: &BenchmarkApplicationContext,
+    ) {
+        output.push_str("Target workload resultless timing estimate\n");
+        output.push_str("------------------------------------------\n");
+
+        let target_workload_name = target_boundary_workload_name(context);
+
+        let Some(workload) = context
+            .workloads
+            .iter()
+            .find(|workload| workload.name == target_workload_name)
+        else {
+            output.push_str(&format!("workload: {}\n", target_workload_name));
+            output.push_str("status: workload not found\n\n");
+            return;
+        };
+
+        let timing_config = &context.timing_config;
+        let query_options = context.suite_config.query_execution_options();
+        let traversal = traverse_with_stats(&context.index, &workload.query);
+        let retained_breakdown = retained_candidate_breakdown(context, &traversal.retained_leaves);
+
+        let resultless_retained_timing = measure_repeated(timing_config, || {
+            let matched_count = count_retained_matches_without_results(
+                context,
+                &workload.query,
+                &traversal.retained_leaves,
+            );
+
+            std::hint::black_box(matched_count);
+        });
+
+        let retained_execution_timing = measure_repeated(timing_config, || {
+            let _ = execute_retained_leaf_batch_for_diagnostics(
+                &context.index,
+                &workload.query,
+                &traversal.retained_leaves,
+                traversal.stats.retained_candidate_records,
+                query_options,
+            );
+        });
+
+        let full_fse_timing = measure_repeated(timing_config, || {
+            let _ = execute_query_with_stats_and_options(
+                &context.index,
+                &workload.query,
+                query_options,
+            );
+        });
+
+        let matched_records = count_retained_matches_without_results(
+            context,
+            &workload.query,
+            &traversal.retained_leaves,
+        );
+        let estimated_result_ownership_overhead = retained_execution_timing
+            .average_elapsed
+            .saturating_sub(resultless_retained_timing.average_elapsed);
+        let resultless_retained_share = duration_ratio(
+            resultless_retained_timing.average_elapsed,
+            retained_execution_timing.average_elapsed,
+        );
+
+        output.push_str(&format!("workload: {}\n", workload.name));
+        output.push_str(&format!(
+            "timing iterations: {}\n",
+            timing_config.iterations
+        ));
+        output.push_str(&format!(
+            "average resultless retained elapsed: {}\n",
+            format_duration_ascii(resultless_retained_timing.average_elapsed)
+        ));
+        output.push_str(&format!(
+            "average retained execution elapsed: {}\n",
+            format_duration_ascii(retained_execution_timing.average_elapsed)
+        ));
+        output.push_str(&format!(
+            "average full FSE elapsed: {}\n",
+            format_duration_ascii(full_fse_timing.average_elapsed)
+        ));
+        output.push_str(&format!(
+            "estimated result ownership overhead: {}\n",
+            format_duration_ascii(estimated_result_ownership_overhead)
+        ));
+        output.push_str(&format!(
+            "estimated resultless retained share: {}\n",
+            format_percent_ratio(resultless_retained_share)
+        ));
+        output.push_str(&format!(
+            "candidate records: {}\n",
+            traversal.stats.retained_candidate_records
+        ));
+        output.push_str(&format!("matched records: {}\n", matched_records));
+        output.push_str(&format!(
+            "covered leaves: {}\n",
+            retained_breakdown.covered_leaves
+        ));
+        output.push_str(&format!(
+            "partial leaves: {}\n",
+            retained_breakdown.partial_leaves
+        ));
+        output.push_str(&format!(
+            "covered records: {}\n",
+            retained_breakdown.covered_records
+        ));
+        output.push_str(&format!(
+            "partial records: {}\n",
+            retained_breakdown.partial_records
+        ));
+        output.push('\n');
+    }
 }
 
 const SMALL_TARGET_BOUNDARY_WORKLOAD_NAME: &str = "cluster_boundary_range";
@@ -642,6 +757,122 @@ fn matching_retained_candidate_values(
         .filter(|row| retained_candidate_row_matches(query, row))
         .map(|row| row.values.clone())
         .collect()
+}
+
+fn count_retained_matches_without_results(
+    context: &BenchmarkApplicationContext,
+    query: &QueryRegion,
+    retained_leaves: &[RetainedLeaf],
+) -> usize {
+    let mut matched_records = 0;
+
+    for retained_leaf in retained_leaves {
+        let node = &context.index.nodes[retained_leaf.node_id];
+        let shape = retained_leaf.reconstruction_shape(&context.index);
+
+        matched_records +=
+            count_retained_leaf_matches_without_results(node, shape, retained_leaf.coverage, query);
+    }
+
+    matched_records
+}
+
+fn count_retained_leaf_matches_without_results(
+    node: &PartitionNode,
+    shape: LeafReconstructionShape,
+    coverage: RetainedLeafCoverage,
+    query: &QueryRegion,
+) -> usize {
+    match coverage {
+        RetainedLeafCoverage::Covered => shape.cardinality,
+        RetainedLeafCoverage::Partial => {
+            count_partial_retained_leaf_matches_without_results(node, shape, query)
+        }
+    }
+}
+
+fn count_partial_retained_leaf_matches_without_results(
+    node: &PartitionNode,
+    shape: LeafReconstructionShape,
+    query: &QueryRegion,
+) -> usize {
+    match shape.dimensions {
+        1 => count_partial_retained_leaf_matches_1d_without_results(node, shape, query),
+        2 => count_partial_retained_leaf_matches_2d_without_results(node, shape, query),
+        _ => count_partial_retained_leaf_matches_generic_without_results(node, shape, query),
+    }
+}
+
+fn count_partial_retained_leaf_matches_1d_without_results(
+    node: &PartitionNode,
+    shape: LeafReconstructionShape,
+    query: &QueryRegion,
+) -> usize {
+    let centroid_0 = node.centroid[0];
+    let residual_0 = &node.residuals.dimensions[0];
+    let mut matched_records = 0;
+
+    for row in 0..shape.cardinality {
+        let value_0 = centroid_0 + residual_0[row];
+
+        if value_0 >= query.min[0] && value_0 <= query.max[0] {
+            matched_records += 1;
+        }
+    }
+
+    matched_records
+}
+
+fn count_partial_retained_leaf_matches_2d_without_results(
+    node: &PartitionNode,
+    shape: LeafReconstructionShape,
+    query: &QueryRegion,
+) -> usize {
+    let centroid_0 = node.centroid[0];
+    let centroid_1 = node.centroid[1];
+
+    let residual_0 = &node.residuals.dimensions[0];
+    let residual_1 = &node.residuals.dimensions[1];
+
+    let mut matched_records = 0;
+
+    // no owned vectors here, just count the rows that would survive exact eval
+    for row in 0..shape.cardinality {
+        let value_0 = centroid_0 + residual_0[row];
+        let value_1 = centroid_1 + residual_1[row];
+
+        if value_0 >= query.min[0]
+            && value_0 <= query.max[0]
+            && value_1 >= query.min[1]
+            && value_1 <= query.max[1]
+        {
+            matched_records += 1;
+        }
+    }
+
+    matched_records
+}
+
+fn count_partial_retained_leaf_matches_generic_without_results(
+    node: &PartitionNode,
+    shape: LeafReconstructionShape,
+    query: &QueryRegion,
+) -> usize {
+    let mut matched_records = 0;
+    let mut values = vec![0.0; shape.dimensions];
+
+    for row in 0..shape.cardinality {
+        for dimension in 0..shape.dimensions {
+            values[dimension] =
+                node.centroid[dimension] + node.residuals.dimensions[dimension][row];
+        }
+
+        if query.contains_values_prevalidated(&values, shape.dimensions) {
+            matched_records += 1;
+        }
+    }
+
+    matched_records
 }
 
 fn retained_candidate_row_matches(query: &QueryRegion, row: &RetainedCandidateRow) -> bool {
