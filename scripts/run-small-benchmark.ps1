@@ -23,6 +23,7 @@ else {
 }
 
 $EffectiveMaxDepthText = $EffectiveMaxDepth.ToString()
+$ScriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
@@ -30,8 +31,12 @@ $TextOutputPath = Join-Path $OutputDir "benchmark-output-$Label.txt"
 $DebugOutputPath = Join-Path $OutputDir "debug-output-$Label.txt"
 $SummaryCsvPath = Join-Path $OutputDir "summary-$Label.csv"
 $WorkloadsCsvPath = Join-Path $OutputDir "workloads-$Label.csv"
+$CountOnlyWorkloadSummaryCsvPath = Join-Path $OutputDir "count-only-workload-summary-$Label.csv"
+$CountOnlyWorkloadSummaryNotesPath = Join-Path $OutputDir "count-only-workload-summary-$Label.txt"
 $LowSelectivityGapCsvPath = Join-Path $OutputDir "low-selectivity-gap-$Label.csv"
 $LowGapRegressionNotesPath = Join-Path $OutputDir "low-gap-regression-notes-$Label.txt"
+
+$CountOnlyWorkloadSummaryScript = Join-Path $ScriptDirectory "summarize-count-only-workload-summary.ps1"
 
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $InvariantCulture = [System.Globalization.CultureInfo]::InvariantCulture
@@ -421,6 +426,19 @@ Invoke-BenchmarkCommand `
         $LowSelectivityGapCsvPath
     ))
 
+if (!(Test-Path -LiteralPath $CountOnlyWorkloadSummaryScript)) {
+    throw "required script was not found: $CountOnlyWorkloadSummaryScript"
+}
+
+& $CountOnlyWorkloadSummaryScript `
+    -InputWorkloadsCsv $WorkloadsCsvPath `
+    -OutputCsv $CountOnlyWorkloadSummaryCsvPath `
+    -OutputNotesPath $CountOnlyWorkloadSummaryNotesPath
+
+if ($LASTEXITCODE -ne 0) {
+    throw "count-only workload summary failed with exit code $LASTEXITCODE"
+}
+
 Write-LowGapRegressionNotes `
     -CurrentPath $LowSelectivityGapCsvPath `
     -PreviousPath $PreviousLowSelectivityGapCsv `
@@ -442,6 +460,8 @@ Add-Utf8Text -Path $TextOutputPath -Text "  Benchmark output:               $Tex
 Add-Utf8Text -Path $TextOutputPath -Text "  Debug output:                   $DebugOutputPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Summary CSV:                    $SummaryCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Workloads CSV:                  $WorkloadsCsvPath`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Count-only workload summary:    $CountOnlyWorkloadSummaryCsvPath`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Count-only workload notes:      $CountOnlyWorkloadSummaryNotesPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Low-selectivity gap CSV:        $LowSelectivityGapCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Low-gap regression notes:       $LowGapRegressionNotesPath`r`n"
 
@@ -452,6 +472,8 @@ Add-Utf8Text -Path $DebugOutputPath -Text "  Benchmark output:               $Te
 Add-Utf8Text -Path $DebugOutputPath -Text "  Debug output:                   $DebugOutputPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Summary CSV:                    $SummaryCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Workloads CSV:                  $WorkloadsCsvPath`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Count-only workload summary:    $CountOnlyWorkloadSummaryCsvPath`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Count-only workload notes:      $CountOnlyWorkloadSummaryNotesPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Low-selectivity gap CSV:        $LowSelectivityGapCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Low-gap regression notes:       $LowGapRegressionNotesPath`r`n"
 
@@ -463,5 +485,7 @@ Write-Host "  $TextOutputPath"
 Write-Host "  $DebugOutputPath"
 Write-Host "  $SummaryCsvPath"
 Write-Host "  $WorkloadsCsvPath"
+Write-Host "  $CountOnlyWorkloadSummaryCsvPath"
+Write-Host "  $CountOnlyWorkloadSummaryNotesPath"
 Write-Host "  $LowSelectivityGapCsvPath"
 Write-Host "  $LowGapRegressionNotesPath"

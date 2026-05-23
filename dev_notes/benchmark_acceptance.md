@@ -1733,6 +1733,127 @@ FSE should expose separate query modes for separate output contracts
 result materialization should not be treated as unavoidable query-evaluation cost when the caller only needs a count
 ```
 
+## Count-only summary artifact workflow
+
+The benchmark review workflow now writes count-only summary artifacts alongside the normal owned-result benchmark artifacts.
+
+The count-only summary artifacts are:
+
+```text
+count-only-workload-summary-<label>.csv
+count-only-workload-summary-<label>.txt
+```
+
+The CSV artifact is the machine-readable summary. It groups count-only behavior by baseline and selectivity bucket.
+
+The notes artifact is the human-readable review summary. It is meant for quick inspection during commit review.
+
+The CSV includes these core fields:
+
+```text
+baseline_name
+selectivity_bucket
+workload_count
+stats_agree_count
+all_stats_match_owned
+mean_owned_average_elapsed_ns
+mean_count_only_average_elapsed_ns
+mean_owned_result_overhead_ns
+mean_count_only_speedup_ratio
+weighted_count_only_speedup_ratio
+total_owned_average_elapsed_ns
+total_count_only_average_elapsed_ns
+total_owned_result_overhead_ns
+```
+
+The notes file includes:
+
+```text
+dataset records
+timing iterations
+max depth
+index validation state
+leaf cardinality validation state
+stats agreement status
+low-selectivity count-only speedup by baseline
+best low-selectivity count-only speedup
+full-selectivity behavior note
+```
+
+The most important correctness field is:
+
+```text
+all_stats_match_owned
+```
+
+This field must be true before count-only timing is used as evidence.
+
+Interpretation rule:
+
+```text
+all_stats_match_owned = true:
+  count-only and owned-result execution agree on structural query work
+
+all_stats_match_owned = false:
+  do not use count-only timing for performance conclusions until the mismatch is explained
+```
+
+The count-only summary separates output contracts:
+
+```text
+owned-result timing:
+  measures exact query execution plus owned Vector materialization
+
+count-only timing:
+  measures exact query cardinality without owned Vector materialization
+```
+
+Use the count-only summary when evaluating cardinality-only workloads, planning workloads, existence-style workflows, or cases where the caller does not need materialized rows.
+
+Use owned-result benchmark artifacts when evaluating workloads where the caller needs returned records.
+
+Do not treat count-only speedup as an owned-result query speedup. It is evidence that a different output contract avoids result materialization cost.
+
+Low-selectivity rows are usually the most useful count-only comparison rows because they preserve selective query behavior while removing owned result construction.
+
+Full-selectivity rows need special interpretation. Count-only speedups can be extremely large for full-root coverage because the count-only path can return cardinality without materializing every owned `Vector` result.
+
+The full-selectivity behavior note exists to prevent misreading this case as a general traversal improvement:
+
+```text
+full-selectivity count-only speedup can be huge because count-only root coverage returns cardinality without materializing all owned Vector results
+```
+
+Acceptance rule for count-only summary artifacts:
+
+```text
+benchmark validation passes
+leaf cardinality validation passes
+count-only summary CSV is generated
+count-only summary notes are generated
+all_stats_match_owned is true for every summary row
+low-selectivity count-only rows are reviewed separately from full-selectivity rows
+owned-result benchmark conclusions remain separate from count-only benchmark conclusions
+```
+
+Preferred review flow:
+
+```text
+1. Open the normal benchmark output for validation and owned-result timing.
+2. Open the workload CSV if row-level investigation is needed.
+3. Open count-only-workload-summary-<label>.txt for quick count-only interpretation.
+4. Open count-only-workload-summary-<label>.csv for machine-readable grouped metrics.
+5. Only use count-only timing as evidence when all_stats_match_owned is true.
+```
+
+The current benchmark interpretation is:
+
+```text
+FSE now has separate evidence paths for owned-result workloads and count-only workloads
+count-only performance should be reviewed as its own query mode
+owned Vector materialization remains part of owned-result query cost
+```
+
 ## Leaf policy decision after repeated 8/8 versus 4/8 trials
 
 Commit 179 added a repeated-trial leaf policy runner to compare the current `8/8` policy against a tighter `4/8` policy.
