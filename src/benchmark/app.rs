@@ -8,6 +8,7 @@ pub mod error;
 pub mod output;
 pub mod renderer;
 pub mod result_bundle;
+mod target_debug;
 
 pub use context::BenchmarkApplicationContext;
 pub use error::BenchmarkApplicationError;
