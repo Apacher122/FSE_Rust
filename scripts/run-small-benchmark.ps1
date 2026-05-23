@@ -2,6 +2,8 @@ param(
     [string]$Label = "local",
     [ValidateSet("small", "large")]
     [string]$Dataset = "small",
+    [ValidateRange(0, 2147483647)]
+    [int]$MaxDepth = 0,
     [int]$Iterations = 10000,
     [string]$OutputDir = "benchmark_artifacts",
     [string]$PreviousLowSelectivityGapCsv = "",
@@ -9,6 +11,18 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($MaxDepth -gt 0) {
+    $EffectiveMaxDepth = $MaxDepth
+}
+elseif ($Dataset -eq "large") {
+    $EffectiveMaxDepth = 16
+}
+else {
+    $EffectiveMaxDepth = 8
+}
+
+$EffectiveMaxDepthText = $EffectiveMaxDepth.ToString()
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
@@ -364,7 +378,9 @@ $BaseBenchmarkArgs = @(
     $Dataset,
     "--all-baselines",
     "--iterations",
-    $Iterations.ToString()
+    $Iterations.ToString(),
+    "--max-depth",
+    $EffectiveMaxDepthText
 )
 
 Invoke-BenchmarkCommand `
@@ -421,6 +437,7 @@ Invoke-BenchmarkCommand `
 
 Add-Utf8Text -Path $TextOutputPath -Text "`r`n---`r`n`r`nArtifacts:`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Dataset:                        $Dataset`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Max depth:                      $EffectiveMaxDepth`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Benchmark output:               $TextOutputPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Debug output:                   $DebugOutputPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Summary CSV:                    $SummaryCsvPath`r`n"
@@ -430,6 +447,7 @@ Add-Utf8Text -Path $TextOutputPath -Text "  Low-gap regression notes:       $Low
 
 Add-Utf8Text -Path $DebugOutputPath -Text "`r`n---`r`n`r`nArtifacts:`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Dataset:                        $Dataset`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Max depth:                      $EffectiveMaxDepth`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Benchmark output:               $TextOutputPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Debug output:                   $DebugOutputPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Summary CSV:                    $SummaryCsvPath`r`n"
@@ -440,6 +458,7 @@ Add-Utf8Text -Path $DebugOutputPath -Text "  Low-gap regression notes:       $Lo
 Write-Host ""
 Write-Host "Benchmark artifacts written:"
 Write-Host "  Dataset: $Dataset"
+Write-Host "  Max depth: $EffectiveMaxDepth"
 Write-Host "  $TextOutputPath"
 Write-Host "  $DebugOutputPath"
 Write-Host "  $SummaryCsvPath"

@@ -2,6 +2,8 @@ param(
     [string]$Label = "local",
     [ValidateSet("small", "large")]
     [string]$Dataset = "small",
+    [ValidateRange(0, 2147483647)]
+    [int]$MaxDepth = 0,
     [int]$Trials = 5,
     [int]$Iterations = 10000,
     [string]$OutputDir = "benchmark_artifacts",
@@ -11,9 +13,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-if ($Trials -lt 1) {
-    throw "`-Trials` must be at least 1"
+if ($MaxDepth -gt 0) {
+    $EffectiveMaxDepth = $MaxDepth
 }
+elseif ($Dataset -eq "large") {
+    $EffectiveMaxDepth = 16
+}
+else {
+    $EffectiveMaxDepth = 8
+}
+
+$EffectiveMaxDepthText = $EffectiveMaxDepth.ToString()
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
@@ -395,6 +405,8 @@ function Invoke-LowGapTrial {
         "--all-baselines",
         "--iterations",
         $Iterations.ToString(),
+        "--max-depth",
+        $EffectiveMaxDepthText,
         "--csv-low-selectivity-gap",
         $LowGapCsvPath,
         "--csv-workloads",
@@ -403,6 +415,7 @@ function Invoke-LowGapTrial {
 
     Add-Utf8Text -Path $TrialLogPath -Text "`r`n---`r`n`r`nTrial $TrialNumber`r`n"
     Add-Utf8Text -Path $TrialLogPath -Text "Dataset: $Dataset`r`n"
+    Add-Utf8Text -Path $TrialLogPath -Text "Max depth: $EffectiveMaxDepth`r`n"
     Add-Utf8Text -Path $TrialLogPath -Text "Low-gap CSV: $LowGapCsvPath`r`n"
     Add-Utf8Text -Path $TrialLogPath -Text "Workloads CSV: $WorkloadsCsvPath`r`n`r`n"
 
@@ -982,6 +995,7 @@ Add-Utf8Text -Path $NotesPath -Text "Do not treat one noisy trial as proof that 
 Write-Host ""
 Write-Host "Low-gap trial artifacts written:"
 Write-Host "  Dataset: $Dataset"
+Write-Host "  Max depth: $EffectiveMaxDepth"
 Write-Host "  $TrialOutputDir"
 Write-Host "  $TrialLogPath"
 Write-Host "  $DetailCsvPath"

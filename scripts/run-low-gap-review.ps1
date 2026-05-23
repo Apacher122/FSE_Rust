@@ -3,6 +3,8 @@ param(
   [string]$PreviousLabel = "",
   [ValidateSet("small", "large")]
   [string]$Dataset = "small",
+  [ValidateRange(0, 2147483647)]
+  [int]$MaxDepth = 0,
   [int]$Trials = 5,
   [int]$Iterations = 10000,
   [string]$OutputDir = "benchmark_artifacts",
@@ -32,6 +34,20 @@ if ([string]::IsNullOrWhiteSpace($TargetWorkloadName)) {
   else {
     $TargetWorkloadName = "cluster_boundary_range"
   }
+}
+
+if ([string]::IsNullOrWhiteSpace($TargetWorkloadName)) {
+  throw "`-TargetWorkloadName` could not be resolved"
+}
+
+if ($MaxDepth -gt 0) {
+  $EffectiveMaxDepth = $MaxDepth
+}
+elseif ($Dataset -eq "large") {
+  $EffectiveMaxDepth = 16
+}
+else {
+  $EffectiveMaxDepth = 8
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
@@ -290,8 +306,8 @@ function Write-ReviewManifest {
   Add-Utf8Text -Path $ReviewManifestPath -Text "================================`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Label: $Label`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Previous label: $PreviousLabel`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Dataset: $Dataset`r`n"
+  Add-Utf8Text -Path $ReviewManifestPath -Text "Max depth: $EffectiveMaxDepth`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Trials: $Trials`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Iterations: $Iterations`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Target workload: $TargetWorkloadName`r`n"
@@ -464,6 +480,7 @@ Add-ReviewLine ""
 Add-ReviewLine "Label: $Label"
 Add-ReviewLine "Previous label: $PreviousLabel"
 Add-ReviewLine "Dataset: $Dataset"
+Add-ReviewLine "Max depth: $EffectiveMaxDepth"
 Add-ReviewLine "Trials: $Trials"
 Add-ReviewLine "Iterations: $Iterations"
 Add-ReviewLine "Output directory: $OutputDir"
@@ -486,6 +503,7 @@ Write-Host ""
 Write-Host "Running normal benchmark artifact bundle"
 Write-Host "  label: $Label"
 Write-Host "  dataset: $Dataset"
+Write-Host "  max depth: $EffectiveMaxDepth"
 
 Add-ReviewLine "Normal benchmark artifact bundle"
 Add-ReviewLine "-------------------------------"
@@ -504,6 +522,7 @@ else {
 & $SmallBenchmarkScript `
   -Label $Label `
   -Dataset $Dataset `
+  -MaxDepth $EffectiveMaxDepth `
   -Iterations $Iterations `
   -OutputDir $OutputDir `
   -PreviousLowSelectivityGapCsv $PreviousLowSelectivityGapCsv `
@@ -538,6 +557,7 @@ Add-ReviewLine "status: running"
 & $LowGapTrialsScript `
   -Label $Label `
   -Dataset $Dataset `
+  -MaxDepth $EffectiveMaxDepth `
   -Trials $Trials `
   -Iterations $Iterations `
   -OutputDir $OutputDir `
@@ -564,6 +584,7 @@ Add-ReviewLine ""
 Write-Host ""
 Write-Host "Running target workload trial summary"
 Write-Host "  dataset: $Dataset"
+Write-Host "  max depth: $EffectiveMaxDepth"
 Write-Host "  target workload: $TargetWorkloadName"
 
 Add-ReviewLine "Target workload trial summary"
