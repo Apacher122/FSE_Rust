@@ -1596,6 +1596,143 @@ FSE pruning is doing its job on the target workloads
 remaining target workload cost is primarily result ownership under the current owned Vector API
 ```
 
+## Count-only target timing baseline
+
+The count-only query API provides an exact query cardinality path without returning owned `Vector`
+results.
+
+The public count-only API is:
+
+```text
+count_query_matches
+count_query_matches_with_stats
+```
+
+This API preserves the same geometric pruning and exact predicate semantics as owned-result query
+execution. The difference is output representation:
+
+```text
+owned-result query:
+  returns Vec<Vector>
+
+count-only query:
+  returns exact matched record count
+  returns query execution stats when requested
+```
+
+The count-only target comparison measures the public count-only API against the owned-result API.
+This is different from the earlier resultless retained diagnostic:
+
+```text
+resultless retained diagnostic:
+  measures retained-leaf match counting after traversal is already available
+  debug-only
+  not a public query API
+
+count-only query timing:
+  includes root classification
+  includes traversal
+  includes retained-leaf exact evaluation
+  includes stats/report construction
+  public query API
+
+owned-result query timing:
+  includes root classification
+  includes traversal
+  includes retained-leaf exact evaluation
+  includes owned Vector result materialization
+```
+
+The small target workload baseline is:
+
+```text
+dataset: small
+target workload: cluster_boundary_range
+owned average elapsed: about 249ns
+count-only average elapsed: about 103ns
+estimated owned result overhead: about 146ns
+count-only speedup: about 2.42x
+owned matched records: 5
+count-only matched records: 5
+matched records agree: true
+owned candidate records: 10
+count-only candidate records: 10
+owned retained leaves: 2
+count-only retained leaves: 2
+owned visited nodes: 13
+count-only visited nodes: 13
+```
+
+The large target workload baseline is:
+
+```text
+dataset: large
+target workload: large_cross_cluster_boundary
+owned average elapsed: about 2.311us
+count-only average elapsed: about 389ns
+estimated owned result overhead: about 1.922us
+count-only speedup: about 5.94x
+owned matched records: 71
+count-only matched records: 71
+matched records agree: true
+owned candidate records: 78
+count-only candidate records: 78
+owned retained leaves: 10
+count-only retained leaves: 10
+owned visited nodes: 45
+count-only visited nodes: 45
+```
+
+The current interpretation is:
+
+```text
+count-only execution confirms that pruning and exact match counting are not the dominant target cost
+owned Vector materialization is the dominant target cost when many rows match
+the count-only API is a valid separate query mode, not a replacement for owned-result execution
+```
+
+Do not compare count-only timing against owned-result timing as if they answer the same application
+question. They represent different output contracts:
+
+```text
+use owned-result timing when the caller needs materialized rows
+use count-only timing when the caller only needs cardinality
+```
+
+Future benchmark reporting should keep these modes separate.
+
+Recommended future benchmark categories:
+
+```text
+owned-result benchmark:
+  measures full query materialization cost
+
+count-only benchmark:
+  measures exact cardinality cost without owned result materialization
+
+diagnostic retained benchmark:
+  measures internal retained-leaf work and should remain debug-only
+```
+
+Acceptance rule for count-only work:
+
+```text
+validation passes
+count-only matched records equal owned-result matched records
+count-only stats agree with owned-result structural stats where applicable
+owned-result API behavior remains unchanged
+large dataset uses max depth 16 by default
+small dataset uses max depth 8 by default
+performance claims use repeated-trial evidence
+```
+
+The current count-only baseline supports this design direction:
+
+```text
+FSE should expose separate query modes for separate output contracts
+result materialization should not be treated as unavoidable query-evaluation cost when the caller only needs a count
+```
+
 ## Leaf policy decision after repeated 8/8 versus 4/8 trials
 
 Commit 179 added a repeated-trial leaf policy runner to compare the current `8/8` policy against a tighter `4/8` policy.
