@@ -61,6 +61,22 @@ pub struct QueryExecutionReport {
     pub stats: QueryExecutionStats,
 }
 
+/// Count-only query result paired with execution statistics.
+///
+/// # Runtime Role
+///
+/// `QueryCountReport` exposes exact query cardinality without materializing
+/// owned result vectors. This keeps the same structural accounting as
+/// `QueryExecutionReport` while avoiding result ownership costs.
+#[derive(Clone, Debug, PartialEq)]
+pub struct QueryCountReport {
+    /// Number of exact records matched by the query.
+    pub matched_records: usize,
+
+    /// Runtime statistics for the count-only query.
+    pub stats: QueryExecutionStats,
+}
+
 /// Result of executing one retained leaf partition.
 ///
 /// # Runtime Role

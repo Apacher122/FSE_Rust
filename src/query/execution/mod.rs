@@ -6,6 +6,7 @@
 //! execution paths are split by responsibility.
 
 mod api;
+mod count;
 mod options;
 mod parallel;
 mod reports;
@@ -18,13 +19,15 @@ pub use api::{
     execute_query_with_stats_and_options,
 };
 
+pub use count::{count_query_matches, count_query_matches_with_stats};
+
 pub(crate) use api::execute_retained_leaf_batch_for_diagnostics;
 
 pub use options::{
     DEFAULT_PARALLEL_MIN_RETAINED_LEAVES, QueryExecutionMode, QueryExecutionOptions,
 };
 
-pub use reports::{QueryExecutionReport, QueryExecutionStats};
+pub use reports::{QueryCountReport, QueryExecutionReport, QueryExecutionStats};
 
 #[cfg(test)]
 pub(crate) use parallel::should_execute_retained_leaves_in_parallel;
