@@ -1,0 +1,183 @@
+# Benchmark Notes
+
+This directory contains the split benchmark documentation for the FSE Rust implementation.
+
+The original benchmark notes entry point remains:
+
+    dev_notes/benchmark_acceptance.md
+
+That file now acts as an index into these topic files.
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `acceptance-rules.md` | Core benchmark acceptance thresholds, revert rules, and performance decision rules. |
+| `datasets-and-targets.md` | Small and large dataset baselines, max-depth choices, and target workload names. |
+| `diagnostic-conclusions.md` | Boundary fixed-cost conclusions, retained execution conclusions, and result ownership conclusions. |
+| `count-only-workflow.md` | Count-only API timing, count-only summary artifacts, and count-only comparison artifacts. |
+| `review-workflow.md` | Low-gap review runner, target workload review, trial comparison commands, and expected review flow. |
+| `artifact-workflow.md` | Artifact organization, organized run folders, organized previous-label lookup, organized copy, and cleanup. |
+| `leaf-policy.md` | Leaf policy experiments and the current 8/8 policy conclusion. |
+
+## Current benchmark posture
+
+The benchmark workflow currently separates:
+
+    owned-result query execution
+    count-only query execution
+    debug-only retained execution diagnostics
+
+Owned-result timing answers materialized row-return performance.
+
+Count-only timing answers exact-cardinality performance.
+
+Debug-only retained diagnostics explain implementation costs but should not be treated as public API benchmark evidence.
+
+## Current benchmark phase
+
+The project is currently in the benchmarking, diagnostic tooling, and measurement-discipline phase.
+
+The core FSE implementation is already benchmarked against:
+
+    flat scan
+    KD-tree
+    R-tree
+
+The benchmark workflow now has:
+
+    owned-result query execution
+    count-only query execution
+    per-workload CSV metrics
+    count-only workload summary artifacts
+    count-only comparison artifacts
+    target workload diagnostics
+    small and large dataset review workflows
+    organized artifact management
+
+## Primary review files
+
+For acceptance and performance decisions, start with:
+
+    acceptance-rules.md
+
+For dataset configuration and target workload interpretation, use:
+
+    datasets-and-targets.md
+
+For why the current performance direction moved toward count-only/output-contract work, use:
+
+    diagnostic-conclusions.md
+
+For count-only query mode behavior and count-only artifact interpretation, use:
+
+    count-only-workflow.md
+
+For review commands and generated review artifacts, use:
+
+    review-workflow.md
+
+For organizing, copying, resolving, and cleaning benchmark artifacts, use:
+
+    artifact-workflow.md
+
+For leaf policy decisions, use:
+
+    leaf-policy.md
+
+## Preferred review commands
+
+Small dataset review:
+
+    .\scripts\run-low-gap-review.ps1 `
+      -Label "<label>" `
+      -PreviousLabel "<previous-label>" `
+      -Dataset "small" `
+      -Trials 5 `
+      -Iterations 10000
+
+Large dataset review:
+
+    .\scripts\run-low-gap-review.ps1 `
+      -Label "<label>" `
+      -PreviousLabel "<previous-label>" `
+      -Dataset "large" `
+      -Trials 5 `
+      -Iterations 10000
+
+Large dataset review with organized artifact copy:
+
+    .\scripts\run-low-gap-review.ps1 `
+      -Label "<label>" `
+      -PreviousLabel "<previous-label>" `
+      -Dataset "large" `
+      -Trials 5 `
+      -Iterations 10000 `
+      -CopyArtifactsToRunFolder
+
+## Current dataset defaults
+
+Small dataset:
+
+    max depth: 8
+    target workload: cluster_boundary_range
+    expected validation: pass
+
+Large dataset:
+
+    max depth: 16
+    target workload: large_cross_cluster_boundary
+    expected validation: pass
+
+Do not compare large-depth-8 artifacts against large-depth-16 artifacts as equivalent performance baselines.
+
+## Important benchmark rules
+
+Use repeated-trial evidence, not one noisy benchmark run.
+
+Reporting/tooling-only commits should be judged by artifact correctness, not timing movement alone.
+
+Performance commits should be accepted only when correctness is preserved and repeated-trial evidence supports the change.
+
+Owned-result benchmark conclusions must stay separate from count-only benchmark conclusions.
+
+Debug-only diagnostic timing should explain behavior, not replace public benchmark evidence.
+
+## Important count-only rule
+
+The most important count-only correctness field is:
+
+    all_stats_match_owned
+
+or, at row level:
+
+    count_only_stats_match_owned
+
+Count-only timing should be used as evidence only when the relevant stats match owned-result structural stats.
+
+## Important artifact rule
+
+The flat artifact root is useful for active comparison workflows.
+
+The organized run folder is useful for long-term inspection and cleanup.
+
+Flat root:
+
+    benchmark_artifacts/
+
+Organized run folder:
+
+    benchmark_artifacts/runs/<label>/
+
+Previous-label comparisons can resolve previous artifacts from either the flat root or organized run folders.
+
+## Current interpretation
+
+Current benchmark interpretation:
+
+    FSE pruning is doing its job on the target workloads
+    small boundary workload is near the fixed-cost floor under owned-result execution
+    large target confirms result materialization dominates retained execution
+    count-only query mode is a valid separate output contract
+    future traversal or boundary-specific optimizations need new evidence before being prioritized
+    
