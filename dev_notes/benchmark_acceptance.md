@@ -1854,6 +1854,119 @@ count-only performance should be reviewed as its own query mode
 owned Vector materialization remains part of owned-result query cost
 ```
 
+## Benchmark artifact organization workflow
+
+Benchmark reviews can produce many artifacts per run. The flat `benchmark_artifacts` directory is useful for active comparison workflows, but it becomes difficult to inspect once many labels have accumulated.
+
+The artifact organization helper is:
+
+```text
+scripts/organize-benchmark-artifacts.ps1
+```
+
+It groups recognized benchmark artifacts by label into:
+
+```text
+benchmark_artifacts/runs/<label>/
+```
+
+Example organized layout:
+
+```text
+benchmark_artifacts/
+  runs/
+    count-only-summary-notes-large-smoke/
+      benchmark-output-count-only-summary-notes-large-smoke.txt
+      debug-output-count-only-summary-notes-large-smoke.txt
+      workloads-count-only-summary-notes-large-smoke.csv
+      count-only-workload-summary-count-only-summary-notes-large-smoke.csv
+      count-only-workload-summary-count-only-summary-notes-large-smoke.txt
+      low-gap-review-notes-count-only-summary-notes-large-smoke.txt
+      low-gap-review-manifest-count-only-summary-notes-large-smoke.txt
+```
+
+The safest first use is dry-run mode:
+
+```powershell
+.\scripts\organize-benchmark-artifacts.ps1 -DryRun
+```
+
+The recommended normal use is copy mode:
+
+```powershell
+.\scripts\organize-benchmark-artifacts.ps1 -Copy
+```
+
+Copy mode creates organized folders while preserving the flat artifact root. This is the safest mode because current previous-label comparison workflows expect previous artifacts to remain in the selected `OutputDir`.
+
+Use move mode only when old artifacts no longer need to be discovered through the flat `benchmark_artifacts` directory:
+
+```powershell
+.\scripts\organize-benchmark-artifacts.ps1
+```
+
+Organize a single label with:
+
+```powershell
+.\scripts\organize-benchmark-artifacts.ps1 `
+  -Label "<label>" `
+  -Copy
+```
+
+Use `-Force` only when intentionally overwriting already-organized artifacts:
+
+```powershell
+.\scripts\organize-benchmark-artifacts.ps1 `
+  -Copy `
+  -Force
+```
+
+Important comparison rule:
+
+```text
+previous-label comparisons expect previous artifacts to be in the selected OutputDir
+```
+
+That means this works with the current flat layout:
+
+```powershell
+.\scripts\run-low-gap-review.ps1 `
+  -Label "current-review" `
+  -PreviousLabel "previous-review" `
+  -Dataset "large" `
+  -Trials 5 `
+  -Iterations 10000
+```
+
+But if previous artifacts were moved into:
+
+```text
+benchmark_artifacts/runs/previous-review/
+```
+
+then `-PreviousLabel "previous-review"` will not find them unless the review is run with a matching `OutputDir` or explicit previous artifact paths.
+
+Use `-Copy` when preserving comparison compatibility matters.
+
+Use move mode for archival cleanup only after the run is no longer needed as an implicit `-PreviousLabel` baseline.
+
+Recommended cleanup workflow:
+
+```text
+1. Run benchmark review normally.
+2. Inspect review notes and manifests.
+3. Run organize script with -DryRun.
+4. Run organize script with -Copy.
+5. Keep flat artifacts while the label may be used for comparisons.
+6. Move or archive older labels only after they are no longer active baselines.
+```
+
+The organization script recognizes normal benchmark artifacts, low-gap artifacts, target workload artifacts, count-only artifacts, review manifests, review notes, and repeated-trial folders.
+
+Unrecognized files are left in place. This prevents accidental movement of manually-created notes, temporary files, or unrelated data.
+
+Artifact organization is a storage-management concern only. It should not be used as benchmark evidence by itself.
+
 ## Leaf policy decision after repeated 8/8 versus 4/8 trials
 
 Commit 179 added a repeated-trial leaf policy runner to compare the current `8/8` policy against a tighter `4/8` policy.
