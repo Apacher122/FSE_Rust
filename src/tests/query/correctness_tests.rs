@@ -1,7 +1,10 @@
-use crate::benchmark::flat_scan;
+use crate::benchmark::{
+    QueryWorkloadCase, clustered_points_2d, clustered_workload_cases, flat_scan,
+    large_clustered_points_2d, large_clustered_workload_cases,
+};
 use crate::build::{BuildConfig, FSEBuilder};
 use crate::math::Vector;
-use crate::query::{QueryRegion, execute_query};
+use crate::query::{QueryRegion, count_query_matches, execute_query};
 use crate::tests::support::sort_points;
 
 #[test]
@@ -95,4 +98,51 @@ fn fse_query_matches_linear_scan_for_non_diagonal_region() {
     sort_points(&mut scan_results);
 
     assert_eq!(fse_results, scan_results);
+}
+
+fn assert_fse_matches_flat_scan_for_benchmark_workloads(
+    points: &[Vector],
+    max_depth: usize,
+    workloads: &[QueryWorkloadCase],
+) {
+    let builder = FSEBuilder::new(BuildConfig::new(8, max_depth).with_target_leaf_size(8));
+    let index = builder.build(points);
+
+    for workload in workloads {
+        let mut fse_results = execute_query(&index, &workload.query);
+        let mut expected_results = flat_scan(points, &workload.query);
+        let count_only_matches = count_query_matches(&index, &workload.query);
+
+        sort_points(&mut fse_results);
+        sort_points(&mut expected_results);
+
+        assert_eq!(
+            fse_results, expected_results,
+            "FSE owned-result query differed from flat scan for workload `{}`",
+            workload.name
+        );
+
+        assert_eq!(
+            count_only_matches,
+            expected_results.len(),
+            "FSE count-only query differed from flat scan cardinality for workload `{}`",
+            workload.name
+        );
+    }
+}
+
+#[test]
+fn fse_query_matches_flat_scan_for_small_benchmark_workloads() {
+    let points = clustered_points_2d();
+    let workloads = clustered_workload_cases();
+
+    assert_fse_matches_flat_scan_for_benchmark_workloads(&points, 8, &workloads);
+}
+
+#[test]
+fn fse_query_matches_flat_scan_for_large_benchmark_workloads() {
+    let points = large_clustered_points_2d();
+    let workloads = large_clustered_workload_cases();
+
+    assert_fse_matches_flat_scan_for_benchmark_workloads(&points, 16, &workloads);
 }

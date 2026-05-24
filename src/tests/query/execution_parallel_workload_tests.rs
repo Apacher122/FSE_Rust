@@ -4,7 +4,7 @@ use crate::benchmark::flat_scan;
 use crate::query::{
     QueryExecutionOptions, execute_query_with_options, execute_query_with_stats_and_options,
 };
-use crate::tests::support::{small_benchmark_fixture, sort_points};
+use crate::tests::support::{large_benchmark_fixture, small_benchmark_fixture, sort_points};
 
 #[test]
 fn parallel_query_reports_match_serial_reports_for_benchmark_workloads() {
@@ -184,6 +184,56 @@ fn parallel_query_reports_preserve_candidate_accounting_for_benchmark_workloads(
         assert!(
             report.stats.retained_leaf_ratio >= 0.0 && report.stats.retained_leaf_ratio <= 1.0,
             "parallel retained leaf ratio must be bounded for workload `{}`",
+            workload.name
+        );
+    }
+}
+
+#[test]
+fn forced_parallel_query_reports_match_serial_reports_for_large_benchmark_workloads() {
+    let fixture = large_benchmark_fixture();
+    let parallel_options = QueryExecutionOptions::parallel().with_parallel_min_retained_leaves(0);
+
+    assert!(
+        !fixture.workloads.is_empty(),
+        "large benchmark fixture should include workload cases"
+    );
+
+    for workload in &fixture.workloads {
+        let serial_report = execute_query_with_stats_and_options(
+            &fixture.index,
+            &workload.query,
+            QueryExecutionOptions::serial(),
+        );
+
+        let parallel_report =
+            execute_query_with_stats_and_options(&fixture.index, &workload.query, parallel_options);
+
+        assert_eq!(
+            parallel_report, serial_report,
+            "forced parallel report differed from serial report for large workload `{}`",
+            workload.name
+        );
+    }
+}
+
+#[test]
+fn forced_parallel_query_results_match_flat_scan_for_large_benchmark_workloads() {
+    let fixture = large_benchmark_fixture();
+    let parallel_options = QueryExecutionOptions::parallel().with_parallel_min_retained_leaves(0);
+
+    for workload in &fixture.workloads {
+        let mut expected = flat_scan(&fixture.points, &workload.query);
+
+        let mut parallel_results =
+            execute_query_with_options(&fixture.index, &workload.query, parallel_options);
+
+        sort_points(&mut expected);
+        sort_points(&mut parallel_results);
+
+        assert_eq!(
+            parallel_results, expected,
+            "forced parallel FSE results differed from flat scan for large workload `{}`",
             workload.name
         );
     }

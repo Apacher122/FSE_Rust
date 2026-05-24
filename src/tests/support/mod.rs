@@ -3,7 +3,8 @@ use crate::benchmark::baselines::{BaselineKind, BaselineRegistry, RangeQueryBase
 use crate::benchmark::reports::RepeatedTimingConfig;
 use crate::benchmark::sort_points_lexicographically;
 use crate::benchmark::workloads::{
-    QueryWorkloadCase, clustered_points_2d, clustered_workload_cases,
+    QueryWorkloadCase, clustered_points_2d, clustered_workload_cases, large_clustered_points_2d,
+    large_clustered_workload_cases,
 };
 use crate::build::{BuildConfig, FSEBuilder};
 use crate::math::Vector;
@@ -24,6 +25,24 @@ pub fn small_benchmark_fixture() -> BenchmarkTestFixture {
     let points = clustered_points_2d();
     let index = build_test_index(&points);
     let workloads = clustered_workload_cases();
+    let timing_config = RepeatedTimingConfig::new(3);
+    let registry = BaselineRegistry::new();
+
+    BenchmarkTestFixture {
+        points,
+        index,
+        workloads,
+        timing_config,
+        registry,
+    }
+}
+
+/// Builds the standard large benchmark fixture used by query workload tests.
+pub fn large_benchmark_fixture() -> BenchmarkTestFixture {
+    let points = large_clustered_points_2d();
+    let builder = FSEBuilder::new(BuildConfig::new(8, 16).with_target_leaf_size(8));
+    let index = builder.build(&points);
+    let workloads = large_clustered_workload_cases();
     let timing_config = RepeatedTimingConfig::new(3);
     let registry = BaselineRegistry::new();
 

@@ -1,3 +1,8 @@
+use crate::benchmark::{
+    QueryWorkloadCase, clustered_points_2d, clustered_workload_cases, large_clustered_points_2d,
+    large_clustered_workload_cases,
+};
+use crate::build::{BuildConfig, FSEBuilder};
 use crate::math::{BoundingBox, ResidualBlock, Vector};
 use crate::query::{
     QueryRegion, count_query_matches, count_query_matches_with_stats, execute_query,
@@ -114,4 +119,47 @@ fn count_query_matches_with_stats_uses_root_coverage_without_owned_results() {
     assert_eq!(report.stats.reconstructed_records, 4);
     assert_eq!(report.stats.matched_records, 4);
     assert_eq!(report.stats.candidate_ratio, 1.0);
+}
+
+fn assert_count_only_matches_owned_for_benchmark_workloads(
+    points: &[Vector],
+    max_depth: usize,
+    workloads: &[QueryWorkloadCase],
+) {
+    let builder = FSEBuilder::new(BuildConfig::new(8, max_depth).with_target_leaf_size(8));
+    let index = builder.build(points);
+
+    for workload in workloads {
+        let count_report = count_query_matches_with_stats(&index, &workload.query);
+        let owned_report = execute_query_with_stats(&index, &workload.query);
+
+        assert_eq!(
+            count_report.matched_records,
+            owned_report.results.len(),
+            "count-only matched record count should match owned result length for workload `{}`",
+            workload.name
+        );
+
+        assert_eq!(
+            count_report.stats, owned_report.stats,
+            "count-only stats should match owned execution stats for workload `{}`",
+            workload.name
+        );
+    }
+}
+
+#[test]
+fn count_query_matches_with_stats_matches_owned_stats_for_small_benchmark_workloads() {
+    let points = clustered_points_2d();
+    let workloads = clustered_workload_cases();
+
+    assert_count_only_matches_owned_for_benchmark_workloads(&points, 8, &workloads);
+}
+
+#[test]
+fn count_query_matches_with_stats_matches_owned_stats_for_large_benchmark_workloads() {
+    let points = large_clustered_points_2d();
+    let workloads = large_clustered_workload_cases();
+
+    assert_count_only_matches_owned_for_benchmark_workloads(&points, 16, &workloads);
 }
