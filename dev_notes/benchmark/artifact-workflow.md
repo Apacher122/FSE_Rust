@@ -10,7 +10,7 @@ The flat artifact root is:
 
 ```text
 benchmark_artifacts/
-````
+```
 
 The organized run layout is:
 

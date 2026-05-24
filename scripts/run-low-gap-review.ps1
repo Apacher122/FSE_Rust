@@ -17,6 +17,8 @@ param(
   [switch]$SkipTargetWorkloadReview,
   [switch]$CopyArtifactsToRunFolder,
   [switch]$ForceOrganizedArtifacts,
+  [switch]$ValidateArtifacts,
+  [switch]$RequireValidatedComparisons,
   [double]$NoiseThreshold = 0.03
 )
 
@@ -65,6 +67,7 @@ $CountOnlyComparatorScript = Join-Path $ScriptDirectory "compare-count-only-work
 $TargetSummaryScript = Join-Path $ScriptDirectory "summarize-target-workload-trials.ps1"
 $TargetComparatorScript = Join-Path $ScriptDirectory "compare-target-workload-summary.ps1"
 $ArtifactOrganizerScript = Join-Path $ScriptDirectory "organize-benchmark-artifacts.ps1"
+$ArtifactValidatorScript = Join-Path $ScriptDirectory "validate-benchmark-review-artifacts.ps1"
 
 $OrganizedRunRoot = Join-Path $OutputDir "runs"
 
@@ -366,6 +369,8 @@ function Write-ReviewManifest {
   Add-Utf8Text -Path $ReviewManifestPath -Text "Target workload: $TargetWorkloadName`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Copy artifacts to run folder: $CopyArtifactsToRunFolder`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Force organized artifacts: $ForceOrganizedArtifacts`r`n"
+  Add-Utf8Text -Path $ReviewManifestPath -Text "Validate artifacts: $ValidateArtifacts`r`n"
+  Add-Utf8Text -Path $ReviewManifestPath -Text "Require validated comparisons: $RequireValidatedComparisons`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Noise threshold: +/- $(Format-InvariantDouble -Value $NoiseThreshold)`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "state | artifact | path | note`r`n"
@@ -535,6 +540,10 @@ if ($CopyArtifactsToRunFolder) {
   Require-Script -Path $ArtifactOrganizerScript
 }
 
+if ($ValidateArtifacts) {
+  Require-Script -Path $ArtifactValidatorScript
+}
+
 $PreviousLowSelectivityGapCsv = Resolve-OptionalPreviousPath `
   -ExplicitPath $PreviousLowSelectivityGapCsv `
   -DefaultPath (Join-Path $OutputDir "low-selectivity-gap-$PreviousLabel.csv")
@@ -578,6 +587,8 @@ Add-ReviewLine "Target workload review skipped: $SkipTargetWorkloadReview"
 Add-ReviewLine "Target workload name: $TargetWorkloadName"
 Add-ReviewLine "Copy artifacts to run folder: $CopyArtifactsToRunFolder"
 Add-ReviewLine "Force organized artifacts: $ForceOrganizedArtifacts"
+Add-ReviewLine "Validate artifacts: $ValidateArtifacts"
+Add-ReviewLine "Require validated comparisons: $RequireValidatedComparisons"
 Add-ReviewLine "Previous low-selectivity gap CSV: $PreviousLowSelectivityGapCsv"
 Add-ReviewLine "Previous aggregate trial summary CSV: $PreviousTrialSummaryCsv"
 Add-ReviewLine "Previous workload trial summary CSV: $PreviousWorkloadSummaryCsv"
@@ -1042,6 +1053,40 @@ if ($CopyArtifactsToRunFolder) {
     -LiteralPath $ReviewNotesPath `
     -Destination (Join-Path $OrganizedRunDirectory (Split-Path -Leaf $ReviewNotesPath)) `
     -Force
+}
+
+if ($ValidateArtifacts) {
+  Add-ReviewLine ""
+  Add-ReviewLine "Review artifact validation"
+  Add-ReviewLine "--------------------------"
+  Add-ReviewLine "status: running"
+
+  Write-Host ""
+  Write-Host "Validating review artifacts"
+  Write-Host "  label: $Label"
+
+  $ValidatorArguments = @{
+    Label          = $Label
+    OutputDir      = $OutputDir
+    ExpectedTrials = $Trials
+  }
+
+  if ($RequireValidatedComparisons) {
+    $ValidatorArguments["RequireComparisons"] = $true
+  }
+
+  if ($SkipTargetWorkloadReview) {
+    $ValidatorArguments["AllowSkippedTargetWorkloadReview"] = $true
+  }
+
+  & $ArtifactValidatorScript @ValidatorArguments
+
+  if ($LASTEXITCODE -ne 0) {
+    Add-ReviewLine "status: failed"
+    throw "review artifact validation failed with exit code $LASTEXITCODE"
+  }
+
+  Add-ReviewLine "status: completed"
 }
 
 Write-Host ""

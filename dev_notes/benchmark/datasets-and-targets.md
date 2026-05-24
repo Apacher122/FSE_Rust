@@ -13,7 +13,7 @@ Supported datasets:
 ```text
 small
 large
-````
+```
 
 The small dataset baseline is:
 

@@ -27,7 +27,7 @@ count-only query execution:
 
 owned-result query execution:
   public materialized Vec<Vector> query API
-````
+```
 
 The main conclusion so far is:
 

@@ -14,7 +14,7 @@ The benchmark workflow compares FSE against:
 flat_scan
 kd_tree
 r_tree
-````
+```
 
 The benchmark workflow now tracks two separate FSE output contracts:
 

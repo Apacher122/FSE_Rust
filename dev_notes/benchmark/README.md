@@ -85,6 +85,18 @@ For leaf policy decisions, use:
 
     leaf-policy.md
 
+## Documentation validation
+
+After editing the split benchmark notes, run:
+
+    .\scripts\check-benchmark-docs.ps1
+
+The check validates the markdown files under:
+
+    dev_notes/benchmark/
+
+It catches malformed code fences and unclosed code fences before the notes are committed.
+
 ## Preferred review commands
 
 Small dataset review:
@@ -180,4 +192,3 @@ Current benchmark interpretation:
     large target confirms result materialization dominates retained execution
     count-only query mode is a valid separate output contract
     future traversal or boundary-specific optimizations need new evidence before being prioritized
-    
