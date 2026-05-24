@@ -1854,6 +1854,157 @@ count-only performance should be reviewed as its own query mode
 owned Vector materialization remains part of owned-result query cost
 ```
 
+## Count-only comparison artifact workflow
+
+The review workflow can compare count-only summary artifacts across labels.
+
+The count-only comparison artifacts are:
+
+```text
+count-only-workload-summary-comparison-<label>.csv
+count-only-workload-summary-comparison-<label>.txt
+```
+
+These artifacts are generated when the current review can find a previous count-only workload summary.
+
+The previous summary is resolved through the normal previous-label lookup rules:
+
+```text
+1. explicit previous count-only summary path, when provided
+2. flat OutputDir artifact path
+3. organized run folder at OutputDir/runs/<previous-label>/
+```
+
+Example review command:
+
+```powershell
+.\scripts\run-low-gap-review.ps1 `
+  -Label "current-review" `
+  -PreviousLabel "previous-review" `
+  -Dataset "large" `
+  -Trials 5 `
+  -Iterations 10000
+```
+
+The comparison CSV is machine-readable. It compares rows by:
+
+```text
+baseline_name
+selectivity_bucket
+```
+
+The comparison CSV includes:
+
+```text
+previous_workload_count
+current_workload_count
+previous_all_stats_match_owned
+current_all_stats_match_owned
+previous_weighted_count_only_speedup_ratio
+current_weighted_count_only_speedup_ratio
+weighted_count_only_speedup_delta
+weighted_count_only_speedup_classification
+previous_mean_count_only_average_elapsed_ns
+current_mean_count_only_average_elapsed_ns
+mean_count_only_average_elapsed_delta_ns
+mean_count_only_average_elapsed_classification
+previous_mean_owned_average_elapsed_ns
+current_mean_owned_average_elapsed_ns
+mean_owned_average_elapsed_delta_ns
+previous_mean_owned_result_overhead_ns
+current_mean_owned_result_overhead_ns
+mean_owned_result_overhead_delta_ns
+```
+
+The comparison notes file is the human-readable review artifact. It includes:
+
+```text
+row coverage
+stats agreement
+low-selectivity speedup movement
+per-baseline low-selectivity movement
+interpretation guidance
+```
+
+The most important correctness condition is:
+
+```text
+all compared rows match owned-result structural stats in both summaries: true
+```
+
+If this is false, do not use count-only timing movement as performance evidence until the mismatch is explained.
+
+Count-only comparison classifications are separate from owned-result benchmark classifications.
+
+Interpretation rules:
+
+```text
+weighted count-only speedup classification:
+  higher is better
+
+mean count-only elapsed classification:
+  lower is better
+
+owned-result low-gap classification:
+  separate benchmark mode
+  do not mix with count-only movement
+```
+
+A count-only comparison can improve while owned-result timing regresses, or owned-result timing can improve while count-only movement is stable. These are different output contracts and should be reviewed separately.
+
+Use count-only comparison artifacts for:
+
+```text
+count-only query mode movement
+cardinality-only workload evaluation
+result materialization overhead tracking
+checking whether count-only improvements persist across labels
+```
+
+Do not use count-only comparison artifacts for:
+
+```text
+claiming owned-result query speedups
+claiming materialized row-return performance improved
+accepting traversal changes without owned-result benchmark evidence
+```
+
+Low-selectivity rows are usually the most useful count-only comparison rows because they preserve selective query behavior while removing owned result construction.
+
+Full-selectivity rows should be interpreted carefully. They can produce very large count-only speedups because count-only root coverage can return total cardinality without materializing all owned `Vector` results.
+
+Acceptance rule for count-only comparison artifacts:
+
+```text
+benchmark validation passes
+leaf cardinality validation passes
+comparison row coverage is complete
+missing previous rows is 0
+missing current rows is 0
+previous_all_stats_match_owned is true
+current_all_stats_match_owned is true
+low-selectivity rows are reviewed separately from full-selectivity rows
+count-only conclusions remain separate from owned-result conclusions
+```
+
+Recommended review order when count-only comparison artifacts exist:
+
+```text
+1. Check normal benchmark validation.
+2. Check owned-result low-gap and target workload artifacts.
+3. Check count-only workload summary notes.
+4. Check count-only comparison notes.
+5. Use count-only comparison CSV only when row-level machine-readable detail is needed.
+```
+
+The current benchmark interpretation is:
+
+```text
+owned-result review answers materialized query performance
+count-only review answers exact-cardinality query performance
+count-only comparison artifacts track count-only movement across labels
+```
+
 ## Benchmark artifact organization workflow
 
 Benchmark reviews can produce many artifacts per run. The flat `benchmark_artifacts` directory is useful for active comparison workflows, but it becomes difficult to inspect once many labels have accumulated.
