@@ -15,6 +15,8 @@ param(
   [string]$TargetWorkloadName = "",
   [string]$PreviousTargetSummaryCsv = "",
   [switch]$SkipTargetWorkloadReview,
+  [switch]$CopyArtifactsToRunFolder,
+  [switch]$ForceOrganizedArtifacts,
   [double]$NoiseThreshold = 0.03
 )
 
@@ -62,6 +64,16 @@ $WorkloadComparatorScript = Join-Path $ScriptDirectory "compare-low-gap-workload
 $CountOnlyComparatorScript = Join-Path $ScriptDirectory "compare-count-only-workload-summary.ps1"
 $TargetSummaryScript = Join-Path $ScriptDirectory "summarize-target-workload-trials.ps1"
 $TargetComparatorScript = Join-Path $ScriptDirectory "compare-target-workload-summary.ps1"
+$ArtifactOrganizerScript = Join-Path $ScriptDirectory "organize-benchmark-artifacts.ps1"
+
+$OrganizedRunRoot = Join-Path $OutputDir "runs"
+
+if ([string]::IsNullOrWhiteSpace($PreviousLabel)) {
+  $PreviousOrganizedRunDirectory = ""
+}
+else {
+  $PreviousOrganizedRunDirectory = Join-Path $OrganizedRunRoot $PreviousLabel
+}
 
 $ReviewNotesPath = Join-Path $OutputDir "low-gap-review-notes-$Label.txt"
 $ReviewManifestPath = Join-Path $OutputDir "low-gap-review-manifest-$Label.txt"
@@ -134,11 +146,24 @@ function Resolve-OptionalPreviousPath {
     return $ExplicitPath
   }
 
-  if (![string]::IsNullOrWhiteSpace($PreviousLabel)) {
+  if ([string]::IsNullOrWhiteSpace($PreviousLabel)) {
+    return ""
+  }
+
+  if (Test-Path -LiteralPath $DefaultPath) {
     return $DefaultPath
   }
 
-  return ""
+  if (![string]::IsNullOrWhiteSpace($PreviousOrganizedRunDirectory)) {
+    $FileName = Split-Path -Leaf $DefaultPath
+    $OrganizedPath = Join-Path $PreviousOrganizedRunDirectory $FileName
+
+    if (Test-Path -LiteralPath $OrganizedPath) {
+      return $OrganizedPath
+    }
+  }
+
+  return $DefaultPath
 }
 
 function Get-InputStatus {
@@ -330,11 +355,17 @@ function Write-ReviewManifest {
   Add-Utf8Text -Path $ReviewManifestPath -Text "================================`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Label: $Label`r`n"
+  Add-Utf8Text -Path $ReviewManifestPath -Text "Previous label: $PreviousLabel`r`n"
+  Add-Utf8Text -Path $ReviewManifestPath -Text "Dataset: $Dataset`r`n"
+  Add-Utf8Text -Path $ReviewManifestPath -Text "Organized run root: $OrganizedRunRoot`r`n"
+  Add-Utf8Text -Path $ReviewManifestPath -Text "Previous organized run directory: $PreviousOrganizedRunDirectory`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Dataset: $Dataset`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Max depth: $EffectiveMaxDepth`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Trials: $Trials`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Iterations: $Iterations`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Target workload: $TargetWorkloadName`r`n"
+  Add-Utf8Text -Path $ReviewManifestPath -Text "Copy artifacts to run folder: $CopyArtifactsToRunFolder`r`n"
+  Add-Utf8Text -Path $ReviewManifestPath -Text "Force organized artifacts: $ForceOrganizedArtifacts`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Noise threshold: +/- $(Format-InvariantDouble -Value $NoiseThreshold)`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "state | artifact | path | note`r`n"
@@ -500,6 +531,10 @@ if (!$SkipTargetWorkloadReview) {
   Require-Script -Path $TargetComparatorScript
 }
 
+if ($CopyArtifactsToRunFolder) {
+  Require-Script -Path $ArtifactOrganizerScript
+}
+
 $PreviousLowSelectivityGapCsv = Resolve-OptionalPreviousPath `
   -ExplicitPath $PreviousLowSelectivityGapCsv `
   -DefaultPath (Join-Path $OutputDir "low-selectivity-gap-$PreviousLabel.csv")
@@ -536,9 +571,13 @@ Add-ReviewLine "Max depth: $EffectiveMaxDepth"
 Add-ReviewLine "Trials: $Trials"
 Add-ReviewLine "Iterations: $Iterations"
 Add-ReviewLine "Output directory: $OutputDir"
+Add-ReviewLine "Organized run root: $OrganizedRunRoot"
+Add-ReviewLine "Previous organized run directory: $PreviousOrganizedRunDirectory"
 Add-ReviewLine "Noise threshold: +/- $(Format-InvariantDouble -Value $NoiseThreshold)"
 Add-ReviewLine "Target workload review skipped: $SkipTargetWorkloadReview"
 Add-ReviewLine "Target workload name: $TargetWorkloadName"
+Add-ReviewLine "Copy artifacts to run folder: $CopyArtifactsToRunFolder"
+Add-ReviewLine "Force organized artifacts: $ForceOrganizedArtifacts"
 Add-ReviewLine "Previous low-selectivity gap CSV: $PreviousLowSelectivityGapCsv"
 Add-ReviewLine "Previous aggregate trial summary CSV: $PreviousTrialSummaryCsv"
 Add-ReviewLine "Previous workload trial summary CSV: $PreviousWorkloadSummaryCsv"
@@ -964,7 +1003,52 @@ Add-ReviewLine "Do not accept a performance commit based on one noisy single-run
 
 Write-ReviewManifest
 
+if ($CopyArtifactsToRunFolder) {
+  $OrganizedRunDirectory = Join-Path $OrganizedRunRoot $Label
+
+  Add-ReviewLine ""
+  Add-ReviewLine "Organized artifact copy"
+  Add-ReviewLine "-----------------------"
+  Add-ReviewLine "status: running"
+  Add-ReviewLine "destination: $OrganizedRunDirectory"
+  Add-ReviewLine "force: $ForceOrganizedArtifacts"
+
+  Write-Host ""
+  Write-Host "Copying current review artifacts to organized run folder"
+  Write-Host "  label: $Label"
+  Write-Host "  destination: $OrganizedRunDirectory"
+
+  $OrganizerArguments = @{
+    ArtifactRoot = $OutputDir
+    Label        = $Label
+    Copy         = $true
+  }
+
+  if ($ForceOrganizedArtifacts) {
+    $OrganizerArguments["Force"] = $true
+  }
+
+  & $ArtifactOrganizerScript @OrganizerArguments
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "organized artifact copy failed with exit code $LASTEXITCODE"
+  }
+
+  Add-ReviewLine "status: completed"
+
+  New-Item -ItemType Directory -Force -Path $OrganizedRunDirectory | Out-Null
+
+  Copy-Item `
+    -LiteralPath $ReviewNotesPath `
+    -Destination (Join-Path $OrganizedRunDirectory (Split-Path -Leaf $ReviewNotesPath)) `
+    -Force
+}
+
 Write-Host ""
 Write-Host "Low-gap review complete:"
 Write-Host "  $ReviewNotesPath"
 Write-Host "  $ReviewManifestPath"
+
+if ($CopyArtifactsToRunFolder) {
+  Write-Host "  organized run folder: $(Join-Path $OrganizedRunRoot $Label)"
+}

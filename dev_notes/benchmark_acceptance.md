@@ -1924,7 +1924,7 @@ Use `-Force` only when intentionally overwriting already-organized artifacts:
 Important comparison rule:
 
 ```text
-previous-label comparisons expect previous artifacts to be in the selected OutputDir
+previous-label comparisons search the flat OutputDir first, then OutputDir/runs/<previous-label>/
 ```
 
 That means this works with the current flat layout:
@@ -1938,17 +1938,23 @@ That means this works with the current flat layout:
   -Iterations 10000
 ```
 
-But if previous artifacts were moved into:
+It also works when previous artifacts have been organized into:
 
 ```text
 benchmark_artifacts/runs/previous-review/
 ```
 
-then `-PreviousLabel "previous-review"` will not find them unless the review is run with a matching `OutputDir` or explicit previous artifact paths.
+The review runner resolves previous artifacts in this order:
 
-Use `-Copy` when preserving comparison compatibility matters.
+```text
+1. explicit previous artifact path, when provided
+2. flat OutputDir path for the previous label
+3. organized run directory at OutputDir/runs/<previous-label>/
+```
 
-Use move mode for archival cleanup only after the run is no longer needed as an implicit `-PreviousLabel` baseline.
+Use `-Copy` when you want both layouts available. This is the safest mode while a label is still an active baseline.
+
+Move mode is acceptable once the review runner can resolve previous artifacts from organized run folders. The flat root may still be more convenient for quick manual inspection, while the organized run folder is better for long-term storage.
 
 Recommended cleanup workflow:
 
@@ -1966,6 +1972,212 @@ The organization script recognizes normal benchmark artifacts, low-gap artifacts
 Unrecognized files are left in place. This prevents accidental movement of manually-created notes, temporary files, or unrelated data.
 
 Artifact organization is a storage-management concern only. It should not be used as benchmark evidence by itself.
+
+## Organized previous-label resolution
+
+The review runner can resolve previous-label artifacts from both the flat artifact directory and organized run folders.
+
+When a review command uses:
+
+```powershell
+.\scripts\run-low-gap-review.ps1 `
+  -Label "current-review" `
+  -PreviousLabel "previous-review" `
+  -Dataset "large" `
+  -Trials 5 `
+  -Iterations 10000
+```
+
+the previous artifact lookup order is:
+
+```text
+1. explicit previous artifact path, when provided
+2. flat OutputDir artifact path
+3. organized run folder at OutputDir/runs/<previous-label>/
+```
+
+Example flat artifact path:
+
+```text
+benchmark_artifacts/count-only-workload-summary-previous-review.csv
+```
+
+Example organized artifact path:
+
+```text
+benchmark_artifacts/runs/previous-review/count-only-workload-summary-previous-review.csv
+```
+
+The review runner checks the flat artifact path first. If the flat artifact exists, it uses that path even if an organized copy also exists.
+
+This means a smoke run with both flat and organized copies proves that flat previous-label resolution still works, but it does not prove organized fallback by itself.
+
+To prove organized fallback, the flat previous artifacts must be absent or the review must use an `OutputDir` where only the organized run folder exists.
+
+Safe fallback test pattern:
+
+```text
+1. Copy the previous label into benchmark_artifacts/runs/<previous-label>/.
+2. Move or rename the flat previous artifacts temporarily.
+3. Run the review with -PreviousLabel "<previous-label>".
+4. Confirm the review notes show resolved paths under benchmark_artifacts/runs/<previous-label>/.
+5. Restore the flat artifacts if needed.
+```
+
+Example organization command:
+
+```powershell
+.\scripts\organize-benchmark-artifacts.ps1 `
+  -Label "previous-review" `
+  -Copy `
+  -Force
+```
+
+Example fallback review command:
+
+```powershell
+.\scripts\run-low-gap-review.ps1 `
+  -Label "organized-fallback-smoke" `
+  -PreviousLabel "previous-review" `
+  -Dataset "large" `
+  -Trials 1 `
+  -Iterations 1000
+```
+
+The review notes and manifest include:
+
+```text
+Organized run root: benchmark_artifacts\runs
+Previous organized run directory: benchmark_artifacts\runs\<previous-label>
+```
+
+When fallback succeeds, the previous input resolved paths should point into:
+
+```text
+benchmark_artifacts\runs\<previous-label>\
+```
+
+Do not assume organized fallback was tested if the resolved previous paths still point to the flat artifact root.
+
+Recommended usage:
+
+```text
+use flat artifacts for active baselines
+use organized copies for easier inspection
+use organized fallback for archived baselines
+use explicit previous artifact paths when comparing across custom OutputDir layouts
+```
+
+This keeps old benchmark labels usable after artifact cleanup while preserving the simple flat-folder workflow for active development.
+
+## Optional organized artifact copy during review
+
+The review runner can optionally copy the current review artifacts into an organized run folder after the review completes.
+
+The default behavior remains unchanged:
+
+```text
+benchmark artifacts are written to the flat OutputDir
+```
+
+The optional organized copy behavior also writes a copy to:
+
+```text
+OutputDir/runs/<label>/
+```
+
+Use this when a run should remain easy to inspect by label while preserving the flat artifact layout for active comparisons.
+
+Default review command:
+
+```powershell
+.\scripts\run-low-gap-review.ps1 `
+  -Label "<label>" `
+  -Dataset "large" `
+  -Trials 5 `
+  -Iterations 10000
+```
+
+Organized-copy review command:
+
+```powershell
+.\scripts\run-low-gap-review.ps1 `
+  -Label "<label>" `
+  -Dataset "large" `
+  -Trials 5 `
+  -Iterations 10000 `
+  -CopyArtifactsToRunFolder
+```
+
+If re-running the same label and intentionally overwriting the organized copy, use:
+
+```powershell
+.\scripts\run-low-gap-review.ps1 `
+  -Label "<label>" `
+  -Dataset "large" `
+  -Trials 5 `
+  -Iterations 10000 `
+  -CopyArtifactsToRunFolder `
+  -ForceOrganizedArtifacts
+```
+
+The organized copy is useful because it creates a per-run folder like:
+
+```text
+benchmark_artifacts/
+  runs/
+    <label>/
+      benchmark-output-<label>.txt
+      debug-output-<label>.txt
+      summary-<label>.csv
+      workloads-<label>.csv
+      count-only-workload-summary-<label>.csv
+      count-only-workload-summary-<label>.txt
+      low-gap-review-notes-<label>.txt
+      low-gap-review-manifest-<label>.txt
+      low-gap-trials-<label>/
+```
+
+The review notes record whether organized copying was requested:
+
+```text
+Copy artifacts to run folder: True
+Force organized artifacts: False
+```
+
+When organized copying is enabled, the review notes also include:
+
+```text
+Organized artifact copy
+-----------------------
+status: running
+destination: benchmark_artifacts\runs\<label>
+force: False
+status: completed
+```
+
+The organized copy should include the final completed review notes. If checking this manually, confirm that both files contain `status: completed`:
+
+```powershell
+Select-String `
+  -Path .\benchmark_artifacts\low-gap-review-notes-<label>.txt `
+  -Pattern "status: completed"
+
+Select-String `
+  -Path .\benchmark_artifacts\runs\<label>\low-gap-review-notes-<label>.txt `
+  -Pattern "status: completed"
+```
+
+Recommended usage:
+
+```text
+use flat artifacts for active previous-label comparisons
+use -CopyArtifactsToRunFolder for every review that should be easy to inspect later
+use -ForceOrganizedArtifacts only when intentionally replacing an organized copy
+use the standalone organize script for older artifacts that were generated before organized copy support
+```
+
+The organized-copy option is a convenience feature. It does not change benchmark execution, timing, validation, or comparison behavior.
 
 ## Leaf policy decision after repeated 8/8 versus 4/8 trials
 
