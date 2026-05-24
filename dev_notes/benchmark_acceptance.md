@@ -2124,6 +2124,134 @@ Unrecognized files are left in place. This prevents accidental movement of manua
 
 Artifact organization is a storage-management concern only. It should not be used as benchmark evidence by itself.
 
+## Flat benchmark artifact cleanup workflow
+
+The flat `benchmark_artifacts` directory is useful for active development, but it can become crowded after repeated review runs.
+
+The cleanup helper is:
+
+```text
+scripts/cleanup-flat-benchmark-artifacts.ps1
+```
+
+This script removes flat artifacts only when the same artifact already exists in the organized run folder.
+
+Example flat artifact:
+
+```text
+benchmark_artifacts/debug-output-my-review.txt
+```
+
+Required organized copy:
+
+```text
+benchmark_artifacts/runs/my-review/debug-output-my-review.txt
+```
+
+The cleanup script is safe by default. Without `-Delete`, it only performs a dry run:
+
+```powershell
+.\scripts\cleanup-flat-benchmark-artifacts.ps1
+```
+
+Preview cleanup for one label:
+
+```powershell
+.\scripts\cleanup-flat-benchmark-artifacts.ps1 `
+  -Label "my-review"
+```
+
+Delete eligible flat artifacts for one label:
+
+```powershell
+.\scripts\cleanup-flat-benchmark-artifacts.ps1 `
+  -Label "my-review" `
+  -Delete `
+  -Force
+```
+
+Delete all eligible flat artifacts that already have organized copies:
+
+```powershell
+.\scripts\cleanup-flat-benchmark-artifacts.ps1 `
+  -Delete `
+  -Force
+```
+
+Recommended safe cleanup flow:
+
+```text
+1. Run the benchmark review normally.
+2. Copy artifacts into organized run folders.
+3. Dry-run flat cleanup.
+4. Delete only after confirming the dry-run output.
+```
+
+Commands:
+
+```powershell
+.\scripts\organize-benchmark-artifacts.ps1 -Copy
+
+.\scripts\cleanup-flat-benchmark-artifacts.ps1
+
+.\scripts\cleanup-flat-benchmark-artifacts.ps1 `
+  -Delete `
+  -Force
+```
+
+The cleanup script recognizes the same normal benchmark artifact families as the organization script, including:
+
+```text
+benchmark output
+debug output
+summary CSV
+workloads CSV
+low-selectivity gap CSV
+low-gap review notes
+low-gap review manifest
+low-gap trial artifacts
+target workload artifacts
+count-only workload summaries
+count-only comparison artifacts
+repeated-trial folders
+```
+
+Artifacts are skipped when no organized copy exists.
+
+Unrecognized top-level files are also skipped. This prevents accidental deletion of manually-created notes, temporary files, or unrelated data.
+
+Important rule:
+
+```text
+cleanup only removes flat artifacts that already exist under benchmark_artifacts/runs/<label>/
+```
+
+Flat artifact cleanup is a storage-management step only. It does not change benchmark evidence, benchmark validation, query behavior, or comparison semantics.
+
+Use cleanup when:
+
+```text
+the flat benchmark_artifacts folder is too crowded
+the label already has an organized copy
+the label is not needed in the flat root for immediate manual inspection
+```
+
+Avoid cleanup when:
+
+```text
+the artifacts have not been copied into benchmark_artifacts/runs/<label>/
+the label is still being actively inspected in the flat root
+you are not sure which artifacts are active comparison baselines
+```
+
+Previous-label comparison compatibility:
+
+```text
+the review runner can resolve previous artifacts from the flat root or organized run folders
+```
+
+So cleanup is safe for archived labels once organized copies exist. For active labels, keeping both flat and organized copies may still be more convenient.
+
 ## Organized previous-label resolution
 
 The review runner can resolve previous-label artifacts from both the flat artifact directory and organized run folders.
