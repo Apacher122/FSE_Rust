@@ -11,7 +11,7 @@ use crate::benchmark::baselines::{
 use crate::math::{Scalar, Vector};
 use crate::query::{
     QueryExecutionOptions, QueryExecutionStats, QueryRegion, count_query_matches_with_stats,
-    execute_query_with_stats_and_options,
+    execute_query_references_with_stats, execute_query_with_stats_and_options,
 };
 use crate::storage::FSEIndex;
 use std::time::Duration;
@@ -40,6 +40,9 @@ pub struct QueryComparisonReport {
     /// Statistics from the FSE count-only execution path.
     pub count_only_stats: QueryExecutionStats,
 
+    /// Statistics from the FSE reference-result execution path.
+    pub reference_stats: QueryExecutionStats,
+
     /// Wall-clock timing measurements for one execution of both paths.
     pub timing: TimingReport,
 
@@ -49,11 +52,20 @@ pub struct QueryComparisonReport {
     /// Repeated timing measurements for count-only FSE execution.
     pub count_only_repeated_timing: RepeatedTimingReport,
 
-    /// Estimated average elapsed time spent on owned-result materialization.
+    /// Repeated timing measurements for reference-result FSE execution.
+    pub reference_repeated_timing: RepeatedTimingReport,
+
+    /// Estimated average elapsed time spent above count-only execution.
     pub estimated_owned_result_overhead: Duration,
+
+    /// Estimated average elapsed time spent above reference-result execution.
+    pub estimated_owned_vs_reference_overhead: Duration,
 
     /// Average owned-result FSE elapsed divided by average count-only FSE elapsed.
     pub count_only_speedup_ratio: f64,
+
+    /// Average owned-result FSE elapsed divided by average reference-result FSE elapsed.
+    pub reference_result_speedup_ratio: f64,
 
     /// Single-run timing ratio computed as baseline elapsed divided by FSE elapsed.
     pub single_run_timing_ratio: f64,
@@ -189,6 +201,7 @@ pub fn compare_query_execution_with_baseline_and_options(
     let (fse_report, fse_elapsed) =
         measure_elapsed(|| execute_query_with_stats_and_options(index, query, fse_options));
     let count_report = count_query_matches_with_stats(index, query);
+    let reference_report = execute_query_references_with_stats(index, query);
 
     assert_eq!(
         count_report.matched_records, fse_report.stats.matched_records,
@@ -198,6 +211,17 @@ pub fn compare_query_execution_with_baseline_and_options(
     assert_eq!(
         count_report.stats, fse_report.stats,
         "count-only FSE structural stats must match owned-result FSE structural stats"
+    );
+
+    assert_eq!(
+        reference_report.matches.len(),
+        count_report.matched_records,
+        "reference-result FSE query count must match count-only FSE query count"
+    );
+
+    assert_eq!(
+        reference_report.stats, count_report.stats,
+        "reference-result FSE structural stats must match count-only FSE structural stats"
     );
 
     let mut baseline_results = baseline_report.results;
@@ -226,13 +250,26 @@ pub fn compare_query_execution_with_baseline_and_options(
         std::hint::black_box(report.matched_records);
     });
 
+    let reference_repeated_timing = measure_repeated(timing_config, || {
+        let report = execute_query_references_with_stats(index, query);
+        std::hint::black_box(report.matches.len());
+    });
+
     let estimated_owned_result_overhead = repeated_timing
         .fse
         .average_elapsed
         .saturating_sub(count_only_repeated_timing.average_elapsed);
+    let estimated_owned_vs_reference_overhead = repeated_timing
+        .fse
+        .average_elapsed
+        .saturating_sub(reference_repeated_timing.average_elapsed);
     let count_only_speedup_ratio = duration_ratio(
         repeated_timing.fse.average_elapsed,
         count_only_repeated_timing.average_elapsed,
+    );
+    let reference_result_speedup_ratio = duration_ratio(
+        repeated_timing.fse.average_elapsed,
+        reference_repeated_timing.average_elapsed,
     );
 
     let single_run_timing_ratio = duration_ratio(baseline_elapsed, fse_elapsed);
@@ -262,14 +299,18 @@ pub fn compare_query_execution_with_baseline_and_options(
         baseline_stats: baseline_report.stats,
         fse_stats: fse_report.stats,
         count_only_stats: count_report.stats,
+        reference_stats: reference_report.stats,
         timing: TimingReport {
             baseline_elapsed,
             fse_elapsed,
         },
         repeated_timing,
         count_only_repeated_timing,
+        reference_repeated_timing,
         estimated_owned_result_overhead,
+        estimated_owned_vs_reference_overhead,
         count_only_speedup_ratio,
+        reference_result_speedup_ratio,
         single_run_timing_ratio,
         average_timing_ratio,
         avoided_reconstructions,

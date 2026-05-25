@@ -468,6 +468,21 @@ fn append_workload_value_rows(
                 .to_string(),
             format_ratio(comparison.count_only_speedup_ratio),
             (comparison.count_only_stats == comparison.fse_stats).to_string(),
+            comparison.reference_stats.visited_nodes.to_string(),
+            comparison.reference_stats.retained_leaves.to_string(),
+            comparison.reference_stats.reconstructed_records.to_string(),
+            comparison.reference_stats.matched_records.to_string(),
+            comparison
+                .reference_repeated_timing
+                .average_elapsed
+                .as_nanos()
+                .to_string(),
+            comparison
+                .estimated_owned_vs_reference_overhead
+                .as_nanos()
+                .to_string(),
+            format_ratio(comparison.reference_result_speedup_ratio),
+            (comparison.reference_stats == comparison.count_only_stats).to_string(),
         ]);
     }
 }
@@ -599,6 +614,14 @@ fn workload_header_fields() -> Vec<&'static str> {
         "estimated_owned_result_overhead_ns",
         "count_only_speedup_ratio",
         "count_only_stats_match_owned",
+        "reference_visited_nodes",
+        "reference_retained_leaves",
+        "reference_reconstructed_records",
+        "reference_matched_records",
+        "reference_average_elapsed_ns",
+        "estimated_owned_vs_reference_overhead_ns",
+        "reference_result_speedup_ratio",
+        "reference_stats_match_count_only",
     ]
 }
 

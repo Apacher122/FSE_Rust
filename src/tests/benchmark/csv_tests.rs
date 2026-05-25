@@ -303,6 +303,10 @@ fn workload_csv_export_includes_header() {
     assert!(csv.contains("estimated_owned_result_overhead_ns"));
     assert!(csv.contains("count_only_speedup_ratio"));
     assert!(csv.contains("count_only_stats_match_owned"));
+    assert!(csv.contains("reference_average_elapsed_ns"));
+    assert!(csv.contains("estimated_owned_vs_reference_overhead_ns"));
+    assert!(csv.contains("reference_result_speedup_ratio"));
+    assert!(csv.contains("reference_stats_match_count_only"));
 }
 
 #[test]
@@ -351,6 +355,34 @@ fn workload_csv_export_includes_count_only_metrics() {
     assert!(csv.contains("estimated_owned_result_overhead_ns"));
     assert!(csv.contains("count_only_speedup_ratio"));
     assert!(csv.contains("count_only_stats_match_owned"));
+    assert!(csv.contains(",true"));
+}
+
+#[test]
+fn workload_csv_export_includes_reference_result_metrics() {
+    let fixture = small_benchmark_fixture();
+    let registry = BaselineRegistry::new();
+    let baseline_kinds = [BaselineKind::FlatScan];
+
+    let report = run_multi_baseline_benchmark_suite(
+        &fixture.index,
+        &fixture.points,
+        &fixture.workloads,
+        &fixture.timing_config,
+        &registry,
+        &baseline_kinds,
+    );
+
+    let csv = multi_baseline_workload_report_to_csv(&report);
+
+    assert!(csv.contains("reference_visited_nodes"));
+    assert!(csv.contains("reference_retained_leaves"));
+    assert!(csv.contains("reference_reconstructed_records"));
+    assert!(csv.contains("reference_matched_records"));
+    assert!(csv.contains("reference_average_elapsed_ns"));
+    assert!(csv.contains("estimated_owned_vs_reference_overhead_ns"));
+    assert!(csv.contains("reference_result_speedup_ratio"));
+    assert!(csv.contains("reference_stats_match_count_only"));
     assert!(csv.contains(",true"));
 }
 

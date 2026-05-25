@@ -268,6 +268,41 @@ function New-ComparisonRow {
   $PreviousAllCountOnlyStatsMatchOwned = Get-LowerTextField -Row $PreviousRow -FieldName "all_count_only_stats_match_owned"
   $CurrentAllCountOnlyStatsMatchOwned = Get-LowerTextField -Row $CurrentRow -FieldName "all_count_only_stats_match_owned"
 
+  $PreviousReferenceAverage = Get-Metric -Row $PreviousRow -FieldName "mean_reference_average_elapsed_ns"
+  $CurrentReferenceAverage = Get-Metric -Row $CurrentRow -FieldName "mean_reference_average_elapsed_ns"
+  $ReferenceAverageDelta = Get-Delta -CurrentValue $CurrentReferenceAverage -PreviousValue $PreviousReferenceAverage
+
+  $PreviousOwnedVsReferenceOverhead = Get-Metric -Row $PreviousRow -FieldName "mean_owned_vs_reference_overhead_ns"
+  $CurrentOwnedVsReferenceOverhead = Get-Metric -Row $CurrentRow -FieldName "mean_owned_vs_reference_overhead_ns"
+  $OwnedVsReferenceOverheadDelta = Get-Delta -CurrentValue $CurrentOwnedVsReferenceOverhead -PreviousValue $PreviousOwnedVsReferenceOverhead
+
+  $PreviousReferenceResultSpeedup = Get-Metric -Row $PreviousRow -FieldName "mean_reference_result_speedup_ratio"
+  $CurrentReferenceResultSpeedup = Get-Metric -Row $CurrentRow -FieldName "mean_reference_result_speedup_ratio"
+  $ReferenceResultSpeedupDelta = Get-Delta -CurrentValue $CurrentReferenceResultSpeedup -PreviousValue $PreviousReferenceResultSpeedup
+
+  $PreviousReferenceStatsAgreeCount = Get-Metric -Row $PreviousRow -FieldName "reference_stats_agree_count"
+  $CurrentReferenceStatsAgreeCount = Get-Metric -Row $CurrentRow -FieldName "reference_stats_agree_count"
+  $ReferenceStatsAgreeCountDelta = Get-Delta -CurrentValue $CurrentReferenceStatsAgreeCount -PreviousValue $PreviousReferenceStatsAgreeCount
+
+  $PreviousAllReferenceStatsMatchCountOnly = Get-LowerTextField -Row $PreviousRow -FieldName "all_reference_stats_match_count_only"
+  $CurrentAllReferenceStatsMatchCountOnly = Get-LowerTextField -Row $CurrentRow -FieldName "all_reference_stats_match_count_only"
+
+  $PreviousReferenceVisitedNodes = Get-Metric -Row $PreviousRow -FieldName "mean_reference_visited_nodes"
+  $CurrentReferenceVisitedNodes = Get-Metric -Row $CurrentRow -FieldName "mean_reference_visited_nodes"
+  $ReferenceVisitedNodeDelta = Get-Delta -CurrentValue $CurrentReferenceVisitedNodes -PreviousValue $PreviousReferenceVisitedNodes
+
+  $PreviousReferenceRetainedLeaves = Get-Metric -Row $PreviousRow -FieldName "mean_reference_retained_leaves"
+  $CurrentReferenceRetainedLeaves = Get-Metric -Row $CurrentRow -FieldName "mean_reference_retained_leaves"
+  $ReferenceRetainedLeafDelta = Get-Delta -CurrentValue $CurrentReferenceRetainedLeaves -PreviousValue $PreviousReferenceRetainedLeaves
+
+  $PreviousReferenceReconstructedRecords = Get-Metric -Row $PreviousRow -FieldName "mean_reference_reconstructed_records"
+  $CurrentReferenceReconstructedRecords = Get-Metric -Row $CurrentRow -FieldName "mean_reference_reconstructed_records"
+  $ReferenceReconstructedRecordDelta = Get-Delta -CurrentValue $CurrentReferenceReconstructedRecords -PreviousValue $PreviousReferenceReconstructedRecords
+
+  $PreviousReferenceMatchedRecords = Get-Metric -Row $PreviousRow -FieldName "mean_reference_matched_records"
+  $CurrentReferenceMatchedRecords = Get-Metric -Row $CurrentRow -FieldName "mean_reference_matched_records"
+  $ReferenceMatchedRecordDelta = Get-Delta -CurrentValue $CurrentReferenceMatchedRecords -PreviousValue $PreviousReferenceMatchedRecords
+
   $PreviousVisitedNodes = Get-Metric -Row $PreviousRow -FieldName "mean_fse_visited_nodes"
   $CurrentVisitedNodes = Get-Metric -Row $CurrentRow -FieldName "mean_fse_visited_nodes"
   $VisitedNodeDelta = Get-Delta -CurrentValue $CurrentVisitedNodes -PreviousValue $PreviousVisitedNodes
@@ -305,66 +340,92 @@ function New-ComparisonRow {
   $NodesPerRecordDelta = Get-Delta -CurrentValue $CurrentNodesPerRecord -PreviousValue $PreviousNodesPerRecord
 
   return [PSCustomObject]@{
-    BaselineName                        = $BaselineName
-    PreviousWorkloadName                = $PreviousWorkloadName
-    CurrentWorkloadName                 = $CurrentWorkloadName
-    PreviousMeanTiming                  = $PreviousMeanTiming
-    CurrentMeanTiming                   = $CurrentMeanTiming
-    MeanTimingDelta                     = $MeanTimingDelta
-    TimingClassification                = $TimingClassification
-    PreviousRange                       = $PreviousRange
-    CurrentRange                        = $CurrentRange
-    RangeDelta                          = $RangeDelta
-    PreviousStdDev                      = $PreviousStdDev
-    CurrentStdDev                       = $CurrentStdDev
-    StdDevDelta                         = $StdDevDelta
-    PreviousBaselineAverage             = $PreviousBaselineAverage
-    CurrentBaselineAverage              = $CurrentBaselineAverage
-    BaselineAverageDelta                = $BaselineAverageDelta
-    PreviousFseAverage                  = $PreviousFseAverage
-    CurrentFseAverage                   = $CurrentFseAverage
-    FseAverageDelta                     = $FseAverageDelta
-    PreviousCountOnlyAverage            = $PreviousCountOnlyAverage
-    CurrentCountOnlyAverage             = $CurrentCountOnlyAverage
-    CountOnlyAverageDelta               = $CountOnlyAverageDelta
-    PreviousOwnedResultOverhead         = $PreviousOwnedResultOverhead
-    CurrentOwnedResultOverhead          = $CurrentOwnedResultOverhead
-    OwnedResultOverheadDelta            = $OwnedResultOverheadDelta
-    PreviousCountOnlySpeedup            = $PreviousCountOnlySpeedup
-    CurrentCountOnlySpeedup             = $CurrentCountOnlySpeedup
-    CountOnlySpeedupDelta               = $CountOnlySpeedupDelta
-    PreviousCountOnlyStatsAgreeCount    = $PreviousCountOnlyStatsAgreeCount
-    CurrentCountOnlyStatsAgreeCount     = $CurrentCountOnlyStatsAgreeCount
-    CountOnlyStatsAgreeCountDelta       = $CountOnlyStatsAgreeCountDelta
-    PreviousAllCountOnlyStatsMatchOwned = $PreviousAllCountOnlyStatsMatchOwned
-    CurrentAllCountOnlyStatsMatchOwned  = $CurrentAllCountOnlyStatsMatchOwned
-    PreviousVisitedNodes                = $PreviousVisitedNodes
-    CurrentVisitedNodes                 = $CurrentVisitedNodes
-    VisitedNodeDelta                    = $VisitedNodeDelta
-    PreviousRetainedLeaves              = $PreviousRetainedLeaves
-    CurrentRetainedLeaves               = $CurrentRetainedLeaves
-    RetainedLeafDelta                   = $RetainedLeafDelta
-    PreviousReconstructedRecords        = $PreviousReconstructedRecords
-    CurrentReconstructedRecords         = $CurrentReconstructedRecords
-    ReconstructedRecordDelta            = $ReconstructedRecordDelta
-    PreviousMatchedRecords              = $PreviousMatchedRecords
-    CurrentMatchedRecords               = $CurrentMatchedRecords
-    MatchedRecordDelta                  = $MatchedRecordDelta
-    PreviousBaselineEvaluated           = $PreviousBaselineEvaluated
-    CurrentBaselineEvaluated            = $CurrentBaselineEvaluated
-    BaselineEvaluatedDelta              = $BaselineEvaluatedDelta
-    PreviousBaselineMatched             = $PreviousBaselineMatched
-    CurrentBaselineMatched              = $CurrentBaselineMatched
-    BaselineMatchedDelta                = $BaselineMatchedDelta
-    PreviousCandidateRatio              = $PreviousCandidateRatio
-    CurrentCandidateRatio               = $CurrentCandidateRatio
-    CandidateRatioDelta                 = $CandidateRatioDelta
-    PreviousAvoidanceRatio              = $PreviousAvoidanceRatio
-    CurrentAvoidanceRatio               = $CurrentAvoidanceRatio
-    AvoidanceRatioDelta                 = $AvoidanceRatioDelta
-    PreviousNodesPerRecord              = $PreviousNodesPerRecord
-    CurrentNodesPerRecord               = $CurrentNodesPerRecord
-    NodesPerRecordDelta                 = $NodesPerRecordDelta
+    BaselineName                            = $BaselineName
+    PreviousWorkloadName                    = $PreviousWorkloadName
+    CurrentWorkloadName                     = $CurrentWorkloadName
+    PreviousMeanTiming                      = $PreviousMeanTiming
+    CurrentMeanTiming                       = $CurrentMeanTiming
+    MeanTimingDelta                         = $MeanTimingDelta
+    TimingClassification                    = $TimingClassification
+    PreviousRange                           = $PreviousRange
+    CurrentRange                            = $CurrentRange
+    RangeDelta                              = $RangeDelta
+    PreviousStdDev                          = $PreviousStdDev
+    CurrentStdDev                           = $CurrentStdDev
+    StdDevDelta                             = $StdDevDelta
+    PreviousBaselineAverage                 = $PreviousBaselineAverage
+    CurrentBaselineAverage                  = $CurrentBaselineAverage
+    BaselineAverageDelta                    = $BaselineAverageDelta
+    PreviousFseAverage                      = $PreviousFseAverage
+    CurrentFseAverage                       = $CurrentFseAverage
+    FseAverageDelta                         = $FseAverageDelta
+    PreviousCountOnlyAverage                = $PreviousCountOnlyAverage
+    CurrentCountOnlyAverage                 = $CurrentCountOnlyAverage
+    CountOnlyAverageDelta                   = $CountOnlyAverageDelta
+    PreviousOwnedResultOverhead             = $PreviousOwnedResultOverhead
+    CurrentOwnedResultOverhead              = $CurrentOwnedResultOverhead
+    OwnedResultOverheadDelta                = $OwnedResultOverheadDelta
+    PreviousCountOnlySpeedup                = $PreviousCountOnlySpeedup
+    CurrentCountOnlySpeedup                 = $CurrentCountOnlySpeedup
+    CountOnlySpeedupDelta                   = $CountOnlySpeedupDelta
+    PreviousCountOnlyStatsAgreeCount        = $PreviousCountOnlyStatsAgreeCount
+    CurrentCountOnlyStatsAgreeCount         = $CurrentCountOnlyStatsAgreeCount
+    CountOnlyStatsAgreeCountDelta           = $CountOnlyStatsAgreeCountDelta
+    PreviousAllCountOnlyStatsMatchOwned     = $PreviousAllCountOnlyStatsMatchOwned
+    CurrentAllCountOnlyStatsMatchOwned      = $CurrentAllCountOnlyStatsMatchOwned
+    PreviousReferenceAverage                = $PreviousReferenceAverage
+    CurrentReferenceAverage                 = $CurrentReferenceAverage
+    ReferenceAverageDelta                   = $ReferenceAverageDelta
+    PreviousOwnedVsReferenceOverhead        = $PreviousOwnedVsReferenceOverhead
+    CurrentOwnedVsReferenceOverhead         = $CurrentOwnedVsReferenceOverhead
+    OwnedVsReferenceOverheadDelta           = $OwnedVsReferenceOverheadDelta
+    PreviousReferenceResultSpeedup          = $PreviousReferenceResultSpeedup
+    CurrentReferenceResultSpeedup           = $CurrentReferenceResultSpeedup
+    ReferenceResultSpeedupDelta             = $ReferenceResultSpeedupDelta
+    PreviousReferenceStatsAgreeCount        = $PreviousReferenceStatsAgreeCount
+    CurrentReferenceStatsAgreeCount         = $CurrentReferenceStatsAgreeCount
+    ReferenceStatsAgreeCountDelta           = $ReferenceStatsAgreeCountDelta
+    PreviousAllReferenceStatsMatchCountOnly = $PreviousAllReferenceStatsMatchCountOnly
+    CurrentAllReferenceStatsMatchCountOnly  = $CurrentAllReferenceStatsMatchCountOnly
+    PreviousReferenceVisitedNodes           = $PreviousReferenceVisitedNodes
+    CurrentReferenceVisitedNodes            = $CurrentReferenceVisitedNodes
+    ReferenceVisitedNodeDelta               = $ReferenceVisitedNodeDelta
+    PreviousReferenceRetainedLeaves         = $PreviousReferenceRetainedLeaves
+    CurrentReferenceRetainedLeaves          = $CurrentReferenceRetainedLeaves
+    ReferenceRetainedLeafDelta              = $ReferenceRetainedLeafDelta
+    PreviousReferenceReconstructedRecords   = $PreviousReferenceReconstructedRecords
+    CurrentReferenceReconstructedRecords    = $CurrentReferenceReconstructedRecords
+    ReferenceReconstructedRecordDelta       = $ReferenceReconstructedRecordDelta
+    PreviousReferenceMatchedRecords         = $PreviousReferenceMatchedRecords
+    CurrentReferenceMatchedRecords          = $CurrentReferenceMatchedRecords
+    ReferenceMatchedRecordDelta             = $ReferenceMatchedRecordDelta
+    PreviousVisitedNodes                    = $PreviousVisitedNodes
+    CurrentVisitedNodes                     = $CurrentVisitedNodes
+    VisitedNodeDelta                        = $VisitedNodeDelta
+    PreviousRetainedLeaves                  = $PreviousRetainedLeaves
+    CurrentRetainedLeaves                   = $CurrentRetainedLeaves
+    RetainedLeafDelta                       = $RetainedLeafDelta
+    PreviousReconstructedRecords            = $PreviousReconstructedRecords
+    CurrentReconstructedRecords             = $CurrentReconstructedRecords
+    ReconstructedRecordDelta                = $ReconstructedRecordDelta
+    PreviousMatchedRecords                  = $PreviousMatchedRecords
+    CurrentMatchedRecords                   = $CurrentMatchedRecords
+    MatchedRecordDelta                      = $MatchedRecordDelta
+    PreviousBaselineEvaluated               = $PreviousBaselineEvaluated
+    CurrentBaselineEvaluated                = $CurrentBaselineEvaluated
+    BaselineEvaluatedDelta                  = $BaselineEvaluatedDelta
+    PreviousBaselineMatched                 = $PreviousBaselineMatched
+    CurrentBaselineMatched                  = $CurrentBaselineMatched
+    BaselineMatchedDelta                    = $BaselineMatchedDelta
+    PreviousCandidateRatio                  = $PreviousCandidateRatio
+    CurrentCandidateRatio                   = $CurrentCandidateRatio
+    CandidateRatioDelta                     = $CandidateRatioDelta
+    PreviousAvoidanceRatio                  = $PreviousAvoidanceRatio
+    CurrentAvoidanceRatio                   = $CurrentAvoidanceRatio
+    AvoidanceRatioDelta                     = $AvoidanceRatioDelta
+    PreviousNodesPerRecord                  = $PreviousNodesPerRecord
+    CurrentNodesPerRecord                   = $CurrentNodesPerRecord
+    NodesPerRecordDelta                     = $NodesPerRecordDelta
   }
 }
 
@@ -423,6 +484,32 @@ foreach ($Comparison in $ComparisonObjects) {
     $(Format-InvariantDouble -Value $Comparison.CountOnlyStatsAgreeCountDelta),
     $Comparison.PreviousAllCountOnlyStatsMatchOwned,
     $Comparison.CurrentAllCountOnlyStatsMatchOwned,
+    $(Format-InvariantDouble -Value $Comparison.PreviousReferenceAverage),
+    $(Format-InvariantDouble -Value $Comparison.CurrentReferenceAverage),
+    $(Format-InvariantDouble -Value $Comparison.ReferenceAverageDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousOwnedVsReferenceOverhead),
+    $(Format-InvariantDouble -Value $Comparison.CurrentOwnedVsReferenceOverhead),
+    $(Format-InvariantDouble -Value $Comparison.OwnedVsReferenceOverheadDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousReferenceResultSpeedup),
+    $(Format-InvariantDouble -Value $Comparison.CurrentReferenceResultSpeedup),
+    $(Format-InvariantDouble -Value $Comparison.ReferenceResultSpeedupDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousReferenceStatsAgreeCount),
+    $(Format-InvariantDouble -Value $Comparison.CurrentReferenceStatsAgreeCount),
+    $(Format-InvariantDouble -Value $Comparison.ReferenceStatsAgreeCountDelta),
+    $Comparison.PreviousAllReferenceStatsMatchCountOnly,
+    $Comparison.CurrentAllReferenceStatsMatchCountOnly,
+    $(Format-InvariantDouble -Value $Comparison.PreviousReferenceVisitedNodes),
+    $(Format-InvariantDouble -Value $Comparison.CurrentReferenceVisitedNodes),
+    $(Format-InvariantDouble -Value $Comparison.ReferenceVisitedNodeDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousReferenceRetainedLeaves),
+    $(Format-InvariantDouble -Value $Comparison.CurrentReferenceRetainedLeaves),
+    $(Format-InvariantDouble -Value $Comparison.ReferenceRetainedLeafDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousReferenceReconstructedRecords),
+    $(Format-InvariantDouble -Value $Comparison.CurrentReferenceReconstructedRecords),
+    $(Format-InvariantDouble -Value $Comparison.ReferenceReconstructedRecordDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousReferenceMatchedRecords),
+    $(Format-InvariantDouble -Value $Comparison.CurrentReferenceMatchedRecords),
+    $(Format-InvariantDouble -Value $Comparison.ReferenceMatchedRecordDelta),
     $(Format-InvariantDouble -Value $Comparison.PreviousVisitedNodes),
     $(Format-InvariantDouble -Value $Comparison.CurrentVisitedNodes),
     $(Format-InvariantDouble -Value $Comparison.VisitedNodeDelta),
@@ -489,6 +576,32 @@ Write-CsvDocument `
   "count_only_stats_agree_count_delta",
   "previous_all_count_only_stats_match_owned",
   "current_all_count_only_stats_match_owned",
+  "previous_mean_reference_average_elapsed_ns",
+  "current_mean_reference_average_elapsed_ns",
+  "mean_reference_average_elapsed_ns_delta",
+  "previous_mean_owned_vs_reference_overhead_ns",
+  "current_mean_owned_vs_reference_overhead_ns",
+  "mean_owned_vs_reference_overhead_ns_delta",
+  "previous_mean_reference_result_speedup_ratio",
+  "current_mean_reference_result_speedup_ratio",
+  "mean_reference_result_speedup_ratio_delta",
+  "previous_reference_stats_agree_count",
+  "current_reference_stats_agree_count",
+  "reference_stats_agree_count_delta",
+  "previous_all_reference_stats_match_count_only",
+  "current_all_reference_stats_match_count_only",
+  "previous_mean_reference_visited_nodes",
+  "current_mean_reference_visited_nodes",
+  "mean_reference_visited_nodes_delta",
+  "previous_mean_reference_retained_leaves",
+  "current_mean_reference_retained_leaves",
+  "mean_reference_retained_leaves_delta",
+  "previous_mean_reference_reconstructed_records",
+  "current_mean_reference_reconstructed_records",
+  "mean_reference_reconstructed_records_delta",
+  "previous_mean_reference_matched_records",
+  "current_mean_reference_matched_records",
+  "mean_reference_matched_records_delta",
   "previous_mean_fse_visited_nodes",
   "current_mean_fse_visited_nodes",
   "mean_fse_visited_nodes_delta",
@@ -549,6 +662,16 @@ foreach ($Comparison in $ComparisonObjects) {
   Add-Utf8Text -Path $ComparisonNotesPath -Text "count-only stats agree count delta: $(Format-InvariantDouble -Value $Comparison.CountOnlyStatsAgreeCountDelta)`r`n"
   Add-Utf8Text -Path $ComparisonNotesPath -Text "previous all count-only stats match owned: $($Comparison.PreviousAllCountOnlyStatsMatchOwned)`r`n"
   Add-Utf8Text -Path $ComparisonNotesPath -Text "current all count-only stats match owned: $($Comparison.CurrentAllCountOnlyStatsMatchOwned)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean reference-result average ns delta: $(Format-InvariantDouble -Value $Comparison.ReferenceAverageDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean owned-vs-reference overhead ns delta: $(Format-InvariantDouble -Value $Comparison.OwnedVsReferenceOverheadDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean reference-result speedup ratio delta: $(Format-InvariantDouble -Value $Comparison.ReferenceResultSpeedupDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "reference stats agree count delta: $(Format-InvariantDouble -Value $Comparison.ReferenceStatsAgreeCountDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "previous all reference stats match count-only: $($Comparison.PreviousAllReferenceStatsMatchCountOnly)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "current all reference stats match count-only: $($Comparison.CurrentAllReferenceStatsMatchCountOnly)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean reference visited nodes delta: $(Format-InvariantDouble -Value $Comparison.ReferenceVisitedNodeDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean reference retained leaves delta: $(Format-InvariantDouble -Value $Comparison.ReferenceRetainedLeafDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean reference reconstructed records delta: $(Format-InvariantDouble -Value $Comparison.ReferenceReconstructedRecordDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean reference matched records delta: $(Format-InvariantDouble -Value $Comparison.ReferenceMatchedRecordDelta)`r`n"
   Add-Utf8Text -Path $ComparisonNotesPath -Text "mean FSE visited nodes delta: $(Format-InvariantDouble -Value $Comparison.VisitedNodeDelta)`r`n"
   Add-Utf8Text -Path $ComparisonNotesPath -Text "mean FSE retained leaves delta: $(Format-InvariantDouble -Value $Comparison.RetainedLeafDelta)`r`n"
   Add-Utf8Text -Path $ComparisonNotesPath -Text "mean FSE reconstructed records delta: $(Format-InvariantDouble -Value $Comparison.ReconstructedRecordDelta)`r`n"
@@ -565,7 +688,9 @@ Add-Utf8Text -Path $ComparisonNotesPath -Text "-----------------`r`n"
 Add-Utf8Text -Path $ComparisonNotesPath -Text "Use this comparison when a performance commit intentionally targets a specific workload.`r`n"
 Add-Utf8Text -Path $ComparisonNotesPath -Text "A target workload improvement is stronger when timing improves beyond the noise threshold without increasing visited nodes, reconstructed records, candidate ratio, or matched-record differences.`r`n"
 Add-Utf8Text -Path $ComparisonNotesPath -Text "Owned-result overhead deltas help identify whether a change improved materialized row-return cost rather than pruning alone.`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "Reference-result overhead deltas help identify whether a change improved exact leaf/row-reference return cost before owned Vector materialization.`r`n"
 Add-Utf8Text -Path $ComparisonNotesPath -Text "Count-only timing must only be interpreted when previous and current all-count-only-stats-match-owned values are true.`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "Reference-result timing must only be interpreted when previous and current all-reference-stats-match-count-only values are true.`r`n"
 Add-Utf8Text -Path $ComparisonNotesPath -Text "This comparison remains useful even if the target workload stops being the weakest workload after an optimization.`r`n"
 
 Write-Host ""
