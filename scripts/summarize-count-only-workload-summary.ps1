@@ -6,6 +6,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$BenchmarkCsvLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-csv.ps1"
+
+if (!(Test-Path -LiteralPath $BenchmarkCsvLibrary)) {
+  throw "benchmark CSV helper library was not found: $BenchmarkCsvLibrary"
+}
+
+. $BenchmarkCsvLibrary
+
 if ([string]::IsNullOrWhiteSpace($InputWorkloadsCsv)) {
   throw "`-InputWorkloadsCsv` cannot be empty"
 }
@@ -20,49 +28,6 @@ if ([string]::IsNullOrWhiteSpace($OutputNotesPath)) {
 
 if (!(Test-Path -LiteralPath $InputWorkloadsCsv)) {
   throw "input workloads CSV was not found: $InputWorkloadsCsv"
-}
-
-$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-$InvariantCulture = [System.Globalization.CultureInfo]::InvariantCulture
-
-function Convert-ToInvariantDouble {
-  param(
-    [object]$Value
-  )
-
-  if ($null -eq $Value) {
-    return 0.0
-  }
-
-  if ([string]::IsNullOrWhiteSpace($Value.ToString())) {
-    return 0.0
-  }
-
-  return [System.Convert]::ToDouble($Value, $InvariantCulture)
-}
-
-function Convert-ToInvariantInt {
-  param(
-    [object]$Value
-  )
-
-  if ($null -eq $Value) {
-    return 0
-  }
-
-  if ([string]::IsNullOrWhiteSpace($Value.ToString())) {
-    return 0
-  }
-
-  return [System.Convert]::ToInt64($Value, $InvariantCulture)
-}
-
-function Format-InvariantDouble {
-  param(
-    [double]$Value
-  )
-
-  return $Value.ToString("0.000000", $InvariantCulture)
 }
 
 function New-CalculatedSummary {
@@ -137,40 +102,6 @@ function Get-SelectivityBucket {
   return "full"
 }
 
-function Escape-CsvField {
-  param(
-    [object]$Value
-  )
-
-  if ($null -eq $Value) {
-    return ""
-  }
-
-  $Text = $Value.ToString()
-
-  if ($Text.Contains('"')) {
-    $Text = $Text.Replace('"', '""')
-  }
-
-  if ($Text.Contains(",") -or $Text.Contains('"') -or $Text.Contains("`r") -or $Text.Contains("`n")) {
-    return '"' + $Text + '"'
-  }
-
-  return $Text
-}
-
-function Convert-ToCsvRow {
-  param(
-    [object[]]$Values
-  )
-
-  $EscapedValues = foreach ($Value in $Values) {
-    Escape-CsvField -Value $Value
-  }
-
-  return ($EscapedValues -join ",")
-}
-
 function New-SummaryRow {
   param(
     [object]$SourceRow,
@@ -242,7 +173,7 @@ foreach ($FieldName in $RequiredFields) {
 $Summaries = [ordered]@{}
 
 foreach ($Row in $Rows) {
-  $CandidateRatio = Convert-ToInvariantDouble -Value $Row.candidate_ratio
+  $CandidateRatio = Convert-ToInvariantDoubleOrZero -Value $Row.candidate_ratio
   $SelectivityBucket = Get-SelectivityBucket -CandidateRatio $CandidateRatio
   $Key = "$($Row.baseline_name)|$SelectivityBucket"
 
@@ -258,15 +189,15 @@ foreach ($Row in $Rows) {
     $Summary.StatsAgreeCount += 1
   }
 
-  $Summary.TotalFseReconstructedRecords += Convert-ToInvariantInt -Value $Row.fse_reconstructed_records
-  $Summary.TotalCountOnlyReconstructedRecords += Convert-ToInvariantInt -Value $Row.count_only_reconstructed_records
-  $Summary.TotalFseMatchedRecords += Convert-ToInvariantInt -Value $Row.fse_matched_records
-  $Summary.TotalCountOnlyMatchedRecords += Convert-ToInvariantInt -Value $Row.count_only_matched_records
+  $Summary.TotalFseReconstructedRecords += Convert-ToInvariantIntOrZero -Value $Row.fse_reconstructed_records
+  $Summary.TotalCountOnlyReconstructedRecords += Convert-ToInvariantIntOrZero -Value $Row.count_only_reconstructed_records
+  $Summary.TotalFseMatchedRecords += Convert-ToInvariantIntOrZero -Value $Row.fse_matched_records
+  $Summary.TotalCountOnlyMatchedRecords += Convert-ToInvariantIntOrZero -Value $Row.count_only_matched_records
   $Summary.CandidateRatioSum += $CandidateRatio
-  $Summary.OwnedAverageElapsedNsSum += Convert-ToInvariantDouble -Value $Row.fse_average_elapsed_ns
-  $Summary.CountOnlyAverageElapsedNsSum += Convert-ToInvariantDouble -Value $Row.count_only_average_elapsed_ns
-  $Summary.OwnedResultOverheadNsSum += Convert-ToInvariantDouble -Value $Row.estimated_owned_result_overhead_ns
-  $Summary.CountOnlySpeedupRatioSum += Convert-ToInvariantDouble -Value $Row.count_only_speedup_ratio
+  $Summary.OwnedAverageElapsedNsSum += Convert-ToInvariantDoubleOrZero -Value $Row.fse_average_elapsed_ns
+  $Summary.CountOnlyAverageElapsedNsSum += Convert-ToInvariantDoubleOrZero -Value $Row.count_only_average_elapsed_ns
+  $Summary.OwnedResultOverheadNsSum += Convert-ToInvariantDoubleOrZero -Value $Row.estimated_owned_result_overhead_ns
+  $Summary.CountOnlySpeedupRatioSum += Convert-ToInvariantDoubleOrZero -Value $Row.count_only_speedup_ratio
 }
 
 $Header = @(
@@ -336,7 +267,8 @@ if (![string]::IsNullOrWhiteSpace($OutputDirectory)) {
   New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 }
 
-[System.IO.File]::WriteAllText($OutputCsv, (($OutputRows.ToArray()) -join "`r`n") + "`r`n", $Utf8NoBom)
+$OutputText = (($OutputRows.ToArray()) -join "`r`n") + "`r`n"
+Set-Utf8Text -Path $OutputCsv -Text $OutputText
 
 $NotesDirectory = Split-Path -Parent $OutputNotesPath
 
@@ -436,7 +368,8 @@ Add-NotesLine "Use count-only benchmark timing when the caller only needs exact 
 Add-NotesLine "Do not compare count-only timing and owned-result timing as if they answer the same application question."
 Add-NotesLine "The count-only summary is valid only when all_stats_match_owned is true."
 
-[System.IO.File]::WriteAllText($OutputNotesPath, (($NotesRows.ToArray()) -join "`r`n") + "`r`n", $Utf8NoBom)
+$NotesText = (($NotesRows.ToArray()) -join "`r`n") + "`r`n"
+Set-Utf8Text -Path $OutputNotesPath -Text $NotesText
 
 Write-Host "Count-only workload summary written: $OutputCsv"
 Write-Host "Count-only workload notes written: $OutputNotesPath"

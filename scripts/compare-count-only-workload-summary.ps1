@@ -8,6 +8,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$BenchmarkCsvLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-csv.ps1"
+
+if (!(Test-Path -LiteralPath $BenchmarkCsvLibrary)) {
+  throw "benchmark CSV helper library was not found: $BenchmarkCsvLibrary"
+}
+
+. $BenchmarkCsvLibrary
+
 if ([string]::IsNullOrWhiteSpace($PreviousCountOnlySummaryCsv)) {
   throw "`-PreviousCountOnlySummaryCsv` is required"
 }
@@ -29,104 +37,6 @@ New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $ComparisonCsvPath = Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.csv"
 $ComparisonNotesPath = Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.txt"
 
-$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-$InvariantCulture = [System.Globalization.CultureInfo]::InvariantCulture
-
-function Set-Utf8Text {
-  param(
-    [string]$Path,
-    [string]$Text
-  )
-
-  [System.IO.File]::WriteAllText($Path, $Text, $Utf8NoBom)
-}
-
-function Add-Utf8Text {
-  param(
-    [string]$Path,
-    [string]$Text
-  )
-
-  [System.IO.File]::AppendAllText($Path, $Text, $Utf8NoBom)
-}
-
-function Convert-ToInvariantDouble {
-  param(
-    [object]$Value
-  )
-
-  if ($null -eq $Value) {
-    return $null
-  }
-
-  if ([string]::IsNullOrWhiteSpace($Value.ToString())) {
-    return $null
-  }
-
-  return [System.Convert]::ToDouble($Value, $InvariantCulture)
-}
-
-function Format-InvariantDouble {
-  param(
-    [object]$Value
-  )
-
-  if ($null -eq $Value) {
-    return "unavailable"
-  }
-
-  try {
-    $DoubleValue = [System.Convert]::ToDouble($Value, $InvariantCulture)
-    return $DoubleValue.ToString("0.000000", $InvariantCulture)
-  }
-  catch {
-    return "unavailable"
-  }
-}
-
-function Escape-CsvField {
-  param(
-    [object]$Value
-  )
-
-  if ($null -eq $Value) {
-    return ""
-  }
-
-  $Text = $Value.ToString()
-
-  if ($Text.Contains('"')) {
-    $Text = $Text.Replace('"', '""')
-  }
-
-  if ($Text.Contains(",") -or $Text.Contains('"') -or $Text.Contains("`r") -or $Text.Contains("`n")) {
-    return '"' + $Text + '"'
-  }
-
-  return $Text
-}
-
-function Join-CsvFields {
-  param(
-    [object[]]$Fields
-  )
-
-  return (($Fields | ForEach-Object { Escape-CsvField -Value $_ }) -join ",")
-}
-
-function Write-CsvDocument {
-  param(
-    [string]$Path,
-    [object[]]$Header,
-    [object[]]$Rows
-  )
-
-  Set-Utf8Text -Path $Path -Text "$(Join-CsvFields -Fields $Header)`r`n"
-
-  foreach ($Row in $Rows) {
-    Add-Utf8Text -Path $Path -Text "$(Join-CsvFields -Fields $Row)`r`n"
-  }
-}
 
 function Require-Field {
   param(
@@ -161,18 +71,6 @@ function New-RowMap {
   return $Map
 }
 
-function Get-Delta {
-  param(
-    [object]$CurrentValue,
-    [object]$PreviousValue
-  )
-
-  if ($null -eq $CurrentValue -or $null -eq $PreviousValue) {
-    return $null
-  }
-
-  return [double]$CurrentValue - [double]$PreviousValue
-}
 
 function Get-HigherIsBetterClassification {
   param(
