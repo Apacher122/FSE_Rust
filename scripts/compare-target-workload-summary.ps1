@@ -203,6 +203,21 @@ function Get-Classification {
   return "stable/noise"
 }
 
+function Get-LowerTextField {
+  param(
+    [object]$Row,
+    [string]$FieldName
+  )
+
+  $Text = Get-TextField -Row $Row -FieldName $FieldName
+
+  if ($Text -eq "unavailable") {
+    return $Text
+  }
+
+  return $Text.ToString().Trim().ToLowerInvariant()
+}
+
 function New-ComparisonRow {
   param(
     [string]$BaselineName,
@@ -233,6 +248,25 @@ function New-ComparisonRow {
   $PreviousFseAverage = Get-Metric -Row $PreviousRow -FieldName "mean_fse_average_elapsed_ns"
   $CurrentFseAverage = Get-Metric -Row $CurrentRow -FieldName "mean_fse_average_elapsed_ns"
   $FseAverageDelta = Get-Delta -CurrentValue $CurrentFseAverage -PreviousValue $PreviousFseAverage
+
+  $PreviousCountOnlyAverage = Get-Metric -Row $PreviousRow -FieldName "mean_count_only_average_elapsed_ns"
+  $CurrentCountOnlyAverage = Get-Metric -Row $CurrentRow -FieldName "mean_count_only_average_elapsed_ns"
+  $CountOnlyAverageDelta = Get-Delta -CurrentValue $CurrentCountOnlyAverage -PreviousValue $PreviousCountOnlyAverage
+
+  $PreviousOwnedResultOverhead = Get-Metric -Row $PreviousRow -FieldName "mean_owned_result_overhead_ns"
+  $CurrentOwnedResultOverhead = Get-Metric -Row $CurrentRow -FieldName "mean_owned_result_overhead_ns"
+  $OwnedResultOverheadDelta = Get-Delta -CurrentValue $CurrentOwnedResultOverhead -PreviousValue $PreviousOwnedResultOverhead
+
+  $PreviousCountOnlySpeedup = Get-Metric -Row $PreviousRow -FieldName "mean_count_only_speedup_ratio"
+  $CurrentCountOnlySpeedup = Get-Metric -Row $CurrentRow -FieldName "mean_count_only_speedup_ratio"
+  $CountOnlySpeedupDelta = Get-Delta -CurrentValue $CurrentCountOnlySpeedup -PreviousValue $PreviousCountOnlySpeedup
+
+  $PreviousCountOnlyStatsAgreeCount = Get-Metric -Row $PreviousRow -FieldName "count_only_stats_agree_count"
+  $CurrentCountOnlyStatsAgreeCount = Get-Metric -Row $CurrentRow -FieldName "count_only_stats_agree_count"
+  $CountOnlyStatsAgreeCountDelta = Get-Delta -CurrentValue $CurrentCountOnlyStatsAgreeCount -PreviousValue $PreviousCountOnlyStatsAgreeCount
+
+  $PreviousAllCountOnlyStatsMatchOwned = Get-LowerTextField -Row $PreviousRow -FieldName "all_count_only_stats_match_owned"
+  $CurrentAllCountOnlyStatsMatchOwned = Get-LowerTextField -Row $CurrentRow -FieldName "all_count_only_stats_match_owned"
 
   $PreviousVisitedNodes = Get-Metric -Row $PreviousRow -FieldName "mean_fse_visited_nodes"
   $CurrentVisitedNodes = Get-Metric -Row $CurrentRow -FieldName "mean_fse_visited_nodes"
@@ -271,52 +305,66 @@ function New-ComparisonRow {
   $NodesPerRecordDelta = Get-Delta -CurrentValue $CurrentNodesPerRecord -PreviousValue $PreviousNodesPerRecord
 
   return [PSCustomObject]@{
-    BaselineName                 = $BaselineName
-    PreviousWorkloadName         = $PreviousWorkloadName
-    CurrentWorkloadName          = $CurrentWorkloadName
-    PreviousMeanTiming           = $PreviousMeanTiming
-    CurrentMeanTiming            = $CurrentMeanTiming
-    MeanTimingDelta              = $MeanTimingDelta
-    TimingClassification         = $TimingClassification
-    PreviousRange                = $PreviousRange
-    CurrentRange                 = $CurrentRange
-    RangeDelta                   = $RangeDelta
-    PreviousStdDev               = $PreviousStdDev
-    CurrentStdDev                = $CurrentStdDev
-    StdDevDelta                  = $StdDevDelta
-    PreviousBaselineAverage      = $PreviousBaselineAverage
-    CurrentBaselineAverage       = $CurrentBaselineAverage
-    BaselineAverageDelta         = $BaselineAverageDelta
-    PreviousFseAverage           = $PreviousFseAverage
-    CurrentFseAverage            = $CurrentFseAverage
-    FseAverageDelta              = $FseAverageDelta
-    PreviousVisitedNodes         = $PreviousVisitedNodes
-    CurrentVisitedNodes          = $CurrentVisitedNodes
-    VisitedNodeDelta             = $VisitedNodeDelta
-    PreviousRetainedLeaves       = $PreviousRetainedLeaves
-    CurrentRetainedLeaves        = $CurrentRetainedLeaves
-    RetainedLeafDelta            = $RetainedLeafDelta
-    PreviousReconstructedRecords = $PreviousReconstructedRecords
-    CurrentReconstructedRecords  = $CurrentReconstructedRecords
-    ReconstructedRecordDelta     = $ReconstructedRecordDelta
-    PreviousMatchedRecords       = $PreviousMatchedRecords
-    CurrentMatchedRecords        = $CurrentMatchedRecords
-    MatchedRecordDelta           = $MatchedRecordDelta
-    PreviousBaselineEvaluated    = $PreviousBaselineEvaluated
-    CurrentBaselineEvaluated     = $CurrentBaselineEvaluated
-    BaselineEvaluatedDelta       = $BaselineEvaluatedDelta
-    PreviousBaselineMatched      = $PreviousBaselineMatched
-    CurrentBaselineMatched       = $CurrentBaselineMatched
-    BaselineMatchedDelta         = $BaselineMatchedDelta
-    PreviousCandidateRatio       = $PreviousCandidateRatio
-    CurrentCandidateRatio        = $CurrentCandidateRatio
-    CandidateRatioDelta          = $CandidateRatioDelta
-    PreviousAvoidanceRatio       = $PreviousAvoidanceRatio
-    CurrentAvoidanceRatio        = $CurrentAvoidanceRatio
-    AvoidanceRatioDelta          = $AvoidanceRatioDelta
-    PreviousNodesPerRecord       = $PreviousNodesPerRecord
-    CurrentNodesPerRecord        = $CurrentNodesPerRecord
-    NodesPerRecordDelta          = $NodesPerRecordDelta
+    BaselineName                        = $BaselineName
+    PreviousWorkloadName                = $PreviousWorkloadName
+    CurrentWorkloadName                 = $CurrentWorkloadName
+    PreviousMeanTiming                  = $PreviousMeanTiming
+    CurrentMeanTiming                   = $CurrentMeanTiming
+    MeanTimingDelta                     = $MeanTimingDelta
+    TimingClassification                = $TimingClassification
+    PreviousRange                       = $PreviousRange
+    CurrentRange                        = $CurrentRange
+    RangeDelta                          = $RangeDelta
+    PreviousStdDev                      = $PreviousStdDev
+    CurrentStdDev                       = $CurrentStdDev
+    StdDevDelta                         = $StdDevDelta
+    PreviousBaselineAverage             = $PreviousBaselineAverage
+    CurrentBaselineAverage              = $CurrentBaselineAverage
+    BaselineAverageDelta                = $BaselineAverageDelta
+    PreviousFseAverage                  = $PreviousFseAverage
+    CurrentFseAverage                   = $CurrentFseAverage
+    FseAverageDelta                     = $FseAverageDelta
+    PreviousCountOnlyAverage            = $PreviousCountOnlyAverage
+    CurrentCountOnlyAverage             = $CurrentCountOnlyAverage
+    CountOnlyAverageDelta               = $CountOnlyAverageDelta
+    PreviousOwnedResultOverhead         = $PreviousOwnedResultOverhead
+    CurrentOwnedResultOverhead          = $CurrentOwnedResultOverhead
+    OwnedResultOverheadDelta            = $OwnedResultOverheadDelta
+    PreviousCountOnlySpeedup            = $PreviousCountOnlySpeedup
+    CurrentCountOnlySpeedup             = $CurrentCountOnlySpeedup
+    CountOnlySpeedupDelta               = $CountOnlySpeedupDelta
+    PreviousCountOnlyStatsAgreeCount    = $PreviousCountOnlyStatsAgreeCount
+    CurrentCountOnlyStatsAgreeCount     = $CurrentCountOnlyStatsAgreeCount
+    CountOnlyStatsAgreeCountDelta       = $CountOnlyStatsAgreeCountDelta
+    PreviousAllCountOnlyStatsMatchOwned = $PreviousAllCountOnlyStatsMatchOwned
+    CurrentAllCountOnlyStatsMatchOwned  = $CurrentAllCountOnlyStatsMatchOwned
+    PreviousVisitedNodes                = $PreviousVisitedNodes
+    CurrentVisitedNodes                 = $CurrentVisitedNodes
+    VisitedNodeDelta                    = $VisitedNodeDelta
+    PreviousRetainedLeaves              = $PreviousRetainedLeaves
+    CurrentRetainedLeaves               = $CurrentRetainedLeaves
+    RetainedLeafDelta                   = $RetainedLeafDelta
+    PreviousReconstructedRecords        = $PreviousReconstructedRecords
+    CurrentReconstructedRecords         = $CurrentReconstructedRecords
+    ReconstructedRecordDelta            = $ReconstructedRecordDelta
+    PreviousMatchedRecords              = $PreviousMatchedRecords
+    CurrentMatchedRecords               = $CurrentMatchedRecords
+    MatchedRecordDelta                  = $MatchedRecordDelta
+    PreviousBaselineEvaluated           = $PreviousBaselineEvaluated
+    CurrentBaselineEvaluated            = $CurrentBaselineEvaluated
+    BaselineEvaluatedDelta              = $BaselineEvaluatedDelta
+    PreviousBaselineMatched             = $PreviousBaselineMatched
+    CurrentBaselineMatched              = $CurrentBaselineMatched
+    BaselineMatchedDelta                = $BaselineMatchedDelta
+    PreviousCandidateRatio              = $PreviousCandidateRatio
+    CurrentCandidateRatio               = $CurrentCandidateRatio
+    CandidateRatioDelta                 = $CandidateRatioDelta
+    PreviousAvoidanceRatio              = $PreviousAvoidanceRatio
+    CurrentAvoidanceRatio               = $CurrentAvoidanceRatio
+    AvoidanceRatioDelta                 = $AvoidanceRatioDelta
+    PreviousNodesPerRecord              = $PreviousNodesPerRecord
+    CurrentNodesPerRecord               = $CurrentNodesPerRecord
+    NodesPerRecordDelta                 = $NodesPerRecordDelta
   }
 }
 
@@ -361,6 +409,20 @@ foreach ($Comparison in $ComparisonObjects) {
     $(Format-InvariantDouble -Value $Comparison.PreviousFseAverage),
     $(Format-InvariantDouble -Value $Comparison.CurrentFseAverage),
     $(Format-InvariantDouble -Value $Comparison.FseAverageDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousCountOnlyAverage),
+    $(Format-InvariantDouble -Value $Comparison.CurrentCountOnlyAverage),
+    $(Format-InvariantDouble -Value $Comparison.CountOnlyAverageDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousOwnedResultOverhead),
+    $(Format-InvariantDouble -Value $Comparison.CurrentOwnedResultOverhead),
+    $(Format-InvariantDouble -Value $Comparison.OwnedResultOverheadDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousCountOnlySpeedup),
+    $(Format-InvariantDouble -Value $Comparison.CurrentCountOnlySpeedup),
+    $(Format-InvariantDouble -Value $Comparison.CountOnlySpeedupDelta),
+    $(Format-InvariantDouble -Value $Comparison.PreviousCountOnlyStatsAgreeCount),
+    $(Format-InvariantDouble -Value $Comparison.CurrentCountOnlyStatsAgreeCount),
+    $(Format-InvariantDouble -Value $Comparison.CountOnlyStatsAgreeCountDelta),
+    $Comparison.PreviousAllCountOnlyStatsMatchOwned,
+    $Comparison.CurrentAllCountOnlyStatsMatchOwned,
     $(Format-InvariantDouble -Value $Comparison.PreviousVisitedNodes),
     $(Format-InvariantDouble -Value $Comparison.CurrentVisitedNodes),
     $(Format-InvariantDouble -Value $Comparison.VisitedNodeDelta),
@@ -413,6 +475,20 @@ Write-CsvDocument `
   "previous_mean_fse_average_elapsed_ns",
   "current_mean_fse_average_elapsed_ns",
   "mean_fse_average_elapsed_ns_delta",
+  "previous_mean_count_only_average_elapsed_ns",
+  "current_mean_count_only_average_elapsed_ns",
+  "mean_count_only_average_elapsed_ns_delta",
+  "previous_mean_owned_result_overhead_ns",
+  "current_mean_owned_result_overhead_ns",
+  "mean_owned_result_overhead_ns_delta",
+  "previous_mean_count_only_speedup_ratio",
+  "current_mean_count_only_speedup_ratio",
+  "mean_count_only_speedup_ratio_delta",
+  "previous_count_only_stats_agree_count",
+  "current_count_only_stats_agree_count",
+  "count_only_stats_agree_count_delta",
+  "previous_all_count_only_stats_match_owned",
+  "current_all_count_only_stats_match_owned",
   "previous_mean_fse_visited_nodes",
   "current_mean_fse_visited_nodes",
   "mean_fse_visited_nodes_delta",
@@ -466,7 +542,13 @@ foreach ($Comparison in $ComparisonObjects) {
   Add-Utf8Text -Path $ComparisonNotesPath -Text "range delta: $(Format-InvariantDouble -Value $Comparison.RangeDelta)`r`n"
   Add-Utf8Text -Path $ComparisonNotesPath -Text "sample stddev delta: $(Format-InvariantDouble -Value $Comparison.StdDevDelta)`r`n"
   Add-Utf8Text -Path $ComparisonNotesPath -Text "mean baseline average ns delta: $(Format-InvariantDouble -Value $Comparison.BaselineAverageDelta)`r`n"
-  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean FSE average ns delta: $(Format-InvariantDouble -Value $Comparison.FseAverageDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean FSE owned-result average ns delta: $(Format-InvariantDouble -Value $Comparison.FseAverageDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean count-only average ns delta: $(Format-InvariantDouble -Value $Comparison.CountOnlyAverageDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean owned-result overhead ns delta: $(Format-InvariantDouble -Value $Comparison.OwnedResultOverheadDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "mean count-only speedup ratio delta: $(Format-InvariantDouble -Value $Comparison.CountOnlySpeedupDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "count-only stats agree count delta: $(Format-InvariantDouble -Value $Comparison.CountOnlyStatsAgreeCountDelta)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "previous all count-only stats match owned: $($Comparison.PreviousAllCountOnlyStatsMatchOwned)`r`n"
+  Add-Utf8Text -Path $ComparisonNotesPath -Text "current all count-only stats match owned: $($Comparison.CurrentAllCountOnlyStatsMatchOwned)`r`n"
   Add-Utf8Text -Path $ComparisonNotesPath -Text "mean FSE visited nodes delta: $(Format-InvariantDouble -Value $Comparison.VisitedNodeDelta)`r`n"
   Add-Utf8Text -Path $ComparisonNotesPath -Text "mean FSE retained leaves delta: $(Format-InvariantDouble -Value $Comparison.RetainedLeafDelta)`r`n"
   Add-Utf8Text -Path $ComparisonNotesPath -Text "mean FSE reconstructed records delta: $(Format-InvariantDouble -Value $Comparison.ReconstructedRecordDelta)`r`n"
@@ -482,6 +564,8 @@ Add-Utf8Text -Path $ComparisonNotesPath -Text "`r`nDecision guidance`r`n"
 Add-Utf8Text -Path $ComparisonNotesPath -Text "-----------------`r`n"
 Add-Utf8Text -Path $ComparisonNotesPath -Text "Use this comparison when a performance commit intentionally targets a specific workload.`r`n"
 Add-Utf8Text -Path $ComparisonNotesPath -Text "A target workload improvement is stronger when timing improves beyond the noise threshold without increasing visited nodes, reconstructed records, candidate ratio, or matched-record differences.`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "Owned-result overhead deltas help identify whether a change improved materialized row-return cost rather than pruning alone.`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "Count-only timing must only be interpreted when previous and current all-count-only-stats-match-owned values are true.`r`n"
 Add-Utf8Text -Path $ComparisonNotesPath -Text "This comparison remains useful even if the target workload stops being the weakest workload after an optimization.`r`n"
 
 Write-Host ""

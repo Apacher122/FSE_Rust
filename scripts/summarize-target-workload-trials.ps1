@@ -142,6 +142,25 @@ function Get-WorkloadMetric {
   return Convert-ToInvariantDouble -Value $RawValue
 }
 
+function Get-WorkloadBoolean {
+  param(
+    [object]$Row,
+    [string]$FieldName
+  )
+
+  if ($null -eq $Row) {
+    return $false
+  }
+
+  $RawValue = $Row.$FieldName
+
+  if ([string]::IsNullOrWhiteSpace($RawValue)) {
+    return $false
+  }
+
+  return $RawValue.ToString().Trim().ToLowerInvariant() -eq "true"
+}
+
 function Get-WorkloadRow {
   param(
     [object[]]$Rows,
@@ -291,23 +310,27 @@ function Read-TargetWorkloadTrialRows {
 
       if ($null -eq $Row) {
         $TrialRows += [PSCustomObject]@{
-          Trial                        = $TrialNumber
-          BaselineName                 = $BaselineName
-          WorkloadName                 = $TargetWorkloadName
-          AverageTimingRatio           = $null
-          BaselineAverageElapsedNs     = $null
-          FseAverageElapsedNs          = $null
-          FseVisitedNodes              = $null
-          FseRetainedLeaves            = $null
-          FseReconstructedRecords      = $null
-          FseMatchedRecords            = $null
-          BaselineEvaluatedRecords     = $null
-          BaselineMatchedRecords       = $null
-          CandidateRatio               = $null
-          ReconstructionAvoidanceRatio = $null
-          NodesPerRecord               = $null
-          SourceCsv                    = $WorkloadCsvPath
-          Status                       = "missing target workload"
+          Trial                          = $TrialNumber
+          BaselineName                   = $BaselineName
+          WorkloadName                   = $TargetWorkloadName
+          AverageTimingRatio             = $null
+          BaselineAverageElapsedNs       = $null
+          FseAverageElapsedNs            = $null
+          CountOnlyAverageElapsedNs      = $null
+          EstimatedOwnedResultOverheadNs = $null
+          CountOnlySpeedupRatio          = $null
+          CountOnlyStatsMatchOwned       = $false
+          FseVisitedNodes                = $null
+          FseRetainedLeaves              = $null
+          FseReconstructedRecords        = $null
+          FseMatchedRecords              = $null
+          BaselineEvaluatedRecords       = $null
+          BaselineMatchedRecords         = $null
+          CandidateRatio                 = $null
+          ReconstructionAvoidanceRatio   = $null
+          NodesPerRecord                 = $null
+          SourceCsv                      = $WorkloadCsvPath
+          Status                         = "missing target workload"
         }
 
         continue
@@ -317,23 +340,27 @@ function Read-TargetWorkloadTrialRows {
       $FseReconstructedRecords = Get-WorkloadMetric -Row $Row -FieldName "fse_reconstructed_records"
 
       $TrialRows += [PSCustomObject]@{
-        Trial                        = $TrialNumber
-        BaselineName                 = $BaselineName
-        WorkloadName                 = $TargetWorkloadName
-        AverageTimingRatio           = Get-WorkloadMetric -Row $Row -FieldName "average_timing_ratio"
-        BaselineAverageElapsedNs     = Get-WorkloadMetric -Row $Row -FieldName "baseline_average_elapsed_ns"
-        FseAverageElapsedNs          = Get-WorkloadMetric -Row $Row -FieldName "fse_average_elapsed_ns"
-        FseVisitedNodes              = $FseVisitedNodes
-        FseRetainedLeaves            = Get-WorkloadMetric -Row $Row -FieldName "fse_retained_leaves"
-        FseReconstructedRecords      = $FseReconstructedRecords
-        FseMatchedRecords            = Get-WorkloadMetric -Row $Row -FieldName "fse_matched_records"
-        BaselineEvaluatedRecords     = Get-WorkloadMetric -Row $Row -FieldName "baseline_evaluated_records"
-        BaselineMatchedRecords       = Get-WorkloadMetric -Row $Row -FieldName "baseline_matched_records"
-        CandidateRatio               = Get-WorkloadMetric -Row $Row -FieldName "candidate_ratio"
-        ReconstructionAvoidanceRatio = Get-WorkloadMetric -Row $Row -FieldName "reconstruction_avoidance_ratio"
-        NodesPerRecord               = Get-RatioOrNull -Numerator $FseVisitedNodes -Denominator $FseReconstructedRecords
-        SourceCsv                    = $WorkloadCsvPath
-        Status                       = "loaded"
+        Trial                          = $TrialNumber
+        BaselineName                   = $BaselineName
+        WorkloadName                   = $TargetWorkloadName
+        AverageTimingRatio             = Get-WorkloadMetric -Row $Row -FieldName "average_timing_ratio"
+        BaselineAverageElapsedNs       = Get-WorkloadMetric -Row $Row -FieldName "baseline_average_elapsed_ns"
+        FseAverageElapsedNs            = Get-WorkloadMetric -Row $Row -FieldName "fse_average_elapsed_ns"
+        CountOnlyAverageElapsedNs      = Get-WorkloadMetric -Row $Row -FieldName "count_only_average_elapsed_ns"
+        EstimatedOwnedResultOverheadNs = Get-WorkloadMetric -Row $Row -FieldName "estimated_owned_result_overhead_ns"
+        CountOnlySpeedupRatio          = Get-WorkloadMetric -Row $Row -FieldName "count_only_speedup_ratio"
+        CountOnlyStatsMatchOwned       = Get-WorkloadBoolean -Row $Row -FieldName "count_only_stats_match_owned"
+        FseVisitedNodes                = $FseVisitedNodes
+        FseRetainedLeaves              = Get-WorkloadMetric -Row $Row -FieldName "fse_retained_leaves"
+        FseReconstructedRecords        = $FseReconstructedRecords
+        FseMatchedRecords              = Get-WorkloadMetric -Row $Row -FieldName "fse_matched_records"
+        BaselineEvaluatedRecords       = Get-WorkloadMetric -Row $Row -FieldName "baseline_evaluated_records"
+        BaselineMatchedRecords         = Get-WorkloadMetric -Row $Row -FieldName "baseline_matched_records"
+        CandidateRatio                 = Get-WorkloadMetric -Row $Row -FieldName "candidate_ratio"
+        ReconstructionAvoidanceRatio   = Get-WorkloadMetric -Row $Row -FieldName "reconstruction_avoidance_ratio"
+        NodesPerRecord                 = Get-RatioOrNull -Numerator $FseVisitedNodes -Denominator $FseReconstructedRecords
+        SourceCsv                      = $WorkloadCsvPath
+        Status                         = "loaded"
       }
     }
   }
@@ -365,6 +392,24 @@ function New-TargetSummaryRow {
       $null -ne $_.FseAverageElapsedNs
     } | ForEach-Object {
       [double]$_.FseAverageElapsedNs
+    })
+  $CountOnlyAverageValues = @($BaselineRows | Where-Object {
+      $null -ne $_.CountOnlyAverageElapsedNs
+    } | ForEach-Object {
+      [double]$_.CountOnlyAverageElapsedNs
+    })
+  $OwnedResultOverheadValues = @($BaselineRows | Where-Object {
+      $null -ne $_.EstimatedOwnedResultOverheadNs
+    } | ForEach-Object {
+      [double]$_.EstimatedOwnedResultOverheadNs
+    })
+  $CountOnlySpeedupValues = @($BaselineRows | Where-Object {
+      $null -ne $_.CountOnlySpeedupRatio
+    } | ForEach-Object {
+      [double]$_.CountOnlySpeedupRatio
+    })
+  $StatsMatchRows = @($BaselineRows | Where-Object {
+      $_.CountOnlyStatsMatchOwned
     })
   $VisitedValues = @($BaselineRows | Where-Object {
       $null -ne $_.FseVisitedNodes
@@ -432,6 +477,11 @@ function New-TargetSummaryRow {
     SampleStdDevTimingRatio          = Get-SampleStdDev -Values $TimingValues -Mean $MeanTiming
     MeanBaselineAverageElapsedNs     = Get-Mean -Values $BaselineAverageValues
     MeanFseAverageElapsedNs          = Get-Mean -Values $FseAverageValues
+    MeanCountOnlyAverageElapsedNs    = Get-Mean -Values $CountOnlyAverageValues
+    MeanOwnedResultOverheadNs        = Get-Mean -Values $OwnedResultOverheadValues
+    MeanCountOnlySpeedupRatio        = Get-Mean -Values $CountOnlySpeedupValues
+    CountOnlyStatsAgreeCount         = $StatsMatchRows.Count
+    AllCountOnlyStatsMatchOwned      = $StatsMatchRows.Count -eq $BaselineRows.Count
     MeanFseVisitedNodes              = Get-Mean -Values $VisitedValues
     MeanFseRetainedLeaves            = Get-Mean -Values $RetainedValues
     MeanFseReconstructedRecords      = Get-Mean -Values $ReconstructedValues
@@ -466,6 +516,10 @@ foreach ($Row in $TrialRows) {
     $(Format-InvariantDouble -Value $Row.AverageTimingRatio),
     $(Format-InvariantDouble -Value $Row.BaselineAverageElapsedNs),
     $(Format-InvariantDouble -Value $Row.FseAverageElapsedNs),
+    $(Format-InvariantDouble -Value $Row.CountOnlyAverageElapsedNs),
+    $(Format-InvariantDouble -Value $Row.EstimatedOwnedResultOverheadNs),
+    $(Format-InvariantDouble -Value $Row.CountOnlySpeedupRatio),
+    $Row.CountOnlyStatsMatchOwned.ToString().ToLowerInvariant(),
     $(Format-InvariantDouble -Value $Row.FseVisitedNodes),
     $(Format-InvariantDouble -Value $Row.FseRetainedLeaves),
     $(Format-InvariantDouble -Value $Row.FseReconstructedRecords),
@@ -489,6 +543,10 @@ Write-CsvDocument `
   "average_timing_ratio",
   "baseline_average_elapsed_ns",
   "fse_average_elapsed_ns",
+  "count_only_average_elapsed_ns",
+  "estimated_owned_result_overhead_ns",
+  "count_only_speedup_ratio",
+  "count_only_stats_match_owned",
   "fse_visited_nodes",
   "fse_retained_leaves",
   "fse_reconstructed_records",
@@ -525,6 +583,11 @@ foreach ($Summary in $SummaryObjects) {
     $(Format-InvariantDouble -Value $Summary.SampleStdDevTimingRatio),
     $(Format-InvariantDouble -Value $Summary.MeanBaselineAverageElapsedNs),
     $(Format-InvariantDouble -Value $Summary.MeanFseAverageElapsedNs),
+    $(Format-InvariantDouble -Value $Summary.MeanCountOnlyAverageElapsedNs),
+    $(Format-InvariantDouble -Value $Summary.MeanOwnedResultOverheadNs),
+    $(Format-InvariantDouble -Value $Summary.MeanCountOnlySpeedupRatio),
+    $Summary.CountOnlyStatsAgreeCount,
+    $Summary.AllCountOnlyStatsMatchOwned.ToString().ToLowerInvariant(),
     $(Format-InvariantDouble -Value $Summary.MeanFseVisitedNodes),
     $(Format-InvariantDouble -Value $Summary.MeanFseRetainedLeaves),
     $(Format-InvariantDouble -Value $Summary.MeanFseReconstructedRecords),
@@ -550,6 +613,11 @@ Write-CsvDocument `
   "sample_stddev_timing_ratio",
   "mean_baseline_average_elapsed_ns",
   "mean_fse_average_elapsed_ns",
+  "mean_count_only_average_elapsed_ns",
+  "mean_owned_result_overhead_ns",
+  "mean_count_only_speedup_ratio",
+  "count_only_stats_agree_count",
+  "all_count_only_stats_match_owned",
   "mean_fse_visited_nodes",
   "mean_fse_retained_leaves",
   "mean_fse_reconstructed_records",
@@ -582,7 +650,12 @@ foreach ($Summary in $SummaryObjects) {
   Add-Utf8Text -Path $NotesPath -Text "range timing ratio: $(Format-InvariantDouble -Value $Summary.RangeTimingRatio)`r`n"
   Add-Utf8Text -Path $NotesPath -Text "sample stddev timing ratio: $(Format-InvariantDouble -Value $Summary.SampleStdDevTimingRatio)`r`n"
   Add-Utf8Text -Path $NotesPath -Text "mean baseline average ns: $(Format-InvariantDouble -Value $Summary.MeanBaselineAverageElapsedNs)`r`n"
-  Add-Utf8Text -Path $NotesPath -Text "mean FSE average ns: $(Format-InvariantDouble -Value $Summary.MeanFseAverageElapsedNs)`r`n"
+  Add-Utf8Text -Path $NotesPath -Text "mean FSE owned-result average ns: $(Format-InvariantDouble -Value $Summary.MeanFseAverageElapsedNs)`r`n"
+  Add-Utf8Text -Path $NotesPath -Text "mean count-only average ns: $(Format-InvariantDouble -Value $Summary.MeanCountOnlyAverageElapsedNs)`r`n"
+  Add-Utf8Text -Path $NotesPath -Text "mean estimated owned-result overhead ns: $(Format-InvariantDouble -Value $Summary.MeanOwnedResultOverheadNs)`r`n"
+  Add-Utf8Text -Path $NotesPath -Text "mean count-only speedup ratio: $(Format-InvariantDouble -Value $Summary.MeanCountOnlySpeedupRatio)`r`n"
+  Add-Utf8Text -Path $NotesPath -Text "count-only stats agree count: $($Summary.CountOnlyStatsAgreeCount)`r`n"
+  Add-Utf8Text -Path $NotesPath -Text "all count-only stats match owned: $($Summary.AllCountOnlyStatsMatchOwned.ToString().ToLowerInvariant())`r`n"
   Add-Utf8Text -Path $NotesPath -Text "mean FSE visited nodes: $(Format-InvariantDouble -Value $Summary.MeanFseVisitedNodes)`r`n"
   Add-Utf8Text -Path $NotesPath -Text "mean FSE retained leaves: $(Format-InvariantDouble -Value $Summary.MeanFseRetainedLeaves)`r`n"
   Add-Utf8Text -Path $NotesPath -Text "mean FSE reconstructed records: $(Format-InvariantDouble -Value $Summary.MeanFseReconstructedRecords)`r`n"
@@ -594,9 +667,11 @@ foreach ($Summary in $SummaryObjects) {
 
 Add-Utf8Text -Path $NotesPath -Text "`r`nDecision guidance`r`n"
 Add-Utf8Text -Path $NotesPath -Text "-----------------`r`n"
-Add-Utf8Text -Path $NotesPath -Text "Use this target summary when a boundary optimization improves cluster_boundary_range enough that it may stop being the weakest workload.`r`n"
+Add-Utf8Text -Path $NotesPath -Text "Use this target summary when a boundary optimization improves the selected target workload enough that it may stop being the weakest workload.`r`n"
 Add-Utf8Text -Path $NotesPath -Text "The weakest-workload summary answers what lost most often.`r`n"
 Add-Utf8Text -Path $NotesPath -Text "This target-workload summary answers what happened to the workload we were intentionally targeting.`r`n"
+Add-Utf8Text -Path $NotesPath -Text "Owned-result timing answers materialized row-return performance.`r`n"
+Add-Utf8Text -Path $NotesPath -Text "Count-only timing answers exact-cardinality performance and must only be interpreted when all count-only stats match owned-result stats.`r`n"
 
 Write-Host ""
 Write-Host "Target workload trial artifacts written:"
