@@ -77,6 +77,46 @@ pub struct QueryCountReport {
     pub stats: QueryExecutionStats,
 }
 
+/// Exact reference to a matching record inside the FSE index.
+///
+/// # Runtime Role
+///
+/// `QueryResultReference` identifies a matching row without materializing an
+/// owned [`Vector`]. This gives callers a lower-allocation output contract when
+/// they need exact match identity but do not immediately need reconstructed row
+/// values.
+///
+/// # Formal Reference
+///
+/// The referenced row has already passed the same staged execution semantics as
+/// owned-result queries:
+///
+/// `Geometry -> Reconstruction -> Logic`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct QueryResultReference {
+    /// Leaf node containing the matching residual row.
+    pub node_id: usize,
+
+    /// Row index inside the leaf residual block.
+    pub row_index: usize,
+}
+
+/// Query reference result paired with execution statistics.
+///
+/// # Runtime Role
+///
+/// `QueryReferenceReport` exposes exact matching row references while preserving
+/// the same structural accounting used by owned-result and count-only query
+/// execution.
+#[derive(Clone, Debug, PartialEq)]
+pub struct QueryReferenceReport {
+    /// Exact matching row references.
+    pub matches: Vec<QueryResultReference>,
+
+    /// Runtime statistics for the query.
+    pub stats: QueryExecutionStats,
+}
+
 /// Result of executing one retained leaf partition.
 ///
 /// # Runtime Role

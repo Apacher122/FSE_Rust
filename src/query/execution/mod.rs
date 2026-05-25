@@ -9,6 +9,7 @@ mod api;
 mod count;
 mod options;
 mod parallel;
+mod references;
 mod reports;
 mod retained;
 mod root_coverage;
@@ -21,13 +22,18 @@ pub use api::{
 
 pub use count::{count_query_matches, count_query_matches_with_stats};
 
+pub use references::{execute_query_references, execute_query_references_with_stats};
+
 pub(crate) use api::execute_retained_leaf_batch_for_diagnostics;
 
 pub use options::{
     DEFAULT_PARALLEL_MIN_RETAINED_LEAVES, QueryExecutionMode, QueryExecutionOptions,
 };
 
-pub use reports::{QueryCountReport, QueryExecutionReport, QueryExecutionStats};
+pub use reports::{
+    QueryCountReport, QueryExecutionReport, QueryExecutionStats, QueryReferenceReport,
+    QueryResultReference,
+};
 
 #[cfg(test)]
 pub(crate) use parallel::should_execute_retained_leaves_in_parallel;
