@@ -189,6 +189,34 @@ impl RetainedLeafBatchExecutionReport {
             matched_records: 0,
         }
     }
+
+    /// Creates an empty batch report from a caller-owned result buffer.
+    ///
+    /// # Runtime Role
+    ///
+    /// This constructor lets owned-result query execution reuse the outer
+    /// `Vec<Vector>` allocation across repeated exact queries. The buffer is
+    /// cleared before use and then reserved up to the normal bounded capacity hint.
+    ///
+    /// This does not remove per-row `Vector` materialization. It only avoids
+    /// repeatedly allocating the outer result collection.
+    pub(crate) fn with_result_buffer(candidate_count: usize, mut results: Vec<Vector>) -> Self {
+        results.clear();
+
+        let target_capacity = result_capacity_hint(candidate_count);
+
+        if results.capacity() < target_capacity {
+            results.reserve_exact(target_capacity - results.capacity());
+        }
+
+        Self {
+            results,
+            reconstructed_records: 0,
+            #[cfg(test)]
+            predicate_evaluated_records: 0,
+            matched_records: 0,
+        }
+    }
 }
 
 /// Returns a bounded capacity hint for final query results.

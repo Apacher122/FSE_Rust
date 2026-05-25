@@ -16,8 +16,8 @@ mod root_coverage;
 mod serial;
 
 pub use api::{
-    execute_query, execute_query_with_options, execute_query_with_stats,
-    execute_query_with_stats_and_options,
+    execute_query, execute_query_into, execute_query_into_with_options, execute_query_with_options,
+    execute_query_with_stats, execute_query_with_stats_and_options,
 };
 
 pub use count::{count_query_matches, count_query_matches_with_stats};

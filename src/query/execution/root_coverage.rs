@@ -1,6 +1,6 @@
 //! Root-covered query execution.
 
-use crate::math::Scalar;
+use crate::math::{Scalar, Vector};
 use crate::query::{QueryRegion, RetainedLeaf};
 use crate::storage::FSEIndex;
 
@@ -85,6 +85,34 @@ pub(crate) fn execute_fully_covered_index_serial(
         RetainedLeafBatchExecutionReport::with_candidate_capacity(candidate_count);
 
     // full coverage can materialize rows directly
+    for shape in index.leaf_reconstruction_shapes() {
+        let node = &index.nodes[shape.node_id];
+        append_covered_retained_leaf_results(node, *shape, &mut batch_report);
+    }
+
+    debug_assert_eq!(
+        batch_report.reconstructed_records, candidate_count,
+        "fully covered index reconstruction should match root cardinality"
+    );
+
+    batch_report
+}
+
+/// Executes a fully covered index into a caller-owned result buffer.
+///
+/// # Runtime Role
+///
+/// This is the reusable-buffer variant of the full-index coverage path. It keeps
+/// root-covered owned-result queries from allocating a new outer result vector
+/// when the caller already has one available.
+pub(crate) fn execute_fully_covered_index_serial_with_results(
+    index: &FSEIndex,
+    results: Vec<Vector>,
+) -> RetainedLeafBatchExecutionReport {
+    let candidate_count = index.root_node().cardinality;
+    let mut batch_report =
+        RetainedLeafBatchExecutionReport::with_result_buffer(candidate_count, results);
+
     for shape in index.leaf_reconstruction_shapes() {
         let node = &index.nodes[shape.node_id];
         append_covered_retained_leaf_results(node, *shape, &mut batch_report);

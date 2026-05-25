@@ -13,9 +13,9 @@ pub use evaluator::evaluate_query;
 pub use execution::{
     QueryCountReport, QueryExecutionMode, QueryExecutionOptions, QueryExecutionReport,
     QueryExecutionStats, QueryReferenceReport, QueryResultReference, count_query_matches,
-    count_query_matches_with_stats, execute_query, execute_query_references,
-    execute_query_references_with_stats, execute_query_with_options, execute_query_with_stats,
-    execute_query_with_stats_and_options,
+    count_query_matches_with_stats, execute_query, execute_query_into,
+    execute_query_into_with_options, execute_query_references, execute_query_references_with_stats,
+    execute_query_with_options, execute_query_with_stats, execute_query_with_stats_and_options,
 };
 
 pub(crate) use execution::execute_retained_leaf_batch_for_diagnostics;

@@ -47,11 +47,58 @@ pub(crate) fn execute_classified_retained_leaves_serial_with_candidate_count(
     retained_leaves: &[RetainedLeaf],
     candidate_count: usize,
 ) -> RetainedLeafBatchExecutionReport {
-    #[cfg(any(test, debug_assertions))]
-    validate_retained_leaves(index, retained_leaves);
-
     let mut batch_report =
         RetainedLeafBatchExecutionReport::with_candidate_capacity(candidate_count);
+
+    execute_classified_retained_leaves_serial_into_batch_report(
+        index,
+        query,
+        retained_leaves,
+        candidate_count,
+        &mut batch_report,
+    );
+
+    batch_report
+}
+
+/// Executes classified retained leaves serially into a caller-provided result buffer.
+///
+/// # Runtime Role
+///
+/// This variant preserves the same serial retained-leaf semantics as
+/// `execute_classified_retained_leaves_serial_with_candidate_count`, but starts
+/// from an existing `Vec<Vector>` allocation. It is used by `execute_query_into`
+/// to reduce repeated outer result-buffer allocation for owned-result queries.
+pub(crate) fn execute_classified_retained_leaves_serial_with_candidate_count_and_results(
+    index: &FSEIndex,
+    query: &QueryRegion,
+    retained_leaves: &[RetainedLeaf],
+    candidate_count: usize,
+    results: Vec<crate::math::Vector>,
+) -> RetainedLeafBatchExecutionReport {
+    let mut batch_report =
+        RetainedLeafBatchExecutionReport::with_result_buffer(candidate_count, results);
+
+    execute_classified_retained_leaves_serial_into_batch_report(
+        index,
+        query,
+        retained_leaves,
+        candidate_count,
+        &mut batch_report,
+    );
+
+    batch_report
+}
+
+fn execute_classified_retained_leaves_serial_into_batch_report(
+    index: &FSEIndex,
+    query: &QueryRegion,
+    retained_leaves: &[RetainedLeaf],
+    candidate_count: usize,
+    batch_report: &mut RetainedLeafBatchExecutionReport,
+) {
+    #[cfg(any(test, debug_assertions))]
+    validate_retained_leaves(index, retained_leaves);
 
     // 1d and 2d retained-leaf paths do not need this buffer
     // let the generic path allocate it lazily only if it actually runs
@@ -66,7 +113,7 @@ pub(crate) fn execute_classified_retained_leaves_serial_with_candidate_count(
             shape,
             query,
             retained_leaf.coverage,
-            &mut batch_report,
+            batch_report,
             &mut reconstructed_values,
         );
     }
@@ -75,6 +122,4 @@ pub(crate) fn execute_classified_retained_leaves_serial_with_candidate_count(
         batch_report.reconstructed_records, candidate_count,
         "retained candidate count should match reconstructed retained rows"
     );
-
-    batch_report
 }

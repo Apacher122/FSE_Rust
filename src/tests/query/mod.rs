@@ -5,6 +5,7 @@ mod count_tests;
 mod execution_batch_tests;
 mod execution_covered_leaf_tests;
 mod execution_determinism_tests;
+mod execution_into_tests;
 mod execution_options_tests;
 mod execution_parallel_workload_tests;
 mod execution_root_coverage_tests;
