@@ -19,6 +19,7 @@ param(
   [switch]$ForceOrganizedArtifacts,
   [switch]$ValidateArtifacts,
   [switch]$RequireValidatedComparisons,
+  [switch]$CleanupFlatArtifacts,
   [double]$NoiseThreshold = 0.03
 )
 
@@ -55,6 +56,10 @@ else {
   $EffectiveMaxDepth = 8
 }
 
+if ($CleanupFlatArtifacts -and !$CopyArtifactsToRunFolder) {
+  throw "-CleanupFlatArtifacts requires -CopyArtifactsToRunFolder so flat artifacts are not removed before an organized run copy exists"
+}
+
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 $ScriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -68,8 +73,10 @@ $TargetSummaryScript = Join-Path $ScriptDirectory "summarize-target-workload-tri
 $TargetComparatorScript = Join-Path $ScriptDirectory "compare-target-workload-summary.ps1"
 $ArtifactOrganizerScript = Join-Path $ScriptDirectory "organize-benchmark-artifacts.ps1"
 $ArtifactValidatorScript = Join-Path $ScriptDirectory "validate-benchmark-review-artifacts.ps1"
+$FlatArtifactCleanupScript = Join-Path $ScriptDirectory "cleanup-flat-benchmark-artifacts.ps1"
 
 $OrganizedRunRoot = Join-Path $OutputDir "runs"
+$OrganizedRunDirectory = Join-Path $OrganizedRunRoot $Label
 
 if ([string]::IsNullOrWhiteSpace($PreviousLabel)) {
   $PreviousOrganizedRunDirectory = ""
@@ -203,6 +210,19 @@ function Add-ReviewLine {
   )
 
   Add-Utf8Text -Path $ReviewNotesPath -Text "$Text`r`n"
+}
+
+function Copy-ReviewNotesToOrganizedRun {
+  if (!$CopyArtifactsToRunFolder) {
+    return
+  }
+
+  New-Item -ItemType Directory -Force -Path $OrganizedRunDirectory | Out-Null
+
+  Copy-Item `
+    -LiteralPath $ReviewNotesPath `
+    -Destination (Join-Path $OrganizedRunDirectory (Split-Path -Leaf $ReviewNotesPath)) `
+    -Force
 }
 
 function Get-ArtifactState {
@@ -371,6 +391,7 @@ function Write-ReviewManifest {
   Add-Utf8Text -Path $ReviewManifestPath -Text "Force organized artifacts: $ForceOrganizedArtifacts`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Validate artifacts: $ValidateArtifacts`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Require validated comparisons: $RequireValidatedComparisons`r`n"
+  Add-Utf8Text -Path $ReviewManifestPath -Text "Cleanup flat artifacts: $CleanupFlatArtifacts`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "Noise threshold: +/- $(Format-InvariantDouble -Value $NoiseThreshold)`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "`r`n"
   Add-Utf8Text -Path $ReviewManifestPath -Text "state | artifact | path | note`r`n"
@@ -544,6 +565,10 @@ if ($ValidateArtifacts) {
   Require-Script -Path $ArtifactValidatorScript
 }
 
+if ($CleanupFlatArtifacts) {
+  Require-Script -Path $FlatArtifactCleanupScript
+}
+
 $PreviousLowSelectivityGapCsv = Resolve-OptionalPreviousPath `
   -ExplicitPath $PreviousLowSelectivityGapCsv `
   -DefaultPath (Join-Path $OutputDir "low-selectivity-gap-$PreviousLabel.csv")
@@ -589,6 +614,7 @@ Add-ReviewLine "Copy artifacts to run folder: $CopyArtifactsToRunFolder"
 Add-ReviewLine "Force organized artifacts: $ForceOrganizedArtifacts"
 Add-ReviewLine "Validate artifacts: $ValidateArtifacts"
 Add-ReviewLine "Require validated comparisons: $RequireValidatedComparisons"
+Add-ReviewLine "Cleanup flat artifacts: $CleanupFlatArtifacts"
 Add-ReviewLine "Previous low-selectivity gap CSV: $PreviousLowSelectivityGapCsv"
 Add-ReviewLine "Previous aggregate trial summary CSV: $PreviousTrialSummaryCsv"
 Add-ReviewLine "Previous workload trial summary CSV: $PreviousWorkloadSummaryCsv"
@@ -1015,8 +1041,6 @@ Add-ReviewLine "Do not accept a performance commit based on one noisy single-run
 Write-ReviewManifest
 
 if ($CopyArtifactsToRunFolder) {
-  $OrganizedRunDirectory = Join-Path $OrganizedRunRoot $Label
-
   Add-ReviewLine ""
   Add-ReviewLine "Organized artifact copy"
   Add-ReviewLine "-----------------------"
@@ -1047,12 +1071,7 @@ if ($CopyArtifactsToRunFolder) {
 
   Add-ReviewLine "status: completed"
 
-  New-Item -ItemType Directory -Force -Path $OrganizedRunDirectory | Out-Null
-
-  Copy-Item `
-    -LiteralPath $ReviewNotesPath `
-    -Destination (Join-Path $OrganizedRunDirectory (Split-Path -Leaf $ReviewNotesPath)) `
-    -Force
+  Copy-ReviewNotesToOrganizedRun
 }
 
 if ($ValidateArtifacts) {
@@ -1089,11 +1108,46 @@ if ($ValidateArtifacts) {
   Add-ReviewLine "status: completed"
 }
 
+Copy-ReviewNotesToOrganizedRun
+
+if ($CleanupFlatArtifacts) {
+  Add-ReviewLine ""
+  Add-ReviewLine "Flat artifact cleanup"
+  Add-ReviewLine "---------------------"
+  Add-ReviewLine "status: requested"
+  Add-ReviewLine "reason: organized artifacts were copied and validated before flat cleanup"
+
+  Copy-ReviewNotesToOrganizedRun
+
+  Write-Host ""
+  Write-Host "Cleaning flat benchmark artifacts"
+  Write-Host "  label: $Label"
+  Write-Host "  artifact root: $OutputDir"
+
+  & $FlatArtifactCleanupScript `
+    -ArtifactRoot $OutputDir `
+    -Label $Label `
+    -Delete `
+    -Force
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "flat artifact cleanup failed with exit code $LASTEXITCODE"
+  }
+}
+
 Write-Host ""
 Write-Host "Low-gap review complete:"
-Write-Host "  $ReviewNotesPath"
-Write-Host "  $ReviewManifestPath"
 
-if ($CopyArtifactsToRunFolder) {
-  Write-Host "  organized run folder: $(Join-Path $OrganizedRunRoot $Label)"
+if ($CleanupFlatArtifacts -and $CopyArtifactsToRunFolder) {
+  Write-Host "  organized review notes: $(Join-Path $OrganizedRunDirectory (Split-Path -Leaf $ReviewNotesPath))"
+  Write-Host "  organized review manifest: $(Join-Path $OrganizedRunDirectory (Split-Path -Leaf $ReviewManifestPath))"
+  Write-Host "  organized run folder: $OrganizedRunDirectory"
+}
+else {
+  Write-Host "  $ReviewNotesPath"
+  Write-Host "  $ReviewManifestPath"
+
+  if ($CopyArtifactsToRunFolder) {
+    Write-Host "  organized run folder: $OrganizedRunDirectory"
+  }
 }
