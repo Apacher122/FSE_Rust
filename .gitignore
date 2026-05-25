@@ -4,6 +4,7 @@
 *.csv
 /benchmark_artifacts
 /dev_notes
+c[0-9]*-*.txt
 
 # VS Code
 .vscode/*

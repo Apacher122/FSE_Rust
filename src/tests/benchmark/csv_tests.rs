@@ -383,6 +383,38 @@ fn workload_csv_export_includes_reference_result_metrics() {
     assert!(csv.contains("estimated_owned_vs_reference_overhead_ns"));
     assert!(csv.contains("reference_result_speedup_ratio"));
     assert!(csv.contains("reference_stats_match_count_only"));
+    assert!(csv.contains("reusable_owned_average_elapsed_ns"));
+    assert!(csv.contains("estimated_fresh_vs_reusable_owned_overhead_ns"));
+    assert!(csv.contains("reusable_owned_result_speedup_ratio"));
+    assert!(csv.contains("reusable_owned_stats_match_owned"));
+    assert!(csv.contains(",true"));
+}
+
+#[test]
+fn workload_csv_export_includes_reusable_owned_result_metrics() {
+    let fixture = small_benchmark_fixture();
+    let registry = BaselineRegistry::new();
+    let baseline_kinds = [BaselineKind::FlatScan];
+
+    let report = run_multi_baseline_benchmark_suite(
+        &fixture.index,
+        &fixture.points,
+        &fixture.workloads,
+        &fixture.timing_config,
+        &registry,
+        &baseline_kinds,
+    );
+
+    let csv = multi_baseline_workload_report_to_csv(&report);
+
+    assert!(csv.contains("reusable_owned_visited_nodes"));
+    assert!(csv.contains("reusable_owned_retained_leaves"));
+    assert!(csv.contains("reusable_owned_reconstructed_records"));
+    assert!(csv.contains("reusable_owned_matched_records"));
+    assert!(csv.contains("reusable_owned_average_elapsed_ns"));
+    assert!(csv.contains("estimated_fresh_vs_reusable_owned_overhead_ns"));
+    assert!(csv.contains("reusable_owned_result_speedup_ratio"));
+    assert!(csv.contains("reusable_owned_stats_match_owned"));
     assert!(csv.contains(",true"));
 }
 
