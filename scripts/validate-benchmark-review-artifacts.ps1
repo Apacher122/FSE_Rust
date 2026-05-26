@@ -576,7 +576,7 @@ if ($RequireComparisons) {
     "baseline_name",
     "previous_mean_low_mean_timing_ratio",
     "current_mean_low_mean_timing_ratio",
-    "classification"
+    "timing_classification"
   ) `
     -MinimumRows 2
 
@@ -589,7 +589,7 @@ if ($RequireComparisons) {
     "baseline_name",
     "previous_mean_weakest_timing_ratio",
     "current_mean_weakest_timing_ratio",
-    "classification"
+    "timing_classification"
   ) `
     -MinimumRows 2
 
@@ -614,10 +614,11 @@ if ($RequireComparisons) {
     -Description "target workload trial comparison CSV" `
     -RequiredColumns @(
     "baseline_name",
-    "workload_name",
+    "previous_workload_name",
+    "current_workload_name",
     "previous_mean_timing_ratio",
     "current_mean_timing_ratio",
-    "classification"
+    "timing_classification"
   ) `
     -MinimumRows 2
 
