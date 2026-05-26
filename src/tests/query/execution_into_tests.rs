@@ -111,6 +111,58 @@ fn execute_query_into_clears_previous_results_for_disjoint_query() {
 }
 
 #[test]
+fn execute_query_into_reuses_inner_coordinate_buffers_for_repeated_matches() {
+    let (_points, index) = build_small_index();
+    let workload = clustered_workload_cases()
+        .into_iter()
+        .find(|workload| workload.name == "cluster_boundary_range")
+        .expect("small benchmark workloads should include cluster_boundary_range");
+
+    let mut reusable_results = Vec::new();
+
+    let first_stats = execute_query_into(&index, &workload.query, &mut reusable_results);
+    assert!(
+        first_stats.matched_records > 0,
+        "test setup should produce reusable owned result rows"
+    );
+
+    for result in &mut reusable_results {
+        result.values.reserve_exact(8);
+    }
+
+    let first_results = reusable_results.clone();
+    let first_value_pointers: Vec<*const crate::math::Scalar> = reusable_results
+        .iter()
+        .map(|result| result.values.as_ptr())
+        .collect();
+    let first_value_capacities: Vec<usize> = reusable_results
+        .iter()
+        .map(|result| result.values.capacity())
+        .collect();
+
+    let second_stats = execute_query_into(&index, &workload.query, &mut reusable_results);
+    let second_value_pointers: Vec<*const crate::math::Scalar> = reusable_results
+        .iter()
+        .map(|result| result.values.as_ptr())
+        .collect();
+    let second_value_capacities: Vec<usize> = reusable_results
+        .iter()
+        .map(|result| result.values.capacity())
+        .collect();
+
+    assert_eq!(second_stats, first_stats);
+    assert_eq!(reusable_results, first_results);
+    assert_eq!(
+        second_value_pointers, first_value_pointers,
+        "repeated execute_query_into calls should reuse inner coordinate buffers"
+    );
+    assert_eq!(
+        second_value_capacities, first_value_capacities,
+        "inner coordinate buffers should keep their reusable capacity"
+    );
+}
+
+#[test]
 fn execute_query_into_parallel_options_preserve_exact_results() {
     let (_points, index) = build_small_index();
     let workload = clustered_workload_cases()

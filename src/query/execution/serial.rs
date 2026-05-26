@@ -58,6 +58,8 @@ pub(crate) fn execute_classified_retained_leaves_serial_with_candidate_count(
         &mut batch_report,
     );
 
+    batch_report.truncate_to_accepted_results();
+
     batch_report
 }
 
@@ -68,7 +70,8 @@ pub(crate) fn execute_classified_retained_leaves_serial_with_candidate_count(
 /// This variant preserves the same serial retained-leaf semantics as
 /// `execute_classified_retained_leaves_serial_with_candidate_count`, but starts
 /// from an existing `Vec<Vector>` allocation. It is used by `execute_query_into`
-/// to reduce repeated outer result-buffer allocation for owned-result queries.
+/// to reuse both the outer result buffer and previously allocated inner
+/// coordinate buffers when repeated queries return compatible result rows.
 pub(crate) fn execute_classified_retained_leaves_serial_with_candidate_count_and_results(
     index: &FSEIndex,
     query: &QueryRegion,
@@ -86,6 +89,8 @@ pub(crate) fn execute_classified_retained_leaves_serial_with_candidate_count_and
         candidate_count,
         &mut batch_report,
     );
+
+    batch_report.truncate_to_accepted_results();
 
     batch_report
 }

@@ -35,6 +35,7 @@ pub(crate) fn merge_retained_leaf_reports_in_order(
     }
 
     RetainedLeafBatchExecutionReport {
+        result_len: results.len(),
         results,
         reconstructed_records: aggregate_stats.reconstructed_records,
         #[cfg(test)]

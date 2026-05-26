@@ -90,6 +90,8 @@ pub(crate) fn execute_fully_covered_index_serial(
         append_covered_retained_leaf_results(node, *shape, &mut batch_report);
     }
 
+    batch_report.truncate_to_accepted_results();
+
     debug_assert_eq!(
         batch_report.reconstructed_records, candidate_count,
         "fully covered index reconstruction should match root cardinality"
@@ -104,7 +106,8 @@ pub(crate) fn execute_fully_covered_index_serial(
 ///
 /// This is the reusable-buffer variant of the full-index coverage path. It keeps
 /// root-covered owned-result queries from allocating a new outer result vector
-/// when the caller already has one available.
+/// when the caller already has one available. It also keeps reusable inner
+/// coordinate buffers alive while the new covered result set is written.
 pub(crate) fn execute_fully_covered_index_serial_with_results(
     index: &FSEIndex,
     results: Vec<Vector>,
@@ -117,6 +120,8 @@ pub(crate) fn execute_fully_covered_index_serial_with_results(
         let node = &index.nodes[shape.node_id];
         append_covered_retained_leaf_results(node, *shape, &mut batch_report);
     }
+
+    batch_report.truncate_to_accepted_results();
 
     debug_assert_eq!(
         batch_report.reconstructed_records, candidate_count,

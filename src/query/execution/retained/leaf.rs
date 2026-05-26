@@ -1,12 +1,11 @@
 //! Retained-leaf row execution.
 
-use crate::math::{Scalar, Vector};
+use crate::math::Scalar;
 use crate::query::reconstruction::reconstruct_row_into_prevalidated;
 use crate::query::{QueryRegion, RetainedLeafCoverage};
 use crate::storage::{LeafReconstructionShape, PartitionNode};
 
 use super::super::reports::{RetainedLeafBatchExecutionReport, RetainedLeafExecutionReport};
-use super::merge::reserve_additional_results;
 
 /// Executes one retained leaf using cached reconstruction shape metadata.
 ///
@@ -44,6 +43,8 @@ pub(crate) fn execute_retained_leaf_with_cached_shape(
             );
         }
     }
+
+    batch_report.truncate_to_accepted_results();
 
     RetainedLeafExecutionReport {
         results: batch_report.results,
@@ -111,7 +112,7 @@ pub(crate) fn append_covered_retained_leaf_results(
         "cached leaf cardinality should match residual cardinality"
     );
 
-    reserve_additional_results(&mut batch_report.results, shape.cardinality);
+    batch_report.reserve_additional_results(shape.cardinality);
 
     match shape.dimensions {
         1 => append_covered_1d_results(node, shape, batch_report),
@@ -134,9 +135,7 @@ fn append_covered_1d_results(
 
     // covered geometry means every row is already accepted
     for row in 0..shape.cardinality {
-        batch_report
-            .results
-            .push(Vector::new(vec![centroid_0 + residual_0[row]]));
+        batch_report.push_result_1d(centroid_0 + residual_0[row]);
     }
 }
 
@@ -154,10 +153,7 @@ fn append_covered_2d_results(
 
     // same exact reconstruction, just with the shape branch outside the row loop
     for row in 0..shape.cardinality {
-        batch_report.results.push(Vector::new(vec![
-            centroid_0 + residual_0[row],
-            centroid_1 + residual_1[row],
-        ]));
+        batch_report.push_result_2d(centroid_0 + residual_0[row], centroid_1 + residual_1[row]);
     }
 }
 
@@ -176,7 +172,7 @@ fn append_covered_generic_results(
             values.push(*centroid_value + residual_dimension[row]);
         }
 
-        batch_report.results.push(Vector::new(values));
+        batch_report.push_result_values(values);
     }
 }
 
@@ -211,7 +207,7 @@ pub(crate) fn append_partially_covered_retained_leaf_results(
         "query dimensionality should match retained leaf dimensionality"
     );
 
-    let original_match_count = batch_report.results.len();
+    let original_match_count = batch_report.accepted_result_count();
 
     match shape.dimensions {
         1 => append_partially_covered_1d_results(node, shape, query, batch_report),
@@ -225,7 +221,7 @@ pub(crate) fn append_partially_covered_retained_leaf_results(
         ),
     }
 
-    let matched_records = batch_report.results.len() - original_match_count;
+    let matched_records = batch_report.accepted_result_count() - original_match_count;
 
     batch_report.reconstructed_records += shape.cardinality;
     #[cfg(test)]
@@ -253,7 +249,7 @@ fn append_partially_covered_1d_results(
         let value_0 = centroid_0 + residual_0[row];
 
         if value_0 >= query_min_0 && value_0 <= query_max_0 {
-            batch_report.results.push(Vector::new(vec![value_0]));
+            batch_report.push_result_1d(value_0);
         }
     }
 }
@@ -286,9 +282,7 @@ fn append_partially_covered_2d_results(
         let value_1 = centroid_1 + residual_1[row];
 
         if value_1 >= query_min_1 && value_1 <= query_max_1 {
-            batch_report
-                .results
-                .push(Vector::new(vec![value_0, value_1]));
+            batch_report.push_result_2d(value_0, value_1);
         }
     }
 }
@@ -306,34 +300,7 @@ fn append_partially_covered_generic_results(
         reconstruct_row_into_prevalidated(node, row, shape.dimensions, reconstructed_values);
 
         if query.contains_values_prevalidated(reconstructed_values, shape.dimensions) {
-            push_reconstructed_values_as_result(
-                &mut batch_report.results,
-                reconstructed_values,
-                shape.dimensions,
-            );
+            batch_report.push_result_from_buffer(reconstructed_values, shape.dimensions);
         }
     }
-}
-
-/// Moves a reconstructed row buffer into the final result set.
-///
-/// # Runtime Role
-///
-/// Matching rows must still become owned `Vector` values because that is the
-/// query API contract. Moving the scratch buffer avoids cloning the same row
-/// after exact predicate evaluation has already accepted it.
-fn push_reconstructed_values_as_result(
-    results: &mut Vec<Vector>,
-    reconstructed_values: &mut Vec<Scalar>,
-    dimensions: usize,
-) {
-    debug_assert_eq!(
-        reconstructed_values.len(),
-        dimensions,
-        "reconstructed row dimensionality should match the partition"
-    );
-
-    let accepted_values = std::mem::replace(reconstructed_values, Vec::with_capacity(dimensions));
-
-    results.push(Vector::new(accepted_values));
 }
