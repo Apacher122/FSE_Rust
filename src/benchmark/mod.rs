@@ -8,6 +8,8 @@ pub mod app;
 pub mod baselines;
 pub mod cli;
 pub mod config;
+mod formatting;
+mod math;
 pub mod reports;
 pub mod runner;
 pub mod workloads;

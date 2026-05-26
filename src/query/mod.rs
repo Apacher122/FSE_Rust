@@ -20,7 +20,9 @@ pub use execution::{
     reconstruct_query_result_references, reconstruct_query_result_references_into,
 };
 
-pub(crate) use execution::execute_retained_leaf_batch_for_diagnostics;
+pub(crate) use execution::{
+    count_retained_matches_without_results, execute_retained_leaf_batch_for_diagnostics,
+};
 pub use reconstruction::{reconstruct_partition, reconstruct_point, reconstruct_row_into};
 pub use region::QueryRegion;
 pub use traversal::{

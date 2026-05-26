@@ -30,6 +30,7 @@ pub use references::{
 };
 
 pub(crate) use api::execute_retained_leaf_batch_for_diagnostics;
+pub(crate) use count::count_retained_matches_without_results;
 
 pub use options::{
     DEFAULT_PARALLEL_MIN_RETAINED_LEAVES, QueryExecutionMode, QueryExecutionOptions,

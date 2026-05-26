@@ -2,6 +2,8 @@
 
 use std::time::{Duration, Instant};
 
+use crate::benchmark::math::duration_div;
+
 /// Wall-clock timing report for one comparison run.
 ///
 /// # Runtime Role
@@ -183,13 +185,4 @@ fn repeated_timing_report(iterations: usize, total_elapsed: Duration) -> Repeate
         total_elapsed,
         average_elapsed: duration_div(total_elapsed, iterations),
     }
-}
-
-fn duration_div(duration: Duration, divisor: usize) -> Duration {
-    if divisor == 0 {
-        return Duration::ZERO;
-    }
-
-    // duration division is kept explicit so the averaging logic is easy to audit
-    Duration::from_secs_f64(duration.as_secs_f64() / divisor as f64)
 }

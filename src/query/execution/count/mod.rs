@@ -9,3 +9,5 @@ mod execution;
 mod stats;
 
 pub use api::{count_query_matches, count_query_matches_with_stats};
+
+pub(crate) use execution::count_retained_matches_without_results;

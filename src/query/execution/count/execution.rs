@@ -62,7 +62,7 @@ pub(super) fn count_root_disjoint_query(index: &FSEIndex) -> QueryCountReport {
 /// This is the count-only equivalent of retained-leaf result execution. Covered
 /// leaves contribute their full cardinality. Partial leaves still run exact row
 /// predicates, but matching rows only increment a counter.
-pub(super) fn count_retained_matches_without_results(
+pub(crate) fn count_retained_matches_without_results(
     index: &FSEIndex,
     query: &QueryRegion,
     retained_leaves: &[RetainedLeaf],

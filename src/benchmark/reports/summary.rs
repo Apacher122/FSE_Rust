@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use crate::benchmark::math::{duration_div, scalar_ratio_or_zero};
 use crate::benchmark::{
     QueryComparisonReport, QueryWorkloadCase, compare_query_execution, duration_ratio,
 };
@@ -166,12 +167,12 @@ pub fn aggregate_workload_metrics(
     aggregate.average_candidate_ratio = candidate_ratio_sum / workload_count as Scalar;
     aggregate.average_retained_leaf_ratio = retained_leaf_ratio_sum / workload_count as Scalar;
 
-    aggregate.weighted_reconstruction_avoidance_ratio = ratio_or_zero(
+    aggregate.weighted_reconstruction_avoidance_ratio = scalar_ratio_or_zero(
         aggregate.total_avoided_reconstructions,
         aggregate.total_baseline_evaluated_records,
     );
 
-    aggregate.weighted_candidate_ratio = ratio_or_zero(
+    aggregate.weighted_candidate_ratio = scalar_ratio_or_zero(
         aggregate.total_fse_reconstructed_records,
         aggregate.total_baseline_evaluated_records,
     );
@@ -188,21 +189,4 @@ pub fn aggregate_workload_metrics(
     );
 
     aggregate
-}
-
-fn ratio_or_zero(numerator: usize, denominator: usize) -> Scalar {
-    if denominator == 0 {
-        0.0
-    } else {
-        numerator as Scalar / denominator as Scalar
-    }
-}
-
-fn duration_div(duration: Duration, divisor: usize) -> Duration {
-    if divisor == 0 {
-        return Duration::ZERO;
-    }
-
-    // Keep duration averaging explicit to match the benchmark timing helper.
-    Duration::from_secs_f64(duration.as_secs_f64() / divisor as f64)
 }

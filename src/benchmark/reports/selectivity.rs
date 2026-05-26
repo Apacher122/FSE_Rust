@@ -1,6 +1,8 @@
 //! Selectivity-bucketed workload summaries.
 
 use crate::benchmark::WorkloadComparisonSummary;
+use crate::benchmark::formatting::{format_f64_fixed_6, format_scalar_fixed_6};
+use crate::benchmark::math::scalar_ratio_or_zero;
 use crate::math::Scalar;
 
 /// Stable selectivity bucket for workload-level benchmark summaries.
@@ -208,11 +210,11 @@ fn render_selectivity_bucket_summary_row(summary: &SelectivityBucketSummary) -> 
         summary.total_baseline_evaluated_records,
         summary.total_fse_reconstructed_records,
         summary.total_avoided_reconstructions,
-        format_scalar_ratio(summary.average_candidate_ratio),
-        format_scalar_ratio(summary.weighted_candidate_ratio),
-        format_scalar_ratio(summary.average_reconstruction_avoidance_ratio),
-        format_scalar_ratio(summary.weighted_reconstruction_avoidance_ratio),
-        format_f64_ratio(summary.mean_timing_ratio),
+        format_scalar_fixed_6(summary.average_candidate_ratio),
+        format_scalar_fixed_6(summary.weighted_candidate_ratio),
+        format_scalar_fixed_6(summary.average_reconstruction_avoidance_ratio),
+        format_scalar_fixed_6(summary.weighted_reconstruction_avoidance_ratio),
+        format_f64_fixed_6(summary.mean_timing_ratio),
     )
 }
 
@@ -271,31 +273,15 @@ fn build_bucket_summary(
         reconstruction_avoidance_ratio_sum / workload_count as Scalar;
     summary.mean_timing_ratio = timing_ratio_sum / workload_count as f64;
 
-    summary.weighted_candidate_ratio = ratio_or_zero(
+    summary.weighted_candidate_ratio = scalar_ratio_or_zero(
         summary.total_fse_reconstructed_records,
         summary.total_baseline_evaluated_records,
     );
 
-    summary.weighted_reconstruction_avoidance_ratio = ratio_or_zero(
+    summary.weighted_reconstruction_avoidance_ratio = scalar_ratio_or_zero(
         summary.total_avoided_reconstructions,
         summary.total_baseline_evaluated_records,
     );
 
     summary
-}
-
-fn ratio_or_zero(numerator: usize, denominator: usize) -> Scalar {
-    if denominator == 0 {
-        0.0
-    } else {
-        numerator as Scalar / denominator as Scalar
-    }
-}
-
-fn format_scalar_ratio(value: Scalar) -> String {
-    format!("{:.6}", value)
-}
-
-fn format_f64_ratio(value: f64) -> String {
-    format!("{:.6}", value)
 }
