@@ -9,6 +9,7 @@ mod api;
 mod count;
 mod options;
 mod parallel;
+mod ratio;
 mod references;
 mod reports;
 mod retained;

@@ -1,98 +1,19 @@
-//! Count-only query execution.
-//!
-//! Count-only execution preserves the same geometric pruning and exact
-//! predicate semantics as owned-result execution, but it does not allocate
-//! returned `Vector` values for matching rows.
+//! Count-only retained-leaf execution.
 
-use crate::math::Scalar;
-use crate::query::region::QueryBoundsClassification;
-use crate::query::traversal::traverse_with_known_root_classification;
 use crate::query::{QueryRegion, RetainedLeaf, RetainedLeafCoverage};
 use crate::storage::{FSEIndex, LeafReconstructionShape, PartitionNode};
 
-use super::reports::{QueryCountReport, QueryExecutionStats};
+use super::super::ratio::ratio_or_zero;
+use super::super::reports::{QueryCountReport, QueryExecutionStats};
 
-/// Counts exact query matches without materializing owned result vectors.
+/// Counts every indexed row for a root-covered query.
 ///
 /// # Runtime Role
 ///
-/// This function is useful when a caller needs cardinality, existence checks,
-/// or aggregate planning information without paying the owned-result
-/// materialization cost of `execute_query`.
-///
-/// # Formal Reference
-///
-/// This preserves the staged execution model:
-///
-/// `Geometry -> Reconstruction -> Logic`
-///
-/// The difference from owned-result execution is that accepted rows increment a
-/// counter instead of being converted into returned `Vector` values.
-///
-/// # Panics
-///
-/// Panics when the query dimensionality does not match the index dimensionality.
-pub fn count_query_matches(index: &FSEIndex, query: &QueryRegion) -> usize {
-    count_query_matches_with_stats(index, query).matched_records
-}
-
-/// Counts exact query matches and returns execution statistics.
-///
-/// # Runtime Role
-///
-/// This function exposes the same structural work counters used by owned-result
-/// query execution while avoiding final result allocation. `matched_records` is
-/// duplicated at the top level for convenience and inside `stats` for
-/// consistency with the existing execution report shape.
-///
-/// # Panics
-///
-/// Panics when the query dimensionality does not match the index dimensionality.
-pub fn count_query_matches_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryCountReport {
-    assert_eq!(
-        index.dimensions,
-        query.dimensions(),
-        "query dimensionality must match index dimensionality"
-    );
-
-    let root_classification = query.classify_bounds(&index.root_node().bounds);
-
-    match root_classification {
-        QueryBoundsClassification::Covered => {
-            return count_fully_covered_index(index);
-        }
-        QueryBoundsClassification::Disjoint => {
-            return count_root_disjoint_query(index);
-        }
-        QueryBoundsClassification::Partial => {
-            // normal path uses the root classification we already paid for
-        }
-    }
-
-    let traversal_report =
-        traverse_with_known_root_classification(index, query, root_classification);
-
-    let total_records = index.root_node().cardinality;
-    let reconstructed_records = traversal_report.stats.retained_candidate_records;
-    let matched_records =
-        count_retained_matches_without_results(index, query, &traversal_report.retained_leaves);
-
-    QueryCountReport {
-        matched_records,
-        stats: QueryExecutionStats {
-            visited_nodes: traversal_report.stats.visited_nodes,
-            total_leaves: traversal_report.stats.total_leaves,
-            retained_leaves: traversal_report.stats.retained_leaves,
-            retained_leaf_ratio: traversal_report.stats.retained_leaf_ratio,
-            total_records,
-            reconstructed_records,
-            matched_records,
-            candidate_ratio: ratio_or_zero(reconstructed_records, total_records),
-        },
-    }
-}
-
-fn count_fully_covered_index(index: &FSEIndex) -> QueryCountReport {
+/// If the root bounds are covered by the query, every indexed record is known to
+/// match. Count-only execution can return the root cardinality without retained
+/// leaf reconstruction or result materialization.
+pub(super) fn count_fully_covered_index(index: &FSEIndex) -> QueryCountReport {
     let total_leaves = index.leaf_count();
     let total_records = index.root_node().cardinality;
 
@@ -111,7 +32,14 @@ fn count_fully_covered_index(index: &FSEIndex) -> QueryCountReport {
     }
 }
 
-fn count_root_disjoint_query(index: &FSEIndex) -> QueryCountReport {
+/// Returns an empty count report for a root-disjoint query.
+///
+/// # Runtime Role
+///
+/// Root-disjoint queries finish after the root metadata classification. They do
+/// not retain leaves, reconstruct records, evaluate exact row predicates, or
+/// materialize result rows.
+pub(super) fn count_root_disjoint_query(index: &FSEIndex) -> QueryCountReport {
     QueryCountReport {
         matched_records: 0,
         stats: QueryExecutionStats {
@@ -127,7 +55,14 @@ fn count_root_disjoint_query(index: &FSEIndex) -> QueryCountReport {
     }
 }
 
-fn count_retained_matches_without_results(
+/// Counts exact matches across traversal-retained leaves.
+///
+/// # Runtime Role
+///
+/// This is the count-only equivalent of retained-leaf result execution. Covered
+/// leaves contribute their full cardinality. Partial leaves still run exact row
+/// predicates, but matching rows only increment a counter.
+pub(super) fn count_retained_matches_without_results(
     index: &FSEIndex,
     query: &QueryRegion,
     retained_leaves: &[RetainedLeaf],
@@ -213,7 +148,7 @@ fn count_partial_retained_leaf_matches_2d_without_results(
 
     let mut matched_records = 0;
 
-    // no owned result rows here, just the exact count
+    // no owned result rows here just the exact count
     for row in 0..shape.cardinality {
         let value_0 = centroid_0 + residual_0[row];
 
@@ -251,12 +186,4 @@ fn count_partial_retained_leaf_matches_generic_without_results(
     }
 
     matched_records
-}
-
-fn ratio_or_zero(numerator: usize, denominator: usize) -> Scalar {
-    if denominator == 0 {
-        0.0
-    } else {
-        numerator as Scalar / denominator as Scalar
-    }
 }
