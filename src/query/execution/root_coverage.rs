@@ -1,10 +1,11 @@
 //! Root-covered query execution.
 
-use crate::math::{Scalar, Vector};
+use crate::math::Vector;
 use crate::query::{QueryRegion, RetainedLeaf};
 use crate::storage::FSEIndex;
 
 use super::options::{QueryExecutionMode, QueryExecutionOptions};
+use super::ratio::ratio_or_zero;
 use super::reports::{QueryExecutionReport, QueryExecutionStats, RetainedLeafBatchExecutionReport};
 use super::retained::{
     append_covered_retained_leaf_results, execute_classified_retained_leaves_with_candidate_count,
@@ -51,11 +52,7 @@ pub(crate) fn execute_fully_covered_index_with_options(
         total_records,
         reconstructed_records: batch_report.reconstructed_records,
         matched_records: batch_report.matched_records,
-        candidate_ratio: if total_records == 0 {
-            0.0
-        } else {
-            batch_report.reconstructed_records as Scalar / total_records as Scalar
-        },
+        candidate_ratio: ratio_or_zero(batch_report.reconstructed_records, total_records),
     };
 
     QueryExecutionReport {

@@ -6,6 +6,7 @@ use crate::query::traversal::traverse_with_known_root_classification;
 use crate::storage::FSEIndex;
 
 use super::super::reports::QueryCountReport;
+use super::super::root::classify_query_root;
 use super::execution::{
     count_fully_covered_index, count_retained_matches_without_results, count_root_disjoint_query,
 };
@@ -48,13 +49,7 @@ pub fn count_query_matches(index: &FSEIndex, query: &QueryRegion) -> usize {
 ///
 /// Panics when the query dimensionality does not match the index dimensionality.
 pub fn count_query_matches_with_stats(index: &FSEIndex, query: &QueryRegion) -> QueryCountReport {
-    assert_eq!(
-        index.dimensions,
-        query.dimensions(),
-        "query dimensionality must match index dimensionality"
-    );
-
-    let root_classification = query.classify_bounds(&index.root_node().bounds);
+    let root_classification = classify_query_root(index, query);
 
     match root_classification {
         QueryBoundsClassification::Covered => {

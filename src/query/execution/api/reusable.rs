@@ -8,6 +8,7 @@ use crate::storage::FSEIndex;
 
 use super::super::options::{QueryExecutionMode, QueryExecutionOptions};
 use super::super::reports::QueryExecutionStats;
+use super::super::root::classify_query_root;
 use super::super::root_coverage::execute_fully_covered_index_serial_with_results;
 use super::super::serial::execute_classified_retained_leaves_serial_with_candidate_count_and_results;
 use super::owned::execute_query_with_stats_and_options;
@@ -75,13 +76,7 @@ fn execute_query_into_serial(
     query: &QueryRegion,
     results: &mut Vec<Vector>,
 ) -> QueryExecutionStats {
-    assert_eq!(
-        index.dimensions,
-        query.dimensions(),
-        "query dimensionality must match index dimensionality"
-    );
-
-    let root_classification = query.classify_bounds(&index.root_node().bounds);
+    let root_classification = classify_query_root(index, query);
 
     match root_classification {
         QueryBoundsClassification::Covered => {

@@ -13,6 +13,7 @@ mod ratio;
 mod references;
 mod reports;
 mod retained;
+mod root;
 mod root_coverage;
 mod serial;
 

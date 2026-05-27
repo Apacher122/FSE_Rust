@@ -9,6 +9,7 @@ use crate::storage::FSEIndex;
 use super::super::options::QueryExecutionOptions;
 use super::super::reports::QueryExecutionReport;
 use super::super::retained::execute_classified_retained_leaves_with_candidate_count;
+use super::super::root::classify_query_root;
 use super::super::root_coverage::execute_fully_covered_index_with_options;
 use super::stats::{apply_batch_report_to_stats, root_disjoint_stats, stats_from_traversal};
 
@@ -99,13 +100,7 @@ pub fn execute_query_with_stats_and_options(
     query: &QueryRegion,
     options: QueryExecutionOptions,
 ) -> QueryExecutionReport {
-    assert_eq!(
-        index.dimensions,
-        query.dimensions(),
-        "query dimensionality must match index dimensionality"
-    );
-
-    let root_classification = query.classify_bounds(&index.root_node().bounds);
+    let root_classification = classify_query_root(index, query);
 
     match root_classification {
         QueryBoundsClassification::Covered => {

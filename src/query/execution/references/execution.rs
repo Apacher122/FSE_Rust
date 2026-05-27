@@ -9,6 +9,7 @@ use super::super::ratio::ratio_or_zero;
 use super::super::reports::{
     QueryExecutionStats, QueryReferenceReport, QueryResultReference, result_capacity_hint,
 };
+use super::super::root::classify_query_root;
 
 /// Executes a query and returns exact matching row references.
 ///
@@ -56,13 +57,7 @@ pub fn execute_query_references_with_stats(
     index: &FSEIndex,
     query: &QueryRegion,
 ) -> QueryReferenceReport {
-    assert_eq!(
-        index.dimensions,
-        query.dimensions(),
-        "query dimensionality must match index dimensionality"
-    );
-
-    let root_classification = query.classify_bounds(&index.root_node().bounds);
+    let root_classification = classify_query_root(index, query);
 
     match root_classification {
         QueryBoundsClassification::Covered => {
