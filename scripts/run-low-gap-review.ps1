@@ -26,12 +26,18 @@ param(
 $ErrorActionPreference = "Stop"
 
 $BenchmarkCsvLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-csv.ps1"
+$BenchmarkReviewManifestLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-review-manifest.ps1"
 
 if (!(Test-Path -LiteralPath $BenchmarkCsvLibrary)) {
   throw "benchmark CSV helper library was not found: $BenchmarkCsvLibrary"
 }
 
+if (!(Test-Path -LiteralPath $BenchmarkReviewManifestLibrary)) {
+  throw "benchmark review manifest helper library was not found: $BenchmarkReviewManifestLibrary"
+}
+
 . $BenchmarkCsvLibrary
+. $BenchmarkReviewManifestLibrary
 
 if ([string]::IsNullOrWhiteSpace($Label)) {
   throw "`-Label` cannot be empty"
@@ -195,40 +201,6 @@ function Copy-ReviewNotesToOrganizedRun {
     -Force
 }
 
-function Get-ArtifactState {
-  param(
-    [string]$Path,
-    [bool]$Skipped
-  )
-
-  if ($Skipped) {
-    return "skipped"
-  }
-
-  if (Test-Path -LiteralPath $Path) {
-    return "found"
-  }
-
-  return "missing"
-}
-
-function Add-ManifestArtifactLine {
-  param(
-    [string]$Name,
-    [string]$Path,
-    [bool]$Skipped,
-    [string]$Note = ""
-  )
-
-  $State = Get-ArtifactState -Path $Path -Skipped $Skipped
-
-  if ([string]::IsNullOrWhiteSpace($Note)) {
-    Add-Utf8Text -Path $ReviewManifestPath -Text "$State | $Name | $Path`r`n"
-  }
-  else {
-    Add-Utf8Text -Path $ReviewManifestPath -Text "$State | $Name | $Path | $Note`r`n"
-  }
-}
 
 function Add-PreviousInputStatusLines {
   param(
@@ -344,176 +316,174 @@ function Write-ReviewManifest {
   $TargetSummarySkipped = [bool]$SkipTargetWorkloadReview
   $TargetComparisonSkipped = ![string]::IsNullOrWhiteSpace($TargetComparisonSkipReason)
 
-  Set-Utf8Text -Path $ReviewManifestPath -Text "Low-gap review artifact manifest`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "================================`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Label: $Label`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Previous label: $PreviousLabel`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Dataset: $Dataset`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Organized run root: $OrganizedRunRoot`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Previous organized run directory: $PreviousOrganizedRunDirectory`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Dataset: $Dataset`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Max depth: $EffectiveMaxDepth`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Trials: $Trials`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Iterations: $Iterations`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Target workload: $TargetWorkloadName`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Copy artifacts to run folder: $CopyArtifactsToRunFolder`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Force organized artifacts: $ForceOrganizedArtifacts`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Validate artifacts: $ValidateArtifacts`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Require validated comparisons: $RequireValidatedComparisons`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Cleanup flat artifacts: $CleanupFlatArtifacts`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Noise threshold: +/- $(Format-InvariantDouble -Value $NoiseThreshold)`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "state | artifact | path | note`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "------|----------|------|-----`r`n"
+  Write-BenchmarkReviewManifestHeader `
+    -ManifestPath $ReviewManifestPath `
+    -Label $Label `
+    -PreviousLabel $PreviousLabel `
+    -Dataset $Dataset `
+    -OrganizedRunRoot $OrganizedRunRoot `
+    -PreviousOrganizedRunDirectory $PreviousOrganizedRunDirectory `
+    -MaxDepth $EffectiveMaxDepth `
+    -Trials $Trials `
+    -Iterations $Iterations `
+    -TargetWorkloadName $TargetWorkloadName `
+    -CopyArtifactsToRunFolder $CopyArtifactsToRunFolder `
+    -ForceOrganizedArtifacts $ForceOrganizedArtifacts `
+    -ValidateArtifacts $ValidateArtifacts `
+    -RequireValidatedComparisons $RequireValidatedComparisons `
+    -CleanupFlatArtifacts $CleanupFlatArtifacts `
+    -NoiseThresholdText (Format-InvariantDouble -Value $NoiseThreshold)
 
-  Add-ManifestArtifactLine `
-    -Name "benchmark output" `
-    -Path (Join-Path $OutputDir "benchmark-output-$Label.txt") `
-    -Skipped $false
+  $TargetSummarySkipReason = if ($TargetSummarySkipped) { "target workload review was disabled" } else { "" }
 
-  Add-ManifestArtifactLine `
-    -Name "debug output" `
-    -Path (Join-Path $OutputDir "debug-output-$Label.txt") `
-    -Skipped $false
+  $ManifestArtifacts = @(
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.BenchmarkOutput `
+      -Path (Join-Path $OutputDir "benchmark-output-$Label.txt") `
+      -Skipped $false
 
-  Add-ManifestArtifactLine `
-    -Name "summary CSV" `
-    -Path (Join-Path $OutputDir "summary-$Label.csv") `
-    -Skipped $false
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.DebugOutput `
+      -Path (Join-Path $OutputDir "debug-output-$Label.txt") `
+      -Skipped $false
 
-  Add-ManifestArtifactLine `
-    -Name "workloads CSV" `
-    -Path (Join-Path $OutputDir "workloads-$Label.csv") `
-    -Skipped $false
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.SummaryCsv `
+      -Path (Join-Path $OutputDir "summary-$Label.csv") `
+      -Skipped $false
 
-  Add-ManifestArtifactLine `
-    -Name "count-only workload summary" `
-    -Path (Join-Path $OutputDir "count-only-workload-summary-$Label.csv") `
-    -Skipped $false
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.WorkloadsCsv `
+      -Path (Join-Path $OutputDir "workloads-$Label.csv") `
+      -Skipped $false
 
-  Add-ManifestArtifactLine `
-    -Name "count-only workload notes" `
-    -Path (Join-Path $OutputDir "count-only-workload-summary-$Label.txt") `
-    -Skipped $false
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.CountOnlyWorkloadSummary `
+      -Path (Join-Path $OutputDir "count-only-workload-summary-$Label.csv") `
+      -Skipped $false
 
-  Add-ManifestArtifactLine `
-    -Name "count-only workload comparison CSV" `
-    -Path (Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.csv") `
-    -Skipped $CountOnlyComparisonSkipped `
-    -Note $CountOnlyComparisonSkipReason
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.CountOnlyWorkloadNotes `
+      -Path (Join-Path $OutputDir "count-only-workload-summary-$Label.txt") `
+      -Skipped $false
 
-  Add-ManifestArtifactLine `
-    -Name "count-only workload comparison notes" `
-    -Path (Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.txt") `
-    -Skipped $CountOnlyComparisonSkipped `
-    -Note $CountOnlyComparisonSkipReason
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.CountOnlyWorkloadComparisonCsv `
+      -Path (Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.csv") `
+      -Skipped $CountOnlyComparisonSkipped `
+      -Note $CountOnlyComparisonSkipReason
 
-  Add-ManifestArtifactLine `
-    -Name "low-selectivity gap CSV" `
-    -Path (Join-Path $OutputDir "low-selectivity-gap-$Label.csv") `
-    -Skipped $false
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.CountOnlyWorkloadComparisonNotes `
+      -Path (Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.txt") `
+      -Skipped $CountOnlyComparisonSkipped `
+      -Note $CountOnlyComparisonSkipReason
 
-  Add-ManifestArtifactLine `
-    -Name "low-gap regression notes" `
-    -Path (Join-Path $OutputDir "low-gap-regression-notes-$Label.txt") `
-    -Skipped $false
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.LowSelectivityGapCsv `
+      -Path (Join-Path $OutputDir "low-selectivity-gap-$Label.csv") `
+      -Skipped $false
 
-  Add-ManifestArtifactLine `
-    -Name "low-gap trial details" `
-    -Path (Join-Path $OutputDir "low-gap-trial-details-$Label.csv") `
-    -Skipped $false
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.LowGapRegressionNotes `
+      -Path (Join-Path $OutputDir "low-gap-regression-notes-$Label.txt") `
+      -Skipped $false
 
-  Add-ManifestArtifactLine `
-    -Name "low-gap trial summary" `
-    -Path (Join-Path $OutputDir "low-gap-trial-summary-$Label.csv") `
-    -Skipped $false
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.LowGapTrialDetails `
+      -Path (Join-Path $OutputDir "low-gap-trial-details-$Label.csv") `
+      -Skipped $false
 
-  Add-ManifestArtifactLine `
-    -Name "low-gap trial notes" `
-    -Path (Join-Path $OutputDir "low-gap-trial-notes-$Label.txt") `
-    -Skipped $false
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.LowGapTrialSummary `
+      -Path (Join-Path $OutputDir "low-gap-trial-summary-$Label.csv") `
+      -Skipped $false
 
-  Add-ManifestArtifactLine `
-    -Name "low-gap workload trial details" `
-    -Path (Join-Path $OutputDir "low-gap-workload-trial-details-$Label.csv") `
-    -Skipped $false
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.LowGapTrialNotes `
+      -Path (Join-Path $OutputDir "low-gap-trial-notes-$Label.txt") `
+      -Skipped $false
 
-  Add-ManifestArtifactLine `
-    -Name "low-gap workload trial summary" `
-    -Path (Join-Path $OutputDir "low-gap-workload-trial-summary-$Label.csv") `
-    -Skipped $false
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.LowGapWorkloadTrialDetails `
+      -Path (Join-Path $OutputDir "low-gap-workload-trial-details-$Label.csv") `
+      -Skipped $false
 
-  Add-ManifestArtifactLine `
-    -Name "aggregate trial comparison CSV" `
-    -Path (Join-Path $OutputDir "low-gap-trial-comparison-$Label.csv") `
-    -Skipped $AggregateComparisonSkipped `
-    -Note $AggregateComparisonSkipReason
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.LowGapWorkloadTrialSummary `
+      -Path (Join-Path $OutputDir "low-gap-workload-trial-summary-$Label.csv") `
+      -Skipped $false
 
-  Add-ManifestArtifactLine `
-    -Name "aggregate trial comparison notes" `
-    -Path (Join-Path $OutputDir "low-gap-trial-comparison-$Label.txt") `
-    -Skipped $AggregateComparisonSkipped `
-    -Note $AggregateComparisonSkipReason
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.AggregateTrialComparisonCsv `
+      -Path (Join-Path $OutputDir "low-gap-trial-comparison-$Label.csv") `
+      -Skipped $AggregateComparisonSkipped `
+      -Note $AggregateComparisonSkipReason
 
-  Add-ManifestArtifactLine `
-    -Name "workload trial comparison CSV" `
-    -Path (Join-Path $OutputDir "low-gap-workload-trial-comparison-$Label.csv") `
-    -Skipped $WorkloadComparisonSkipped `
-    -Note $WorkloadComparisonSkipReason
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.AggregateTrialComparisonNotes `
+      -Path (Join-Path $OutputDir "low-gap-trial-comparison-$Label.txt") `
+      -Skipped $AggregateComparisonSkipped `
+      -Note $AggregateComparisonSkipReason
 
-  Add-ManifestArtifactLine `
-    -Name "workload trial comparison notes" `
-    -Path (Join-Path $OutputDir "low-gap-workload-trial-comparison-$Label.txt") `
-    -Skipped $WorkloadComparisonSkipped `
-    -Note $WorkloadComparisonSkipReason
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.WorkloadTrialComparisonCsv `
+      -Path (Join-Path $OutputDir "low-gap-workload-trial-comparison-$Label.csv") `
+      -Skipped $WorkloadComparisonSkipped `
+      -Note $WorkloadComparisonSkipReason
 
-  Add-ManifestArtifactLine `
-    -Name "target workload trial details" `
-    -Path (Join-Path $OutputDir "target-workload-trial-details-$Label.csv") `
-    -Skipped $TargetSummarySkipped `
-    -Note $(if ($TargetSummarySkipped) { "target workload review was disabled" } else { "" })
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.WorkloadTrialComparisonNotes `
+      -Path (Join-Path $OutputDir "low-gap-workload-trial-comparison-$Label.txt") `
+      -Skipped $WorkloadComparisonSkipped `
+      -Note $WorkloadComparisonSkipReason
 
-  Add-ManifestArtifactLine `
-    -Name "target workload trial summary" `
-    -Path (Join-Path $OutputDir "target-workload-trial-summary-$Label.csv") `
-    -Skipped $TargetSummarySkipped `
-    -Note $(if ($TargetSummarySkipped) { "target workload review was disabled" } else { "" })
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.TargetWorkloadTrialDetails `
+      -Path (Join-Path $OutputDir "target-workload-trial-details-$Label.csv") `
+      -Skipped $TargetSummarySkipped `
+      -Note $TargetSummarySkipReason
 
-  Add-ManifestArtifactLine `
-    -Name "target workload trial notes" `
-    -Path (Join-Path $OutputDir "target-workload-trial-notes-$Label.txt") `
-    -Skipped $TargetSummarySkipped `
-    -Note $(if ($TargetSummarySkipped) { "target workload review was disabled" } else { "" })
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.TargetWorkloadTrialSummary `
+      -Path (Join-Path $OutputDir "target-workload-trial-summary-$Label.csv") `
+      -Skipped $TargetSummarySkipped `
+      -Note $TargetSummarySkipReason
 
-  Add-ManifestArtifactLine `
-    -Name "target workload trial comparison CSV" `
-    -Path (Join-Path $OutputDir "target-workload-trial-comparison-$Label.csv") `
-    -Skipped $TargetComparisonSkipped `
-    -Note $TargetComparisonSkipReason
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.TargetWorkloadTrialNotes `
+      -Path (Join-Path $OutputDir "target-workload-trial-notes-$Label.txt") `
+      -Skipped $TargetSummarySkipped `
+      -Note $TargetSummarySkipReason
 
-  Add-ManifestArtifactLine `
-    -Name "target workload trial comparison notes" `
-    -Path (Join-Path $OutputDir "target-workload-trial-comparison-$Label.txt") `
-    -Skipped $TargetComparisonSkipped `
-    -Note $TargetComparisonSkipReason
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.TargetWorkloadTrialComparisonCsv `
+      -Path (Join-Path $OutputDir "target-workload-trial-comparison-$Label.csv") `
+      -Skipped $TargetComparisonSkipped `
+      -Note $TargetComparisonSkipReason
 
-  Add-ManifestArtifactLine `
-    -Name "low-gap review notes" `
-    -Path $ReviewNotesPath `
-    -Skipped $false
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.TargetWorkloadTrialComparisonNotes `
+      -Path (Join-Path $OutputDir "target-workload-trial-comparison-$Label.txt") `
+      -Skipped $TargetComparisonSkipped `
+      -Note $TargetComparisonSkipReason
 
-  Add-ManifestArtifactLine `
-    -Name "low-gap review manifest" `
-    -Path $ReviewManifestPath `
-    -Skipped $false
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.LowGapReviewNotes `
+      -Path $ReviewNotesPath `
+      -Skipped $false
 
-  Add-Utf8Text -Path $ReviewManifestPath -Text "`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "Manifest interpretation`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "-----------------------`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "found: the artifact exists after the review run`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "missing: the artifact was expected but was not found`r`n"
-  Add-Utf8Text -Path $ReviewManifestPath -Text "skipped: the artifact was intentionally not generated because an input or flag made that step unavailable`r`n"
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.LowGapReviewManifest `
+      -Path $ReviewManifestPath `
+      -Skipped $false
+  )
+
+  Add-BenchmarkReviewManifestArtifacts `
+    -ManifestPath $ReviewManifestPath `
+    -Artifacts $ManifestArtifacts
+
+  Add-BenchmarkReviewManifestInterpretation -ManifestPath $ReviewManifestPath
 }
 
 Require-Script -Path $SmallBenchmarkScript
