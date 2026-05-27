@@ -62,21 +62,6 @@ function Test-SafePathExists {
   }
 }
 
-function Resolve-ReviewArtifactPath {
-  param(
-    [string]$Path
-  )
-
-  Resolve-BenchmarkReviewArtifactPath `
-    -Path $Path `
-    -OutputDir $OutputDir `
-    -Label $Label `
-    -OnInvalidPath {
-    param($InvalidPath)
-
-    Add-Failure "invalid path: $InvalidPath"
-  }
-}
 
 function Get-ReviewManifestPath {
   Get-BenchmarkReviewManifestPath `
@@ -109,29 +94,6 @@ function Fail-Validation {
 }
 
 
-function Test-ManifestArtifact {
-  param(
-    [object[]]$Entries,
-    [string]$ArtifactName,
-    [ValidateSet("required", "comparison", "target")]
-    [string]$Kind = "required"
-  )
-
-  Resolve-BenchmarkReviewManifestArtifact `
-    -Entries $Entries `
-    -ArtifactName $ArtifactName `
-    -Kind $Kind `
-    -RequireComparisons $RequireComparisons `
-    -AllowSkippedTargetWorkloadReview $AllowSkippedTargetWorkloadReview `
-    -OutputDir $OutputDir `
-    -Label $Label `
-    -OnFailure $AddValidationFailure `
-    -OnInvalidPath {
-    param($InvalidPath)
-
-    Add-Failure "invalid path: $InvalidPath"
-  }
-}
 
 
 $ManifestPath = Get-ReviewManifestPath
@@ -161,34 +123,38 @@ if ($ManifestEntries.Count -eq 0) {
   Fail-Validation -ManifestPath $ManifestPath -ManifestEntryCount $ManifestEntries.Count
 }
 
-$BenchmarkOutputEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.BenchmarkOutput
-$DebugOutputEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.DebugOutput
-$SummaryEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.SummaryCsv
-$WorkloadsEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.WorkloadsCsv
-$CountOnlySummaryEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.CountOnlyWorkloadSummary
-$CountOnlyNotesEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.CountOnlyWorkloadNotes
-$LowGapEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.LowSelectivityGapCsv
-$RegressionNotesEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.LowGapRegressionNotes
-$TrialDetailsEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.LowGapTrialDetails
-$TrialSummaryEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.LowGapTrialSummary
-$TrialNotesEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.LowGapTrialNotes
-$WorkloadDetailsEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.LowGapWorkloadTrialDetails
-$WorkloadSummaryEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.LowGapWorkloadTrialSummary
-$TargetDetailsEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.TargetWorkloadTrialDetails -Kind "target"
-$TargetSummaryEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.TargetWorkloadTrialSummary -Kind "target"
-$TargetNotesEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.TargetWorkloadTrialNotes -Kind "target"
-$ReviewNotesEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.LowGapReviewNotes
-$ReviewManifestEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.LowGapReviewManifest
+$ResolvedArtifacts = Resolve-BenchmarkReviewManifestArtifactSet `
+  -Entries $ManifestEntries `
+  -RequireComparisons ([bool]$RequireComparisons) `
+  -AllowSkippedTargetWorkloadReview ([bool]$AllowSkippedTargetWorkloadReview) `
+  -OutputDir $OutputDir `
+  -Label $Label `
+  -OnFailure $AddValidationFailure `
+  -OnInvalidPath {
+  param($InvalidPath)
 
-$AggregateComparisonEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.AggregateTrialComparisonCsv -Kind "comparison"
-$WorkloadComparisonEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.WorkloadTrialComparisonCsv -Kind "comparison"
-$CountOnlyComparisonEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.CountOnlyWorkloadComparisonCsv -Kind "comparison"
-$TargetComparisonEntry = Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.TargetWorkloadTrialComparisonCsv -Kind "comparison"
+  Add-Failure "invalid path: $InvalidPath"
+}
 
-Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.AggregateTrialComparisonNotes -Kind "comparison" | Out-Null
-Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.WorkloadTrialComparisonNotes -Kind "comparison" | Out-Null
-Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.CountOnlyWorkloadComparisonNotes -Kind "comparison" | Out-Null
-Test-ManifestArtifact -Entries $ManifestEntries -ArtifactName $BenchmarkReviewArtifactNames.TargetWorkloadTrialComparisonNotes -Kind "comparison" | Out-Null
+$BenchmarkOutputEntry = $ResolvedArtifacts.BenchmarkOutput
+$DebugOutputEntry = $ResolvedArtifacts.DebugOutput
+$SummaryEntry = $ResolvedArtifacts.Summary
+$WorkloadsEntry = $ResolvedArtifacts.Workloads
+$CountOnlySummaryEntry = $ResolvedArtifacts.CountOnlySummary
+$CountOnlyNotesEntry = $ResolvedArtifacts.CountOnlyNotes
+$LowGapEntry = $ResolvedArtifacts.LowGap
+$RegressionNotesEntry = $ResolvedArtifacts.RegressionNotes
+$TrialSummaryEntry = $ResolvedArtifacts.TrialSummary
+$TrialNotesEntry = $ResolvedArtifacts.TrialNotes
+$WorkloadSummaryEntry = $ResolvedArtifacts.WorkloadSummary
+$TargetSummaryEntry = $ResolvedArtifacts.TargetSummary
+$TargetNotesEntry = $ResolvedArtifacts.TargetNotes
+$ReviewNotesEntry = $ResolvedArtifacts.ReviewNotes
+$ReviewManifestEntry = $ResolvedArtifacts.ReviewManifest
+$AggregateComparisonEntry = $ResolvedArtifacts.AggregateComparison
+$WorkloadComparisonEntry = $ResolvedArtifacts.WorkloadComparison
+$CountOnlyComparisonEntry = $ResolvedArtifacts.CountOnlyComparison
+$TargetComparisonEntry = $ResolvedArtifacts.TargetComparison
 
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $BenchmarkOutputEntry -Description "benchmark output"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $DebugOutputEntry -Description "debug output"
