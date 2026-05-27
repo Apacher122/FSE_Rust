@@ -9,12 +9,18 @@ param(
 $ErrorActionPreference = "Stop"
 
 $BenchmarkCsvLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-csv.ps1"
+$BenchmarkCountOnlyLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-count-only.ps1"
 
 if (!(Test-Path -LiteralPath $BenchmarkCsvLibrary)) {
   throw "benchmark CSV helper library was not found: $BenchmarkCsvLibrary"
 }
 
+if (!(Test-Path -LiteralPath $BenchmarkCountOnlyLibrary)) {
+  throw "benchmark count-only helper library was not found: $BenchmarkCountOnlyLibrary"
+}
+
 . $BenchmarkCsvLibrary
+. $BenchmarkCountOnlyLibrary
 
 if ([string]::IsNullOrWhiteSpace($PreviousCountOnlySummaryCsv)) {
   throw "`-PreviousCountOnlySummaryCsv` is required"
@@ -37,87 +43,6 @@ New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $ComparisonCsvPath = Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.csv"
 $ComparisonNotesPath = Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.txt"
 
-
-function Require-Field {
-  param(
-    [object]$Row,
-    [string]$FieldName
-  )
-
-  if ($null -eq $Row.PSObject.Properties[$FieldName]) {
-    throw "required count-only summary CSV field was not found: $FieldName"
-  }
-}
-
-function Get-RowKey {
-  param(
-    [object]$Row
-  )
-
-  return "$($Row.baseline_name)|$($Row.selectivity_bucket)"
-}
-
-function New-RowMap {
-  param(
-    [object[]]$Rows
-  )
-
-  $Map = @{}
-
-  foreach ($Row in $Rows) {
-    $Map[(Get-RowKey -Row $Row)] = $Row
-  }
-
-  return $Map
-}
-
-
-function Get-HigherIsBetterClassification {
-  param(
-    [object]$Delta
-  )
-
-  if ($null -eq $Delta) {
-    return "unavailable"
-  }
-
-  if ($Delta -ge $NoiseThreshold) {
-    return "improved"
-  }
-
-  if ($Delta -le (-1.0 * $NoiseThreshold)) {
-    return "regressed"
-  }
-
-  return "stable/noise"
-}
-
-function Get-LowerIsBetterClassification {
-  param(
-    [object]$Delta,
-    [double]$ReferenceValue
-  )
-
-  if ($null -eq $Delta) {
-    return "unavailable"
-  }
-
-  if ($ReferenceValue -le 0.0) {
-    return "unavailable"
-  }
-
-  $RelativeDelta = [double]$Delta / $ReferenceValue
-
-  if ($RelativeDelta -le (-1.0 * $NoiseThreshold)) {
-    return "improved"
-  }
-
-  if ($RelativeDelta -ge $NoiseThreshold) {
-    return "regressed"
-  }
-
-  return "stable/noise"
-}
 
 function New-ComparisonRow {
   param(
@@ -151,13 +76,16 @@ function New-ComparisonRow {
     PreviousWeightedSpeedup            = $PreviousSpeedup
     CurrentWeightedSpeedup             = $CurrentSpeedup
     WeightedSpeedupDelta               = $SpeedupDelta
-    WeightedSpeedupClassification      = Get-HigherIsBetterClassification -Delta $SpeedupDelta
+    WeightedSpeedupClassification      = Get-CountOnlyHigherIsBetterClassification `
+      -Delta $SpeedupDelta `
+      -NoiseThreshold $NoiseThreshold
     PreviousMeanCountOnlyElapsedNs     = $PreviousCountElapsed
     CurrentMeanCountOnlyElapsedNs      = $CurrentCountElapsed
     MeanCountOnlyElapsedDeltaNs        = $CountElapsedDelta
-    MeanCountOnlyElapsedClassification = Get-LowerIsBetterClassification `
+    MeanCountOnlyElapsedClassification = Get-CountOnlyLowerIsBetterClassification `
       -Delta $CountElapsedDelta `
-      -ReferenceValue $PreviousCountElapsed
+      -ReferenceValue $PreviousCountElapsed `
+      -NoiseThreshold $NoiseThreshold
     PreviousMeanOwnedElapsedNs         = $PreviousOwnedElapsed
     CurrentMeanOwnedElapsedNs          = $CurrentOwnedElapsed
     MeanOwnedElapsedDeltaNs            = $OwnedElapsedDelta
@@ -190,12 +118,18 @@ $RequiredFields = @(
 )
 
 foreach ($FieldName in $RequiredFields) {
-  Require-Field -Row $PreviousRows[0] -FieldName $FieldName
-  Require-Field -Row $CurrentRows[0] -FieldName $FieldName
+  Require-CountOnlyCsvField `
+    -Row $PreviousRows[0] `
+    -FieldName $FieldName `
+    -CsvDescription "count-only summary"
+  Require-CountOnlyCsvField `
+    -Row $CurrentRows[0] `
+    -FieldName $FieldName `
+    -CsvDescription "count-only summary"
 }
 
-$PreviousMap = New-RowMap -Rows $PreviousRows
-$CurrentMap = New-RowMap -Rows $CurrentRows
+$PreviousMap = New-CountOnlySummaryRowMap -Rows $PreviousRows
+$CurrentMap = New-CountOnlySummaryRowMap -Rows $CurrentRows
 
 $ComparisonRows = New-Object System.Collections.Generic.List[object]
 $MissingPreviousKeys = New-Object System.Collections.Generic.List[string]

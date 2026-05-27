@@ -13,6 +13,21 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$BenchmarkCsvLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-csv.ps1"
+
+if (!(Test-Path -LiteralPath $BenchmarkCsvLibrary)) {
+    throw "benchmark CSV helper library was not found: $BenchmarkCsvLibrary"
+}
+
+. $BenchmarkCsvLibrary
+
+$BenchmarkLowGapLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-low-gap.ps1"
+
+if (!(Test-Path -LiteralPath $BenchmarkLowGapLibrary)) {
+    throw "benchmark low-gap helper library was not found: $BenchmarkLowGapLibrary"
+}
+
+. $BenchmarkLowGapLibrary
 if ($MaxDepth -gt 0) {
     $EffectiveMaxDepth = $MaxDepth
 }
@@ -37,141 +52,7 @@ $WorkloadDetailCsvPath = Join-Path $OutputDir "low-gap-workload-trial-details-$L
 $WorkloadSummaryCsvPath = Join-Path $OutputDir "low-gap-workload-trial-summary-$Label.csv"
 $NotesPath = Join-Path $OutputDir "low-gap-trial-notes-$Label.txt"
 
-$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-$InvariantCulture = [System.Globalization.CultureInfo]::InvariantCulture
 $TreeBaselines = @("kd_tree", "r_tree")
-
-function Set-Utf8Text {
-    param(
-        [string]$Path,
-        [string]$Text
-    )
-
-    [System.IO.File]::WriteAllText($Path, $Text, $Utf8NoBom)
-}
-
-function Add-Utf8Text {
-    param(
-        [string]$Path,
-        [string]$Text
-    )
-
-    [System.IO.File]::AppendAllText($Path, $Text, $Utf8NoBom)
-}
-
-function Convert-ToInvariantDouble {
-    param(
-        [string]$Value
-    )
-
-    return [double]::Parse($Value, $InvariantCulture)
-}
-
-function Format-InvariantDouble {
-    param(
-        [object]$Value
-    )
-
-    if ($null -eq $Value) {
-        return "unavailable"
-    }
-
-    try {
-        $DoubleValue = [System.Convert]::ToDouble($Value, $InvariantCulture)
-        return $DoubleValue.ToString("0.000000", $InvariantCulture)
-    }
-    catch {
-        return "unavailable"
-    }
-}
-
-function Escape-CsvField {
-    param(
-        [object]$Value
-    )
-
-    if ($null -eq $Value) {
-        return ""
-    }
-
-    $Text = $Value.ToString()
-
-    if ($Text.Contains(",") -or $Text.Contains('"') -or $Text.Contains("`n") -or $Text.Contains("`r")) {
-        $Escaped = $Text.Replace('"', '""')
-        return "`"$Escaped`""
-    }
-
-    return $Text
-}
-
-function Join-CsvFields {
-    param(
-        [object[]]$Fields
-    )
-
-    return (($Fields | ForEach-Object { Escape-CsvField -Value $_ }) -join ",")
-}
-
-function Write-CsvDocument {
-    param(
-        [string]$Path,
-        [object[]]$Header,
-        [object[]]$Rows
-    )
-
-    Set-Utf8Text -Path $Path -Text "$(Join-CsvFields -Fields $Header)`r`n"
-
-    foreach ($Row in $Rows) {
-        Add-Utf8Text -Path $Path -Text "$(Join-CsvFields -Fields $Row)`r`n"
-    }
-}
-
-function Get-LowGapRow {
-    param(
-        [object[]]$Rows,
-        [string]$BaselineName
-    )
-
-    return $Rows | Where-Object { $_.baseline_name -eq $BaselineName } | Select-Object -First 1
-}
-
-function Get-LowGapMetric {
-    param(
-        [object]$Row,
-        [string]$FieldName
-    )
-
-    if ($null -eq $Row) {
-        return $null
-    }
-
-    $RawValue = $Row.$FieldName
-
-    if ([string]::IsNullOrWhiteSpace($RawValue)) {
-        return $null
-    }
-
-    return Convert-ToInvariantDouble -Value $RawValue
-}
-
-function Get-WorkloadMetric {
-    param(
-        [object]$Row,
-        [string]$FieldName
-    )
-
-    if ($null -eq $Row) {
-        return $null
-    }
-
-    $RawValue = $Row.$FieldName
-
-    if ([string]::IsNullOrWhiteSpace($RawValue)) {
-        return $null
-    }
-
-    return Convert-ToInvariantDouble -Value $RawValue
-}
 
 function Get-WorkloadText {
     param(
@@ -190,27 +71,6 @@ function Get-WorkloadText {
     }
 
     return $RawValue.ToString()
-}
-
-function Get-LowGapClassification {
-    param(
-        [object]$Delta,
-        [double]$Threshold
-    )
-
-    if ($null -eq $Delta) {
-        return "unavailable"
-    }
-
-    if ($Delta -ge $Threshold) {
-        return "improved"
-    }
-
-    if ($Delta -le (-1.0 * $Threshold)) {
-        return "regressed"
-    }
-
-    return "stable/noise"
 }
 
 function Get-CsvLoadStatus {
@@ -245,108 +105,6 @@ function Get-CsvLoadStatus {
         ResolvedPath = $ResolvedPath
         Rows         = $Rows
     }
-}
-
-function Get-Mean {
-    param(
-        [object[]]$Values
-    )
-
-    if ($Values.Count -eq 0) {
-        return $null
-    }
-
-    $Sum = 0.0
-
-    foreach ($Value in $Values) {
-        $Sum += [double]$Value
-    }
-
-    return $Sum / $Values.Count
-}
-
-function Get-Minimum {
-    param(
-        [object[]]$Values
-    )
-
-    if ($Values.Count -eq 0) {
-        return $null
-    }
-
-    $Minimum = [double]$Values[0]
-
-    foreach ($Value in $Values) {
-        $DoubleValue = [double]$Value
-
-        if ($DoubleValue -lt $Minimum) {
-            $Minimum = $DoubleValue
-        }
-    }
-
-    return $Minimum
-}
-
-function Get-Maximum {
-    param(
-        [object[]]$Values
-    )
-
-    if ($Values.Count -eq 0) {
-        return $null
-    }
-
-    $Maximum = [double]$Values[0]
-
-    foreach ($Value in $Values) {
-        $DoubleValue = [double]$Value
-
-        if ($DoubleValue -gt $Maximum) {
-            $Maximum = $DoubleValue
-        }
-    }
-
-    return $Maximum
-}
-
-function Get-SampleStdDev {
-    param(
-        [object[]]$Values,
-        [object]$Mean
-    )
-
-    if ($Values.Count -lt 2 -or $null -eq $Mean) {
-        return 0.0
-    }
-
-    $SquaredDeltaSum = 0.0
-
-    foreach ($Value in $Values) {
-        $Delta = [double]$Value - [double]$Mean
-        $SquaredDeltaSum += $Delta * $Delta
-    }
-
-    return [Math]::Sqrt($SquaredDeltaSum / ($Values.Count - 1))
-}
-
-function Get-RatioOrNull {
-    param(
-        [object]$Numerator,
-        [object]$Denominator
-    )
-
-    if ($null -eq $Numerator -or $null -eq $Denominator) {
-        return $null
-    }
-
-    $NumeratorValue = [double]$Numerator
-    $DenominatorValue = [double]$Denominator
-
-    if ($DenominatorValue -eq 0.0) {
-        return $null
-    }
-
-    return $NumeratorValue / $DenominatorValue
 }
 
 function Get-MostFrequentText {

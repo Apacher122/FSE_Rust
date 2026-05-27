@@ -25,6 +25,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$BenchmarkCsvLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-csv.ps1"
+
+if (!(Test-Path -LiteralPath $BenchmarkCsvLibrary)) {
+  throw "benchmark CSV helper library was not found: $BenchmarkCsvLibrary"
+}
+
+. $BenchmarkCsvLibrary
+
 if ([string]::IsNullOrWhiteSpace($Label)) {
   throw "`-Label` cannot be empty"
 }
@@ -97,44 +105,6 @@ $CurrentTargetDetailCsv = Join-Path $OutputDir "target-workload-trial-details-$L
 $CurrentTargetSummaryCsv = Join-Path $OutputDir "target-workload-trial-summary-$Label.csv"
 $CurrentTargetNotesPath = Join-Path $OutputDir "target-workload-trial-notes-$Label.txt"
 
-$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-$InvariantCulture = [System.Globalization.CultureInfo]::InvariantCulture
-
-function Set-Utf8Text {
-  param(
-    [string]$Path,
-    [string]$Text
-  )
-
-  [System.IO.File]::WriteAllText($Path, $Text, $Utf8NoBom)
-}
-
-function Add-Utf8Text {
-  param(
-    [string]$Path,
-    [string]$Text
-  )
-
-  [System.IO.File]::AppendAllText($Path, $Text, $Utf8NoBom)
-}
-
-function Format-InvariantDouble {
-  param(
-    [object]$Value
-  )
-
-  if ($null -eq $Value) {
-    return "unavailable"
-  }
-
-  try {
-    $DoubleValue = [System.Convert]::ToDouble($Value, $InvariantCulture)
-    return $DoubleValue.ToString("0.000000", $InvariantCulture)
-  }
-  catch {
-    return "unavailable"
-  }
-}
 
 function Require-Script {
   param(

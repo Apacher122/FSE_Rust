@@ -8,6 +8,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$BenchmarkArtifactLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-artifacts.ps1"
+. $BenchmarkArtifactLibrary
+
 if ([string]::IsNullOrWhiteSpace($ArtifactRoot)) {
   throw "`-ArtifactRoot` cannot be empty"
 }
@@ -27,80 +30,7 @@ if (!(Test-Path -LiteralPath $RunRoot)) {
 $ArtifactRootPath = (Resolve-Path -LiteralPath $ArtifactRoot).Path
 $RunRootPath = (Resolve-Path -LiteralPath $RunRoot).Path
 
-$ReservedDirectoryNames = @(
-  "runs",
-  "archive"
-)
 
-$FilePrefixes = @(
-  "count-only-workload-summary-comparison-",
-  "count-only-workload-summary-",
-  "target-workload-trial-comparison-",
-  "target-workload-trial-details-",
-  "target-workload-trial-summary-",
-  "target-workload-trial-notes-",
-  "low-gap-workload-trial-comparison-",
-  "low-gap-workload-trial-details-",
-  "low-gap-workload-trial-summary-",
-  "low-gap-trial-comparison-",
-  "low-gap-trial-details-",
-  "low-gap-trial-summary-",
-  "low-gap-trial-notes-",
-  "low-gap-review-manifest-",
-  "low-gap-review-notes-",
-  "low-gap-regression-notes-",
-  "low-selectivity-gap-",
-  "benchmark-output-",
-  "debug-output-",
-  "summary-",
-  "workloads-"
-) | Sort-Object -Property Length -Descending
-
-$DirectoryPrefixes = @(
-  "low-gap-trials-",
-  "leaf-policy-trials-"
-) | Sort-Object -Property Length -Descending
-
-function Get-ArtifactLabelFromName {
-  param(
-    [string]$Name,
-    [string[]]$Prefixes
-  )
-
-  foreach ($Prefix in $Prefixes) {
-    if ($Name.StartsWith($Prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-      return $Name.Substring($Prefix.Length)
-    }
-  }
-
-  return ""
-}
-
-function Get-ArtifactLabel {
-  param(
-    [System.IO.FileSystemInfo]$Item
-  )
-
-  if ($Item.PSIsContainer) {
-    return Get-ArtifactLabelFromName -Name $Item.Name -Prefixes $DirectoryPrefixes
-  }
-
-  $NameWithoutExtension = [System.IO.Path]::GetFileNameWithoutExtension($Item.Name)
-
-  return Get-ArtifactLabelFromName -Name $NameWithoutExtension -Prefixes $FilePrefixes
-}
-
-function Test-LabelMatches {
-  param(
-    [string]$DiscoveredLabel
-  )
-
-  if ([string]::IsNullOrWhiteSpace($Label)) {
-    return $true
-  }
-
-  return $DiscoveredLabel -eq $Label
-}
 
 function Get-OrganizedArtifactPath {
   param(
@@ -138,18 +68,18 @@ $SkippedItems = New-Object System.Collections.Generic.List[object]
 $UnrecognizedItems = New-Object System.Collections.Generic.List[object]
 
 foreach ($Item in $Items) {
-  if ($Item.PSIsContainer -and ($ReservedDirectoryNames -contains $Item.Name)) {
+  if ($Item.PSIsContainer -and ($BenchmarkArtifactReservedDirectoryNames -contains $Item.Name)) {
     continue
   }
 
-  $DiscoveredLabel = Get-ArtifactLabel -Item $Item
+  $DiscoveredLabel = Get-BenchmarkArtifactLabel -Item $Item
 
   if ([string]::IsNullOrWhiteSpace($DiscoveredLabel)) {
     $UnrecognizedItems.Add($Item)
     continue
   }
 
-  if (!(Test-LabelMatches -DiscoveredLabel $DiscoveredLabel)) {
+  if (!(Test-BenchmarkArtifactLabelMatches -DiscoveredLabel $DiscoveredLabel -ExpectedLabel $Label)) {
     continue
   }
 

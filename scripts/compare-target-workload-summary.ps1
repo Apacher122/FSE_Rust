@@ -9,12 +9,18 @@ param(
 $ErrorActionPreference = "Stop"
 
 $BenchmarkCsvLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-csv.ps1"
+$BenchmarkComparisonLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-comparison.ps1"
 
 if (!(Test-Path -LiteralPath $BenchmarkCsvLibrary)) {
   throw "benchmark CSV helper library was not found: $BenchmarkCsvLibrary"
 }
 
+if (!(Test-Path -LiteralPath $BenchmarkComparisonLibrary)) {
+  throw "benchmark comparison helper library was not found: $BenchmarkComparisonLibrary"
+}
+
 . $BenchmarkCsvLibrary
+. $BenchmarkComparisonLibrary
 
 if ([string]::IsNullOrWhiteSpace($PreviousTargetSummaryCsv)) {
   throw "`-PreviousTargetSummaryCsv` is required"
@@ -37,16 +43,8 @@ New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $ComparisonCsvPath = Join-Path $OutputDir "target-workload-trial-comparison-$Label.csv"
 $ComparisonNotesPath = Join-Path $OutputDir "target-workload-trial-comparison-$Label.txt"
 
-$TreeBaselines = @("kd_tree", "r_tree")
+$TreeBaselines = Get-BenchmarkTreeBaselineNames
 
-function Get-SummaryRow {
-  param(
-    [object[]]$Rows,
-    [string]$BaselineName
-  )
-
-  return $Rows | Where-Object { $_.baseline_name -eq $BaselineName } | Select-Object -First 1
-}
 
 function New-ComparisonRow {
   param(
@@ -326,17 +324,22 @@ $CurrentResolvedPath = (Resolve-Path -LiteralPath $CurrentTargetSummaryCsv).Path
 $PreviousRows = @(Import-Csv -LiteralPath $PreviousResolvedPath)
 $CurrentRows = @(Import-Csv -LiteralPath $CurrentResolvedPath)
 
-$ComparisonObjects = @()
+$ComparisonObjects = @(New-BenchmarkBaselineComparisonObjects `
+    -PreviousRows $PreviousRows `
+    -CurrentRows $CurrentRows `
+    -BaselineNames $TreeBaselines `
+    -RowFactory {
+    param(
+      [string]$BaselineName,
+      [object]$PreviousRow,
+      [object]$CurrentRow
+    )
 
-foreach ($BaselineName in $TreeBaselines) {
-  $PreviousRow = Get-SummaryRow -Rows $PreviousRows -BaselineName $BaselineName
-  $CurrentRow = Get-SummaryRow -Rows $CurrentRows -BaselineName $BaselineName
-
-  $ComparisonObjects += New-ComparisonRow `
-    -BaselineName $BaselineName `
-    -PreviousRow $PreviousRow `
-    -CurrentRow $CurrentRow
-}
+    New-ComparisonRow `
+      -BaselineName $BaselineName `
+      -PreviousRow $PreviousRow `
+      -CurrentRow $CurrentRow
+  })
 
 $ComparisonRows = @()
 

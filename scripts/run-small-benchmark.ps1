@@ -12,6 +12,21 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$BenchmarkCsvLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-csv.ps1"
+
+if (!(Test-Path -LiteralPath $BenchmarkCsvLibrary)) {
+    throw "benchmark CSV helper library was not found: $BenchmarkCsvLibrary"
+}
+
+. $BenchmarkCsvLibrary
+
+$BenchmarkLowGapLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-low-gap.ps1"
+
+if (!(Test-Path -LiteralPath $BenchmarkLowGapLibrary)) {
+    throw "benchmark low-gap helper library was not found: $BenchmarkLowGapLibrary"
+}
+
+. $BenchmarkLowGapLibrary
 if ($MaxDepth -gt 0) {
     $EffectiveMaxDepth = $MaxDepth
 }
@@ -38,26 +53,6 @@ $LowGapRegressionNotesPath = Join-Path $OutputDir "low-gap-regression-notes-$Lab
 
 $CountOnlyWorkloadSummaryScript = Join-Path $ScriptDirectory "summarize-count-only-workload-summary.ps1"
 
-$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-$InvariantCulture = [System.Globalization.CultureInfo]::InvariantCulture
-
-function Set-Utf8Text {
-    param(
-        [string]$Path,
-        [string]$Text
-    )
-
-    [System.IO.File]::WriteAllText($Path, $Text, $Utf8NoBom)
-}
-
-function Add-Utf8Text {
-    param(
-        [string]$Path,
-        [string]$Text
-    )
-
-    [System.IO.File]::AppendAllText($Path, $Text, $Utf8NoBom)
-}
 
 function Write-BenchmarkSection {
     param(
@@ -98,77 +93,6 @@ function Invoke-BenchmarkCommand {
     if ($ExitCode -ne 0) {
         throw "benchmark command failed for section '$Title' with exit code $ExitCode"
     }
-}
-
-function Convert-ToInvariantDouble {
-    param(
-        [string]$Value
-    )
-
-    return [double]::Parse($Value, $InvariantCulture)
-}
-
-function Format-InvariantDouble {
-    param(
-        [object]$Value
-    )
-
-    if ($null -eq $Value) {
-        return "unavailable"
-    }
-
-    try {
-        $DoubleValue = [System.Convert]::ToDouble($Value, $InvariantCulture)
-        return $DoubleValue.ToString("0.000000", $InvariantCulture)
-    }
-    catch {
-        return "unavailable"
-    }
-}
-
-function Get-LowGapRow {
-    param(
-        [object[]]$Rows,
-        [string]$BaselineName
-    )
-
-    return $Rows | Where-Object { $_.baseline_name -eq $BaselineName } | Select-Object -First 1
-}
-
-function Get-LowGapMetric {
-    param(
-        [object]$Row,
-        [string]$FieldName
-    )
-
-    if ($null -eq $Row) {
-        return $null
-    }
-
-    $RawValue = $Row.$FieldName
-
-    if ([string]::IsNullOrWhiteSpace($RawValue)) {
-        return $null
-    }
-
-    return Convert-ToInvariantDouble -Value $RawValue
-}
-
-function Get-LowGapClassification {
-    param(
-        [double]$Delta,
-        [double]$Threshold
-    )
-
-    if ($Delta -ge $Threshold) {
-        return "improved"
-    }
-
-    if ($Delta -le (-1.0 * $Threshold)) {
-        return "regressed"
-    }
-
-    return "stable/noise"
 }
 
 function Get-PreviousCsvLoadStatus {

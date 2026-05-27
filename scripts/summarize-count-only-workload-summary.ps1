@@ -7,12 +7,18 @@ param(
 $ErrorActionPreference = "Stop"
 
 $BenchmarkCsvLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-csv.ps1"
+$BenchmarkCountOnlyLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-count-only.ps1"
 
 if (!(Test-Path -LiteralPath $BenchmarkCsvLibrary)) {
   throw "benchmark CSV helper library was not found: $BenchmarkCsvLibrary"
 }
 
+if (!(Test-Path -LiteralPath $BenchmarkCountOnlyLibrary)) {
+  throw "benchmark count-only helper library was not found: $BenchmarkCountOnlyLibrary"
+}
+
 . $BenchmarkCsvLibrary
+. $BenchmarkCountOnlyLibrary
 
 if ([string]::IsNullOrWhiteSpace($InputWorkloadsCsv)) {
   throw "`-InputWorkloadsCsv` cannot be empty"
@@ -28,117 +34,6 @@ if ([string]::IsNullOrWhiteSpace($OutputNotesPath)) {
 
 if (!(Test-Path -LiteralPath $InputWorkloadsCsv)) {
   throw "input workloads CSV was not found: $InputWorkloadsCsv"
-}
-
-function New-CalculatedSummary {
-  param(
-    [object]$Summary
-  )
-
-  $WorkloadCount = [double]$Summary.WorkloadCount
-
-  $MeanCandidateRatio = $Summary.CandidateRatioSum / $WorkloadCount
-  $MeanOwnedAverageElapsedNs = $Summary.OwnedAverageElapsedNsSum / $WorkloadCount
-  $MeanCountOnlyAverageElapsedNs = $Summary.CountOnlyAverageElapsedNsSum / $WorkloadCount
-  $MeanOwnedResultOverheadNs = $Summary.OwnedResultOverheadNsSum / $WorkloadCount
-  $MeanCountOnlySpeedupRatio = $Summary.CountOnlySpeedupRatioSum / $WorkloadCount
-
-  if ($Summary.CountOnlyAverageElapsedNsSum -le 0.0) {
-    $WeightedCountOnlySpeedupRatio = 0.0
-  }
-  else {
-    $WeightedCountOnlySpeedupRatio =
-    $Summary.OwnedAverageElapsedNsSum / $Summary.CountOnlyAverageElapsedNsSum
-  }
-
-  return [PSCustomObject]@{
-    DatasetRecords                     = $Summary.DatasetRecords
-    TimingIterations                   = $Summary.TimingIterations
-    MaxDepth                           = $Summary.MaxDepth
-    IndexValid                         = $Summary.IndexValid
-    LeafCardinalityValid               = $Summary.LeafCardinalityValid
-    BaselineName                       = $Summary.BaselineName
-    SelectivityBucket                  = $Summary.SelectivityBucket
-    WorkloadCount                      = $Summary.WorkloadCount
-    StatsAgreeCount                    = $Summary.StatsAgreeCount
-    AllStatsMatchOwned                 = $Summary.StatsAgreeCount -eq $Summary.WorkloadCount
-    TotalFseReconstructedRecords       = $Summary.TotalFseReconstructedRecords
-    TotalCountOnlyReconstructedRecords = $Summary.TotalCountOnlyReconstructedRecords
-    TotalFseMatchedRecords             = $Summary.TotalFseMatchedRecords
-    TotalCountOnlyMatchedRecords       = $Summary.TotalCountOnlyMatchedRecords
-    MeanCandidateRatio                 = $MeanCandidateRatio
-    MeanOwnedAverageElapsedNs          = $MeanOwnedAverageElapsedNs
-    MeanCountOnlyAverageElapsedNs      = $MeanCountOnlyAverageElapsedNs
-    MeanOwnedResultOverheadNs          = $MeanOwnedResultOverheadNs
-    MeanCountOnlySpeedupRatio          = $MeanCountOnlySpeedupRatio
-    WeightedCountOnlySpeedupRatio      = $WeightedCountOnlySpeedupRatio
-    TotalOwnedAverageElapsedNs         = $Summary.OwnedAverageElapsedNsSum
-    TotalCountOnlyAverageElapsedNs     = $Summary.CountOnlyAverageElapsedNsSum
-    TotalOwnedResultOverheadNs         = $Summary.OwnedResultOverheadNsSum
-  }
-}
-
-function Get-SelectivityBucket {
-  param(
-    [double]$CandidateRatio
-  )
-
-  if ($CandidateRatio -le 0.0) {
-    return "empty"
-  }
-
-  if ($CandidateRatio -le 0.25) {
-    return "low"
-  }
-
-  if ($CandidateRatio -le 0.50) {
-    return "medium"
-  }
-
-  if ($CandidateRatio -lt 1.0) {
-    return "high"
-  }
-
-  return "full"
-}
-
-function New-SummaryRow {
-  param(
-    [object]$SourceRow,
-    [string]$SelectivityBucket
-  )
-
-  return [PSCustomObject]@{
-    DatasetRecords                     = $SourceRow.dataset_records
-    TimingIterations                   = $SourceRow.timing_iterations
-    MaxDepth                           = $SourceRow.max_depth
-    IndexValid                         = $SourceRow.index_valid
-    LeafCardinalityValid               = $SourceRow.leaf_cardinality_valid
-    BaselineName                       = $SourceRow.baseline_name
-    SelectivityBucket                  = $SelectivityBucket
-    WorkloadCount                      = 0
-    StatsAgreeCount                    = 0
-    TotalFseReconstructedRecords       = 0
-    TotalCountOnlyReconstructedRecords = 0
-    TotalFseMatchedRecords             = 0
-    TotalCountOnlyMatchedRecords       = 0
-    CandidateRatioSum                  = 0.0
-    OwnedAverageElapsedNsSum           = 0.0
-    CountOnlyAverageElapsedNsSum       = 0.0
-    OwnedResultOverheadNsSum           = 0.0
-    CountOnlySpeedupRatioSum           = 0.0
-  }
-}
-
-function Require-Field {
-  param(
-    [object]$Row,
-    [string]$FieldName
-  )
-
-  if ($null -eq $Row.PSObject.Properties[$FieldName]) {
-    throw "required workload CSV field was not found: $FieldName"
-  }
 }
 
 $Rows = @(Import-Csv -LiteralPath $InputWorkloadsCsv)
@@ -167,18 +62,20 @@ $RequiredFields = @(
 )
 
 foreach ($FieldName in $RequiredFields) {
-  Require-Field -Row $Rows[0] -FieldName $FieldName
+  Require-CountOnlyCsvField -Row $Rows[0] -FieldName $FieldName -CsvDescription "workload"
 }
 
 $Summaries = [ordered]@{}
 
 foreach ($Row in $Rows) {
   $CandidateRatio = Convert-ToInvariantDoubleOrZero -Value $Row.candidate_ratio
-  $SelectivityBucket = Get-SelectivityBucket -CandidateRatio $CandidateRatio
-  $Key = "$($Row.baseline_name)|$SelectivityBucket"
+  $SelectivityBucket = Get-CountOnlySelectivityBucket -CandidateRatio $CandidateRatio
+  $Key = New-CountOnlySummaryKey `
+    -BaselineName $Row.baseline_name `
+    -SelectivityBucket $SelectivityBucket
 
   if (!$Summaries.Contains($Key)) {
-    $Summaries[$Key] = New-SummaryRow -SourceRow $Row -SelectivityBucket $SelectivityBucket
+    $Summaries[$Key] = New-CountOnlySummaryRow -SourceRow $Row -SelectivityBucket $SelectivityBucket
   }
 
   $Summary = $Summaries[$Key]
@@ -230,7 +127,7 @@ $OutputRows = New-Object System.Collections.Generic.List[string]
 $OutputRows.Add((Convert-ToCsvRow -Values $Header))
 
 $CalculatedSummaries = foreach ($Summary in $Summaries.Values) {
-  New-CalculatedSummary -Summary $Summary
+  New-CountOnlyCalculatedSummary -Summary $Summary
 }
 
 foreach ($Summary in $CalculatedSummaries) {

@@ -8,6 +8,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$BenchmarkCsvLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-csv.ps1"
+$BenchmarkComparisonLibrary = Join-Path (Join-Path $PSScriptRoot "lib") "benchmark-comparison.ps1"
+
+if (!(Test-Path -LiteralPath $BenchmarkCsvLibrary)) {
+  throw "benchmark CSV helper library was not found: $BenchmarkCsvLibrary"
+}
+
+if (!(Test-Path -LiteralPath $BenchmarkComparisonLibrary)) {
+  throw "benchmark comparison helper library was not found: $BenchmarkComparisonLibrary"
+}
+
+. $BenchmarkCsvLibrary
+. $BenchmarkComparisonLibrary
+
 if ([string]::IsNullOrWhiteSpace($PreviousTrialSummaryCsv)) {
   throw "`-PreviousTrialSummaryCsv` is required"
 }
@@ -29,179 +43,8 @@ New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $ComparisonCsvPath = Join-Path $OutputDir "low-gap-trial-comparison-$Label.csv"
 $ComparisonNotesPath = Join-Path $OutputDir "low-gap-trial-comparison-$Label.txt"
 
-$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-$InvariantCulture = [System.Globalization.CultureInfo]::InvariantCulture
-$TreeBaselines = @("kd_tree", "r_tree")
+$TreeBaselines = Get-BenchmarkTreeBaselineNames
 
-function Set-Utf8Text {
-  param(
-    [string]$Path,
-    [string]$Text
-  )
-
-  [System.IO.File]::WriteAllText($Path, $Text, $Utf8NoBom)
-}
-
-function Add-Utf8Text {
-  param(
-    [string]$Path,
-    [string]$Text
-  )
-
-  [System.IO.File]::AppendAllText($Path, $Text, $Utf8NoBom)
-}
-
-function Convert-ToInvariantDouble {
-  param(
-    [string]$Value
-  )
-
-  return [double]::Parse($Value, $InvariantCulture)
-}
-
-function Format-InvariantDouble {
-  param(
-    [object]$Value
-  )
-
-  if ($null -eq $Value) {
-    return "unavailable"
-  }
-
-  try {
-    $DoubleValue = [System.Convert]::ToDouble($Value, $InvariantCulture)
-    return $DoubleValue.ToString("0.000000", $InvariantCulture)
-  }
-  catch {
-    return "unavailable"
-  }
-}
-
-function Escape-CsvField {
-  param(
-    [object]$Value
-  )
-
-  if ($null -eq $Value) {
-    return ""
-  }
-
-  $Text = $Value.ToString()
-
-  if ($Text.Contains(",") -or $Text.Contains('"') -or $Text.Contains("`n") -or $Text.Contains("`r")) {
-    $Escaped = $Text.Replace('"', '""')
-    return "`"$Escaped`""
-  }
-
-  return $Text
-}
-
-function Join-CsvFields {
-  param(
-    [object[]]$Fields
-  )
-
-  return (($Fields | ForEach-Object { Escape-CsvField -Value $_ }) -join ",")
-}
-
-function Write-CsvDocument {
-  param(
-    [string]$Path,
-    [object[]]$Header,
-    [object[]]$Rows
-  )
-
-  Set-Utf8Text -Path $Path -Text "$(Join-CsvFields -Fields $Header)`r`n"
-
-  foreach ($Row in $Rows) {
-    Add-Utf8Text -Path $Path -Text "$(Join-CsvFields -Fields $Row)`r`n"
-  }
-}
-
-function Get-SummaryRow {
-  param(
-    [object[]]$Rows,
-    [string]$BaselineName
-  )
-
-  return $Rows | Where-Object { $_.baseline_name -eq $BaselineName } | Select-Object -First 1
-}
-
-function Get-Metric {
-  param(
-    [object]$Row,
-    [string]$FieldName
-  )
-
-  if ($null -eq $Row) {
-    return $null
-  }
-
-  $RawValue = $Row.$FieldName
-
-  if ([string]::IsNullOrWhiteSpace($RawValue)) {
-    return $null
-  }
-
-  return Convert-ToInvariantDouble -Value $RawValue
-}
-
-function Get-TextField {
-  param(
-    [object]$Row,
-    [string]$FieldName
-  )
-
-  if ($null -eq $Row) {
-    return "unavailable"
-  }
-
-  $RawValue = $Row.$FieldName
-
-  if ($null -eq $RawValue) {
-    return "unavailable"
-  }
-
-  if ([string]::IsNullOrWhiteSpace($RawValue.ToString())) {
-    return "unavailable"
-  }
-
-  return $RawValue.ToString()
-}
-
-function Get-Delta {
-  param(
-    [object]$CurrentValue,
-    [object]$PreviousValue
-  )
-
-  if ($null -eq $CurrentValue -or $null -eq $PreviousValue) {
-    return $null
-  }
-
-  return [double]$CurrentValue - [double]$PreviousValue
-}
-
-function Get-Classification {
-  param(
-    [object]$Delta,
-    [double]$Threshold
-  )
-
-  if ($null -eq $Delta) {
-    return "unavailable"
-  }
-
-  if ($Delta -ge $Threshold) {
-    return "improved"
-  }
-
-  if ($Delta -le (-1.0 * $Threshold)) {
-    return "regressed"
-  }
-
-  return "stable/noise"
-}
 
 function New-ComparisonRow {
   param(
@@ -281,17 +124,22 @@ $CurrentResolvedPath = (Resolve-Path -LiteralPath $CurrentTrialSummaryCsv).Path
 $PreviousRows = @(Import-Csv -LiteralPath $PreviousResolvedPath)
 $CurrentRows = @(Import-Csv -LiteralPath $CurrentResolvedPath)
 
-$ComparisonObjects = @()
+$ComparisonObjects = @(New-BenchmarkBaselineComparisonObjects `
+    -PreviousRows $PreviousRows `
+    -CurrentRows $CurrentRows `
+    -BaselineNames $TreeBaselines `
+    -RowFactory {
+    param(
+      [string]$BaselineName,
+      [object]$PreviousRow,
+      [object]$CurrentRow
+    )
 
-foreach ($BaselineName in $TreeBaselines) {
-  $PreviousRow = Get-SummaryRow -Rows $PreviousRows -BaselineName $BaselineName
-  $CurrentRow = Get-SummaryRow -Rows $CurrentRows -BaselineName $BaselineName
-
-  $ComparisonObjects += New-ComparisonRow `
-    -BaselineName $BaselineName `
-    -PreviousRow $PreviousRow `
-    -CurrentRow $CurrentRow
-}
+    New-ComparisonRow `
+      -BaselineName $BaselineName `
+      -PreviousRow $PreviousRow `
+      -CurrentRow $CurrentRow
+  })
 
 $ComparisonRows = @()
 
