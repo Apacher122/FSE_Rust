@@ -7,9 +7,11 @@ use super::candidates::{
     matching_retained_candidate_values, reconstruct_retained_candidate_rows,
     retained_candidate_breakdown,
 };
-use super::target::append_target_workload_debug_section;
+use super::target::{
+    append_debug_duration_line, append_debug_line, append_retained_candidate_breakdown,
+    append_target_workload_debug_section,
+};
 use crate::benchmark::reports::measure_repeated;
-use crate::benchmark::reports::output::format_duration_ascii;
 use crate::query::{execute_retained_leaf_batch_for_diagnostics, traverse_with_stats};
 
 impl BenchmarkApplicationRenderer {
@@ -71,50 +73,34 @@ impl BenchmarkApplicationRenderer {
                     query_options,
                 );
 
-                output.push_str(&format!(
-                    "timing iterations: {}\n",
-                    timing_config.iterations
-                ));
-                output.push_str(&format!(
-                    "average retained reconstruction elapsed: {}\n",
-                    format_duration_ascii(reconstruction_timing.average_elapsed)
-                ));
-                output.push_str(&format!(
-                    "average retained predicate elapsed: {}\n",
-                    format_duration_ascii(predicate_timing.average_elapsed)
-                ));
-                output.push_str(&format!(
-                    "average retained result collection elapsed: {}\n",
-                    format_duration_ascii(result_collection_timing.average_elapsed)
-                ));
-                output.push_str(&format!(
-                    "average retained execution elapsed: {}\n",
-                    format_duration_ascii(retained_execution_timing.average_elapsed)
-                ));
-                output.push_str(&format!(
-                    "candidate records: {}\n",
-                    traversal.stats.retained_candidate_records
-                ));
-                output.push_str(&format!(
-                    "matched records: {}\n",
-                    retained_report.matched_records
-                ));
-                output.push_str(&format!(
-                    "covered leaves: {}\n",
-                    retained_breakdown.covered_leaves
-                ));
-                output.push_str(&format!(
-                    "partial leaves: {}\n",
-                    retained_breakdown.partial_leaves
-                ));
-                output.push_str(&format!(
-                    "covered records: {}\n",
-                    retained_breakdown.covered_records
-                ));
-                output.push_str(&format!(
-                    "partial records: {}\n",
-                    retained_breakdown.partial_records
-                ));
+                append_debug_line(output, "timing iterations", timing_config.iterations);
+                append_debug_duration_line(
+                    output,
+                    "average retained reconstruction elapsed",
+                    reconstruction_timing.average_elapsed,
+                );
+                append_debug_duration_line(
+                    output,
+                    "average retained predicate elapsed",
+                    predicate_timing.average_elapsed,
+                );
+                append_debug_duration_line(
+                    output,
+                    "average retained result collection elapsed",
+                    result_collection_timing.average_elapsed,
+                );
+                append_debug_duration_line(
+                    output,
+                    "average retained execution elapsed",
+                    retained_execution_timing.average_elapsed,
+                );
+                append_debug_line(
+                    output,
+                    "candidate records",
+                    traversal.stats.retained_candidate_records,
+                );
+                append_debug_line(output, "matched records", retained_report.matched_records);
+                append_retained_candidate_breakdown(output, &retained_breakdown);
             },
         );
     }

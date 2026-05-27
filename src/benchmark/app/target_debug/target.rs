@@ -1,7 +1,12 @@
-//! Target workload selection helpers.
+//! Target workload selection and debug rendering helpers.
+
+use std::fmt::{Display, Write};
+use std::time::Duration;
 
 use super::super::context::BenchmarkApplicationContext;
+use super::candidates::RetainedCandidateBreakdown;
 use crate::benchmark::BenchmarkDatasetKind;
+use crate::benchmark::reports::output::format_duration_ascii;
 use crate::benchmark::workloads::QueryWorkloadCase;
 
 const SMALL_TARGET_BOUNDARY_WORKLOAD_NAME: &str = "cluster_boundary_range";
@@ -31,10 +36,8 @@ pub(super) fn append_target_workload_debug_section<F>(
 ) where
     F: FnOnce(&mut String, &BenchmarkApplicationContext, &QueryWorkloadCase),
 {
-    output.push_str(title);
-    output.push('\n');
-    output.push_str(&"-".repeat(title.len()));
-    output.push('\n');
+    writeln!(output, "{title}").expect("writing to String should not fail");
+    writeln!(output, "{}", "-".repeat(title.len())).expect("writing to String should not fail");
 
     let target_workload_name = target_boundary_workload_name(context);
 
@@ -43,14 +46,51 @@ pub(super) fn append_target_workload_debug_section<F>(
         .iter()
         .find(|workload| workload.name == target_workload_name)
     else {
-        output.push_str(&format!("workload: {}\n", target_workload_name));
+        append_debug_line(output, "workload", target_workload_name);
         output.push_str("status: workload not found\n\n");
         return;
     };
 
-    output.push_str(&format!("workload: {}\n", workload.name));
+    append_debug_line(output, "workload", &workload.name);
 
     render(output, context, workload);
 
     output.push('\n');
+}
+
+/// Appends a formatted `label: value` debug line.
+///
+/// # Runtime Role
+///
+/// Target workload diagnostics render many scalar facts with the same terminal
+/// shape. This helper keeps that output shape consistent without allocating a
+/// temporary formatted line before appending to the shared output buffer.
+pub(super) fn append_debug_line<T>(output: &mut String, label: &str, value: T)
+where
+    T: Display,
+{
+    writeln!(output, "{label}: {value}").expect("writing to String should not fail");
+}
+
+/// Appends a duration debug line using the benchmark terminal duration format.
+pub(super) fn append_debug_duration_line(output: &mut String, label: &str, duration: Duration) {
+    append_debug_line(output, label, format_duration_ascii(duration));
+}
+
+/// Appends retained-candidate coverage details in the standard debug order.
+///
+/// # Runtime Role
+///
+/// Several target workload diagnostics report the same retained candidate
+/// breakdown after running different timing probes. Centralizing the rendering
+/// keeps those sections aligned while preserving each diagnostic's measurement
+/// logic.
+pub(super) fn append_retained_candidate_breakdown(
+    output: &mut String,
+    breakdown: &RetainedCandidateBreakdown,
+) {
+    append_debug_line(output, "covered leaves", breakdown.covered_leaves);
+    append_debug_line(output, "partial leaves", breakdown.partial_leaves);
+    append_debug_line(output, "covered records", breakdown.covered_records);
+    append_debug_line(output, "partial records", breakdown.partial_records);
 }

@@ -4,8 +4,10 @@ use super::super::context::BenchmarkApplicationContext;
 use super::super::renderer::BenchmarkApplicationRenderer;
 use super::candidates::retained_candidate_breakdown;
 use super::formatting::format_percent_ratio;
-use super::target::append_target_workload_debug_section;
-use crate::benchmark::reports::output::format_duration_ascii;
+use super::target::{
+    append_debug_duration_line, append_debug_line, append_retained_candidate_breakdown,
+    append_target_workload_debug_section,
+};
 use crate::benchmark::reports::{duration_ratio, measure_repeated};
 use crate::query::{
     execute_query_with_stats_and_options, execute_retained_leaf_batch_for_diagnostics,
@@ -60,50 +62,30 @@ impl BenchmarkApplicationRenderer {
                     full_fse_timing.average_elapsed,
                 );
 
-                output.push_str(&format!(
-                    "timing iterations: {}\n",
-                    timing_config.iterations
-                ));
-                output.push_str(&format!(
-                    "average retained execution elapsed: {}\n",
-                    format_duration_ascii(retained_execution_timing.average_elapsed)
-                ));
-                output.push_str(&format!(
-                    "average full FSE elapsed: {}\n",
-                    format_duration_ascii(full_fse_timing.average_elapsed)
-                ));
-                output.push_str(&format!(
-                    "estimated retained execution share: {}\n",
-                    format_percent_ratio(retained_execution_share)
-                ));
-                output.push_str(&format!(
-                    "retained leaves: {}\n",
-                    traversal.stats.retained_leaves
-                ));
-                output.push_str(&format!(
-                    "covered leaves: {}\n",
-                    retained_breakdown.covered_leaves
-                ));
-                output.push_str(&format!(
-                    "partial leaves: {}\n",
-                    retained_breakdown.partial_leaves
-                ));
-                output.push_str(&format!(
-                    "candidate records: {}\n",
-                    traversal.stats.retained_candidate_records
-                ));
-                output.push_str(&format!(
-                    "covered records: {}\n",
-                    retained_breakdown.covered_records
-                ));
-                output.push_str(&format!(
-                    "partial records: {}\n",
-                    retained_breakdown.partial_records
-                ));
-                output.push_str(&format!(
-                    "matched records: {}\n",
-                    retained_report.matched_records
-                ));
+                append_debug_line(output, "timing iterations", timing_config.iterations);
+                append_debug_duration_line(
+                    output,
+                    "average retained execution elapsed",
+                    retained_execution_timing.average_elapsed,
+                );
+                append_debug_duration_line(
+                    output,
+                    "average full FSE elapsed",
+                    full_fse_timing.average_elapsed,
+                );
+                append_debug_line(
+                    output,
+                    "estimated retained execution share",
+                    format_percent_ratio(retained_execution_share),
+                );
+                append_debug_line(output, "retained leaves", traversal.stats.retained_leaves);
+                append_retained_candidate_breakdown(output, &retained_breakdown);
+                append_debug_line(
+                    output,
+                    "candidate records",
+                    traversal.stats.retained_candidate_records,
+                );
+                append_debug_line(output, "matched records", retained_report.matched_records);
             },
         );
     }

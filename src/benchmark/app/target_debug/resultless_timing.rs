@@ -4,8 +4,10 @@ use super::super::context::BenchmarkApplicationContext;
 use super::super::renderer::BenchmarkApplicationRenderer;
 use super::candidates::retained_candidate_breakdown;
 use super::formatting::format_percent_ratio;
-use super::target::append_target_workload_debug_section;
-use crate::benchmark::reports::output::format_duration_ascii;
+use super::target::{
+    append_debug_duration_line, append_debug_line, append_retained_candidate_breakdown,
+    append_target_workload_debug_section,
+};
 use crate::benchmark::reports::{duration_ratio, measure_repeated};
 use crate::query::{
     count_retained_matches_without_results, execute_query_with_stats_and_options,
@@ -70,51 +72,39 @@ impl BenchmarkApplicationRenderer {
                     retained_execution_timing.average_elapsed,
                 );
 
-                output.push_str(&format!(
-                    "timing iterations: {}\n",
-                    timing_config.iterations
-                ));
-                output.push_str(&format!(
-                    "average resultless retained elapsed: {}\n",
-                    format_duration_ascii(resultless_retained_timing.average_elapsed)
-                ));
-                output.push_str(&format!(
-                    "average retained execution elapsed: {}\n",
-                    format_duration_ascii(retained_execution_timing.average_elapsed)
-                ));
-                output.push_str(&format!(
-                    "average full FSE elapsed: {}\n",
-                    format_duration_ascii(full_fse_timing.average_elapsed)
-                ));
-                output.push_str(&format!(
-                    "estimated result ownership overhead: {}\n",
-                    format_duration_ascii(estimated_result_ownership_overhead)
-                ));
-                output.push_str(&format!(
-                    "estimated resultless retained share: {}\n",
-                    format_percent_ratio(resultless_retained_share)
-                ));
-                output.push_str(&format!(
-                    "candidate records: {}\n",
-                    traversal.stats.retained_candidate_records
-                ));
-                output.push_str(&format!("matched records: {}\n", matched_records));
-                output.push_str(&format!(
-                    "covered leaves: {}\n",
-                    retained_breakdown.covered_leaves
-                ));
-                output.push_str(&format!(
-                    "partial leaves: {}\n",
-                    retained_breakdown.partial_leaves
-                ));
-                output.push_str(&format!(
-                    "covered records: {}\n",
-                    retained_breakdown.covered_records
-                ));
-                output.push_str(&format!(
-                    "partial records: {}\n",
-                    retained_breakdown.partial_records
-                ));
+                append_debug_line(output, "timing iterations", timing_config.iterations);
+                append_debug_duration_line(
+                    output,
+                    "average resultless retained elapsed",
+                    resultless_retained_timing.average_elapsed,
+                );
+                append_debug_duration_line(
+                    output,
+                    "average retained execution elapsed",
+                    retained_execution_timing.average_elapsed,
+                );
+                append_debug_duration_line(
+                    output,
+                    "average full FSE elapsed",
+                    full_fse_timing.average_elapsed,
+                );
+                append_debug_duration_line(
+                    output,
+                    "estimated result ownership overhead",
+                    estimated_result_ownership_overhead,
+                );
+                append_debug_line(
+                    output,
+                    "estimated resultless retained share",
+                    format_percent_ratio(resultless_retained_share),
+                );
+                append_debug_line(
+                    output,
+                    "candidate records",
+                    traversal.stats.retained_candidate_records,
+                );
+                append_debug_line(output, "matched records", matched_records);
+                append_retained_candidate_breakdown(output, &retained_breakdown);
             },
         );
     }
