@@ -92,12 +92,9 @@ $FlatArtifactCleanupScript = Join-Path $ScriptDirectory "cleanup-flat-benchmark-
 $OrganizedRunRoot = Join-Path $OutputDir "runs"
 $OrganizedRunDirectory = Join-Path $OrganizedRunRoot $Label
 
-if ([string]::IsNullOrWhiteSpace($PreviousLabel)) {
-  $PreviousOrganizedRunDirectory = ""
-}
-else {
-  $PreviousOrganizedRunDirectory = Join-Path $OrganizedRunRoot $PreviousLabel
-}
+$PreviousOrganizedRunDirectory = Get-BenchmarkReviewPreviousOrganizedRunDirectory `
+  -PreviousLabel $PreviousLabel `
+  -OrganizedRunRoot $OrganizedRunRoot
 
 $ReviewNotesPath = Join-Path $OutputDir "low-gap-review-notes-$Label.txt"
 $ReviewManifestPath = Join-Path $OutputDir "low-gap-review-manifest-$Label.txt"
@@ -122,63 +119,7 @@ function Require-Script {
   }
 }
 
-function Resolve-OptionalPreviousPath {
-  param(
-    [string]$ExplicitPath,
-    [string]$DefaultPath
-  )
 
-  if (![string]::IsNullOrWhiteSpace($ExplicitPath)) {
-    return $ExplicitPath
-  }
-
-  if ([string]::IsNullOrWhiteSpace($PreviousLabel)) {
-    return ""
-  }
-
-  if (Test-Path -LiteralPath $DefaultPath) {
-    return $DefaultPath
-  }
-
-  if (![string]::IsNullOrWhiteSpace($PreviousOrganizedRunDirectory)) {
-    $FileName = Split-Path -Leaf $DefaultPath
-    $OrganizedPath = Join-Path $PreviousOrganizedRunDirectory $FileName
-
-    if (Test-Path -LiteralPath $OrganizedPath) {
-      return $OrganizedPath
-    }
-  }
-
-  return $DefaultPath
-}
-
-function Get-InputStatus {
-  param(
-    [string]$Path
-  )
-
-  if ([string]::IsNullOrWhiteSpace($Path)) {
-    return [PSCustomObject]@{
-      Status       = "not provided"
-      Exists       = $false
-      ResolvedPath = ""
-    }
-  }
-
-  if (!(Test-Path -LiteralPath $Path)) {
-    return [PSCustomObject]@{
-      Status       = "path not found"
-      Exists       = $false
-      ResolvedPath = ""
-    }
-  }
-
-  return [PSCustomObject]@{
-    Status       = "found"
-    Exists       = $true
-    ResolvedPath = (Resolve-Path -LiteralPath $Path).Path
-  }
-}
 
 function Add-ReviewLine {
   param(
@@ -188,120 +129,41 @@ function Add-ReviewLine {
   Add-Utf8Text -Path $ReviewNotesPath -Text "$Text`r`n"
 }
 
-function Copy-ReviewNotesToOrganizedRun {
-  if (!$CopyArtifactsToRunFolder) {
-    return
-  }
-
-  New-Item -ItemType Directory -Force -Path $OrganizedRunDirectory | Out-Null
-
-  Copy-Item `
-    -LiteralPath $ReviewNotesPath `
-    -Destination (Join-Path $OrganizedRunDirectory (Split-Path -Leaf $ReviewNotesPath)) `
-    -Force
-}
 
 
-function Add-PreviousInputStatusLines {
-  param(
-    [object]$SingleRunInput,
-    [object]$AggregateInput,
-    [object]$WorkloadInput,
-    [object]$TargetInput
-  )
-
-  Add-ReviewLine "Previous input status"
-  Add-ReviewLine "---------------------"
-  Add-ReviewLine "single-run low-selectivity CSV status: $($SingleRunInput.Status)"
-  Add-ReviewLine "aggregate trial summary status: $($AggregateInput.Status)"
-  Add-ReviewLine "workload trial summary status: $($WorkloadInput.Status)"
-  Add-ReviewLine "target workload trial summary status: $($TargetInput.Status)"
-
-  if ($SingleRunInput.Exists) {
-    Add-ReviewLine "single-run low-selectivity CSV resolved path: $($SingleRunInput.ResolvedPath)"
-  }
-
-  if ($AggregateInput.Exists) {
-    Add-ReviewLine "aggregate trial summary resolved path: $($AggregateInput.ResolvedPath)"
-  }
-
-  if ($WorkloadInput.Exists) {
-    Add-ReviewLine "workload trial summary resolved path: $($WorkloadInput.ResolvedPath)"
-  }
-
-  if ($TargetInput.Exists) {
-    Add-ReviewLine "target workload trial summary resolved path: $($TargetInput.ResolvedPath)"
-  }
-
-  Add-ReviewLine ""
-}
 
 function Get-AggregateComparisonSkipReason {
-  if ([string]::IsNullOrWhiteSpace($PreviousTrialSummaryCsv)) {
-    return "previous aggregate trial summary was not provided"
-  }
-
-  if (!(Test-Path -LiteralPath $PreviousTrialSummaryCsv)) {
-    return "previous aggregate trial summary was not found"
-  }
-
-  if (!(Test-Path -LiteralPath $CurrentTrialSummaryCsv)) {
-    return "current aggregate trial summary was not found"
-  }
-
-  return ""
+  return Get-BenchmarkReviewComparisonSkipReason `
+    -PreviousPath $PreviousTrialSummaryCsv `
+    -CurrentPath $CurrentTrialSummaryCsv `
+    -PreviousDescription "previous aggregate trial summary" `
+    -CurrentDescription "current aggregate trial summary"
 }
 
 function Get-WorkloadComparisonSkipReason {
-  if ([string]::IsNullOrWhiteSpace($PreviousWorkloadSummaryCsv)) {
-    return "previous workload trial summary was not provided"
-  }
-
-  if (!(Test-Path -LiteralPath $PreviousWorkloadSummaryCsv)) {
-    return "previous workload trial summary was not found"
-  }
-
-  if (!(Test-Path -LiteralPath $CurrentWorkloadSummaryCsv)) {
-    return "current workload trial summary was not found"
-  }
-
-  return ""
+  return Get-BenchmarkReviewComparisonSkipReason `
+    -PreviousPath $PreviousWorkloadSummaryCsv `
+    -CurrentPath $CurrentWorkloadSummaryCsv `
+    -PreviousDescription "previous workload trial summary" `
+    -CurrentDescription "current workload trial summary"
 }
 
 function Get-CountOnlyComparisonSkipReason {
-  if ([string]::IsNullOrWhiteSpace($PreviousCountOnlySummaryCsv)) {
-    return "previous count-only workload summary was not provided"
-  }
-
-  if (!(Test-Path -LiteralPath $PreviousCountOnlySummaryCsv)) {
-    return "previous count-only workload summary was not found"
-  }
-
-  if (!(Test-Path -LiteralPath $CurrentCountOnlyWorkloadSummaryCsv)) {
-    return "current count-only workload summary was not found"
-  }
-
-  return ""
+  return Get-BenchmarkReviewComparisonSkipReason `
+    -PreviousPath $PreviousCountOnlySummaryCsv `
+    -CurrentPath $CurrentCountOnlyWorkloadSummaryCsv `
+    -PreviousDescription "previous count-only workload summary" `
+    -CurrentDescription "current count-only workload summary"
 }
 
 function Get-TargetComparisonSkipReason {
-  if ($SkipTargetWorkloadReview) {
-    return "target workload review was disabled"
-  }
-
-  if ([string]::IsNullOrWhiteSpace($PreviousTargetSummaryCsv)) {
-    return "previous target workload summary was not provided"
-  }
-
-  if (!(Test-Path -LiteralPath $PreviousTargetSummaryCsv)) {
-    return "previous target workload summary was not found"
-  }
-
-  if (!(Test-Path -LiteralPath $CurrentTargetSummaryCsv)) {
-    return "current target workload summary was not found"
-  }
-
-  return ""
+  return Get-BenchmarkReviewComparisonSkipReason `
+    -PreviousPath $PreviousTargetSummaryCsv `
+    -CurrentPath $CurrentTargetSummaryCsv `
+    -PreviousDescription "previous target workload summary" `
+    -CurrentDescription "current target workload summary" `
+    -Disabled ([bool]$SkipTargetWorkloadReview) `
+    -DisabledReason "target workload review was disabled"
 }
 
 function Write-ReviewManifest {
@@ -509,31 +371,41 @@ if ($CleanupFlatArtifacts) {
   Require-Script -Path $FlatArtifactCleanupScript
 }
 
-$PreviousLowSelectivityGapCsv = Resolve-OptionalPreviousPath `
+$PreviousLowSelectivityGapCsv = Resolve-BenchmarkReviewOptionalPreviousPath `
   -ExplicitPath $PreviousLowSelectivityGapCsv `
-  -DefaultPath (Join-Path $OutputDir "low-selectivity-gap-$PreviousLabel.csv")
+  -DefaultPath (Join-Path $OutputDir "low-selectivity-gap-$PreviousLabel.csv") `
+  -PreviousLabel $PreviousLabel `
+  -PreviousOrganizedRunDirectory $PreviousOrganizedRunDirectory
 
-$PreviousTrialSummaryCsv = Resolve-OptionalPreviousPath `
+$PreviousTrialSummaryCsv = Resolve-BenchmarkReviewOptionalPreviousPath `
   -ExplicitPath $PreviousTrialSummaryCsv `
-  -DefaultPath (Join-Path $OutputDir "low-gap-trial-summary-$PreviousLabel.csv")
+  -DefaultPath (Join-Path $OutputDir "low-gap-trial-summary-$PreviousLabel.csv") `
+  -PreviousLabel $PreviousLabel `
+  -PreviousOrganizedRunDirectory $PreviousOrganizedRunDirectory
 
-$PreviousWorkloadSummaryCsv = Resolve-OptionalPreviousPath `
+$PreviousWorkloadSummaryCsv = Resolve-BenchmarkReviewOptionalPreviousPath `
   -ExplicitPath $PreviousWorkloadSummaryCsv `
-  -DefaultPath (Join-Path $OutputDir "low-gap-workload-trial-summary-$PreviousLabel.csv")
+  -DefaultPath (Join-Path $OutputDir "low-gap-workload-trial-summary-$PreviousLabel.csv") `
+  -PreviousLabel $PreviousLabel `
+  -PreviousOrganizedRunDirectory $PreviousOrganizedRunDirectory
 
-$PreviousCountOnlySummaryCsv = Resolve-OptionalPreviousPath `
+$PreviousCountOnlySummaryCsv = Resolve-BenchmarkReviewOptionalPreviousPath `
   -ExplicitPath $PreviousCountOnlySummaryCsv `
-  -DefaultPath (Join-Path $OutputDir "count-only-workload-summary-$PreviousLabel.csv")
+  -DefaultPath (Join-Path $OutputDir "count-only-workload-summary-$PreviousLabel.csv") `
+  -PreviousLabel $PreviousLabel `
+  -PreviousOrganizedRunDirectory $PreviousOrganizedRunDirectory
   
-$PreviousTargetSummaryCsv = Resolve-OptionalPreviousPath `
+$PreviousTargetSummaryCsv = Resolve-BenchmarkReviewOptionalPreviousPath `
   -ExplicitPath $PreviousTargetSummaryCsv `
-  -DefaultPath (Join-Path $OutputDir "target-workload-trial-summary-$PreviousLabel.csv")
+  -DefaultPath (Join-Path $OutputDir "target-workload-trial-summary-$PreviousLabel.csv") `
+  -PreviousLabel $PreviousLabel `
+  -PreviousOrganizedRunDirectory $PreviousOrganizedRunDirectory
 
-$PreviousLowSelectivityGapInput = Get-InputStatus -Path $PreviousLowSelectivityGapCsv
-$PreviousTrialSummaryInput = Get-InputStatus -Path $PreviousTrialSummaryCsv
-$PreviousWorkloadSummaryInput = Get-InputStatus -Path $PreviousWorkloadSummaryCsv
-$PreviousCountOnlySummaryInput = Get-InputStatus -Path $PreviousCountOnlySummaryCsv
-$PreviousTargetSummaryInput = Get-InputStatus -Path $PreviousTargetSummaryCsv
+$PreviousLowSelectivityGapInput = Get-BenchmarkReviewInputStatus -Path $PreviousLowSelectivityGapCsv
+$PreviousTrialSummaryInput = Get-BenchmarkReviewInputStatus -Path $PreviousTrialSummaryCsv
+$PreviousWorkloadSummaryInput = Get-BenchmarkReviewInputStatus -Path $PreviousWorkloadSummaryCsv
+$PreviousCountOnlySummaryInput = Get-BenchmarkReviewInputStatus -Path $PreviousCountOnlySummaryCsv
+$PreviousTargetSummaryInput = Get-BenchmarkReviewInputStatus -Path $PreviousTargetSummaryCsv
 
 Set-Utf8Text -Path $ReviewNotesPath -Text "Low-gap benchmark review`r`n"
 Add-ReviewLine "========================"
@@ -562,7 +434,8 @@ Add-ReviewLine "Previous count-only workload summary CSV: $PreviousCountOnlySumm
 Add-ReviewLine "Previous target workload summary CSV: $PreviousTargetSummaryCsv"
 Add-ReviewLine ""
 
-Add-PreviousInputStatusLines `
+Add-BenchmarkReviewPreviousInputStatusLines `
+  -ReviewNotesPath $ReviewNotesPath `
   -SingleRunInput $PreviousLowSelectivityGapInput `
   -AggregateInput $PreviousTrialSummaryInput `
   -WorkloadInput $PreviousWorkloadSummaryInput `
@@ -696,322 +569,139 @@ else {
 
 Add-ReviewLine ""
 
-Write-Host ""
-Write-Host "Running target workload trial comparison"
-
-Add-ReviewLine "Target workload trial comparison"
-Add-ReviewLine "--------------------------------"
-
-if ($SkipTargetWorkloadReview) {
-  Write-Host "  skipped: target workload review was disabled"
-  Add-ReviewLine "status: skipped"
-  Add-ReviewLine "reason: -SkipTargetWorkloadReview was passed"
-}
-elseif ([string]::IsNullOrWhiteSpace($PreviousTargetSummaryCsv)) {
-  Write-Host "  skipped: previous target workload summary was not provided"
-  Add-ReviewLine "status: skipped"
-  Add-ReviewLine "reason: previous target workload summary was not provided"
-}
-elseif (!(Test-Path -LiteralPath $PreviousTargetSummaryCsv)) {
-  Write-Host "  skipped: previous target workload summary was not found"
-  Write-Host "  $PreviousTargetSummaryCsv"
-  Add-ReviewLine "status: skipped"
-  Add-ReviewLine "reason: previous target workload summary was not found"
-}
-elseif (!(Test-Path -LiteralPath $CurrentTargetSummaryCsv)) {
-  Write-Host "  skipped: current target workload summary was not found"
-  Write-Host "  $CurrentTargetSummaryCsv"
-  Add-ReviewLine "status: skipped"
-  Add-ReviewLine "reason: current target workload summary was not found"
-}
-else {
-  & $TargetComparatorScript `
-    -Label $Label `
-    -PreviousTargetSummaryCsv $PreviousTargetSummaryCsv `
-    -CurrentTargetSummaryCsv $CurrentTargetSummaryCsv `
-    -OutputDir $OutputDir `
-    -NoiseThreshold $NoiseThreshold
-
-  if ($LASTEXITCODE -ne 0) {
-    throw "target workload trial comparison failed with exit code $LASTEXITCODE"
-  }
-
-  Add-ReviewLine "status: completed"
-  Add-ReviewLine "comparison CSV: $(Join-Path $OutputDir "target-workload-trial-comparison-$Label.csv")"
-  Add-ReviewLine "comparison notes: $(Join-Path $OutputDir "target-workload-trial-comparison-$Label.txt")"
+$TargetComparatorArguments = @{
+  Label                    = $Label
+  PreviousTargetSummaryCsv = $PreviousTargetSummaryCsv
+  CurrentTargetSummaryCsv  = $CurrentTargetSummaryCsv
+  OutputDir                = $OutputDir
+  NoiseThreshold           = $NoiseThreshold
 }
 
-Add-ReviewLine ""
+Invoke-BenchmarkReviewComparisonStep `
+  -ReviewNotesPath $ReviewNotesPath `
+  -HostTitle "target workload trial comparison" `
+  -ReviewTitle "Target workload trial comparison" `
+  -ReviewUnderline "--------------------------------" `
+  -PreviousPath $PreviousTargetSummaryCsv `
+  -CurrentPath $CurrentTargetSummaryCsv `
+  -PreviousDescription "previous target workload summary" `
+  -CurrentDescription "current target workload summary" `
+  -ScriptPath $TargetComparatorScript `
+  -ScriptArguments $TargetComparatorArguments `
+  -FailureMessage "target workload trial comparison failed with exit code" `
+  -CompletedLines @(
+  "comparison CSV: $(Join-Path $OutputDir "target-workload-trial-comparison-$Label.csv")",
+  "comparison notes: $(Join-Path $OutputDir "target-workload-trial-comparison-$Label.txt")"
+) `
+  -Disabled ([bool]$SkipTargetWorkloadReview) `
+  -DisabledConsoleReason "target workload review was disabled" `
+  -DisabledReviewReason "-SkipTargetWorkloadReview was passed"
 
-Write-Host ""
-Write-Host "Running count-only workload summary comparison"
-
-Add-ReviewLine "Count-only workload summary comparison"
-Add-ReviewLine "--------------------------------------"
-
-if ([string]::IsNullOrWhiteSpace($PreviousCountOnlySummaryCsv)) {
-  Write-Host "  skipped: previous count-only workload summary was not provided"
-  Add-ReviewLine "status: skipped"
-  Add-ReviewLine "reason: previous count-only workload summary was not provided"
-}
-elseif (!(Test-Path -LiteralPath $PreviousCountOnlySummaryCsv)) {
-  Write-Host "  skipped: previous count-only workload summary was not found"
-  Write-Host "  $PreviousCountOnlySummaryCsv"
-  Add-ReviewLine "status: skipped"
-  Add-ReviewLine "reason: previous count-only workload summary was not found"
-}
-elseif (!(Test-Path -LiteralPath $CurrentCountOnlyWorkloadSummaryCsv)) {
-  Write-Host "  skipped: current count-only workload summary was not found"
-  Write-Host "  $CurrentCountOnlyWorkloadSummaryCsv"
-  Add-ReviewLine "status: skipped"
-  Add-ReviewLine "reason: current count-only workload summary was not found"
-}
-else {
-  & $CountOnlyComparatorScript `
-    -Label $Label `
-    -PreviousCountOnlySummaryCsv $PreviousCountOnlySummaryCsv `
-    -CurrentCountOnlySummaryCsv $CurrentCountOnlyWorkloadSummaryCsv `
-    -OutputDir $OutputDir `
-    -NoiseThreshold $NoiseThreshold
-
-  if ($LASTEXITCODE -ne 0) {
-    throw "count-only workload summary comparison failed with exit code $LASTEXITCODE"
-  }
-
-  Add-ReviewLine "status: completed"
-  Add-ReviewLine "comparison CSV: $CurrentCountOnlyComparisonCsv"
-  Add-ReviewLine "comparison notes: $CurrentCountOnlyComparisonNotes"
+$CountOnlyComparatorArguments = @{
+  Label                       = $Label
+  PreviousCountOnlySummaryCsv = $PreviousCountOnlySummaryCsv
+  CurrentCountOnlySummaryCsv  = $CurrentCountOnlyWorkloadSummaryCsv
+  OutputDir                   = $OutputDir
+  NoiseThreshold              = $NoiseThreshold
 }
 
-Add-ReviewLine ""
+Invoke-BenchmarkReviewComparisonStep `
+  -ReviewNotesPath $ReviewNotesPath `
+  -HostTitle "count-only workload summary comparison" `
+  -ReviewTitle "Count-only workload summary comparison" `
+  -ReviewUnderline "--------------------------------------" `
+  -PreviousPath $PreviousCountOnlySummaryCsv `
+  -CurrentPath $CurrentCountOnlyWorkloadSummaryCsv `
+  -PreviousDescription "previous count-only workload summary" `
+  -CurrentDescription "current count-only workload summary" `
+  -ScriptPath $CountOnlyComparatorScript `
+  -ScriptArguments $CountOnlyComparatorArguments `
+  -FailureMessage "count-only workload summary comparison failed with exit code" `
+  -CompletedLines @(
+  "comparison CSV: $CurrentCountOnlyComparisonCsv",
+  "comparison notes: $CurrentCountOnlyComparisonNotes"
+)
 
-Write-Host ""
-Write-Host "Running aggregate trial comparison"
-
-Add-ReviewLine "Aggregate trial comparison"
-Add-ReviewLine "--------------------------"
-
-if ([string]::IsNullOrWhiteSpace($PreviousTrialSummaryCsv)) {
-  Write-Host "  skipped: previous aggregate trial summary was not provided"
-  Add-ReviewLine "status: skipped"
-  Add-ReviewLine "reason: previous aggregate trial summary was not provided"
-}
-elseif (!(Test-Path -LiteralPath $PreviousTrialSummaryCsv)) {
-  Write-Host "  skipped: previous aggregate trial summary was not found"
-  Write-Host "  $PreviousTrialSummaryCsv"
-  Add-ReviewLine "status: skipped"
-  Add-ReviewLine "reason: previous aggregate trial summary was not found"
-}
-elseif (!(Test-Path -LiteralPath $CurrentTrialSummaryCsv)) {
-  Write-Host "  skipped: current aggregate trial summary was not found"
-  Write-Host "  $CurrentTrialSummaryCsv"
-  Add-ReviewLine "status: skipped"
-  Add-ReviewLine "reason: current aggregate trial summary was not found"
-}
-else {
-  & $AggregateComparatorScript `
-    -Label $Label `
-    -PreviousTrialSummaryCsv $PreviousTrialSummaryCsv `
-    -CurrentTrialSummaryCsv $CurrentTrialSummaryCsv `
-    -OutputDir $OutputDir `
-    -NoiseThreshold $NoiseThreshold
-
-  if ($LASTEXITCODE -ne 0) {
-    throw "aggregate trial comparison failed with exit code $LASTEXITCODE"
-  }
-
-  Add-ReviewLine "status: completed"
-  Add-ReviewLine "comparison CSV: $(Join-Path $OutputDir "low-gap-trial-comparison-$Label.csv")"
-  Add-ReviewLine "comparison notes: $(Join-Path $OutputDir "low-gap-trial-comparison-$Label.txt")"
+$AggregateComparatorArguments = @{
+  Label                   = $Label
+  PreviousTrialSummaryCsv = $PreviousTrialSummaryCsv
+  CurrentTrialSummaryCsv  = $CurrentTrialSummaryCsv
+  OutputDir               = $OutputDir
+  NoiseThreshold          = $NoiseThreshold
 }
 
-Add-ReviewLine ""
+Invoke-BenchmarkReviewComparisonStep `
+  -ReviewNotesPath $ReviewNotesPath `
+  -HostTitle "aggregate trial comparison" `
+  -ReviewTitle "Aggregate trial comparison" `
+  -ReviewUnderline "--------------------------" `
+  -PreviousPath $PreviousTrialSummaryCsv `
+  -CurrentPath $CurrentTrialSummaryCsv `
+  -PreviousDescription "previous aggregate trial summary" `
+  -CurrentDescription "current aggregate trial summary" `
+  -ScriptPath $AggregateComparatorScript `
+  -ScriptArguments $AggregateComparatorArguments `
+  -FailureMessage "aggregate trial comparison failed with exit code" `
+  -CompletedLines @(
+  "comparison CSV: $(Join-Path $OutputDir "low-gap-trial-comparison-$Label.csv")",
+  "comparison notes: $(Join-Path $OutputDir "low-gap-trial-comparison-$Label.txt")"
+)
 
-Write-Host ""
-Write-Host "Running workload trial comparison"
-
-Add-ReviewLine "Workload trial comparison"
-Add-ReviewLine "-------------------------"
-
-if ([string]::IsNullOrWhiteSpace($PreviousWorkloadSummaryCsv)) {
-  Write-Host "  skipped: previous workload trial summary was not provided"
-  Add-ReviewLine "status: skipped"
-  Add-ReviewLine "reason: previous workload trial summary was not provided"
-}
-elseif (!(Test-Path -LiteralPath $PreviousWorkloadSummaryCsv)) {
-  Write-Host "  skipped: previous workload trial summary was not found"
-  Write-Host "  $PreviousWorkloadSummaryCsv"
-  Add-ReviewLine "status: skipped"
-  Add-ReviewLine "reason: previous workload trial summary was not found"
-}
-elseif (!(Test-Path -LiteralPath $CurrentWorkloadSummaryCsv)) {
-  Write-Host "  skipped: current workload trial summary was not found"
-  Write-Host "  $CurrentWorkloadSummaryCsv"
-  Add-ReviewLine "status: skipped"
-  Add-ReviewLine "reason: current workload trial summary was not found"
-}
-else {
-  & $WorkloadComparatorScript `
-    -Label $Label `
-    -PreviousWorkloadSummaryCsv $PreviousWorkloadSummaryCsv `
-    -CurrentWorkloadSummaryCsv $CurrentWorkloadSummaryCsv `
-    -OutputDir $OutputDir `
-    -NoiseThreshold $NoiseThreshold
-
-  if ($LASTEXITCODE -ne 0) {
-    throw "workload trial comparison failed with exit code $LASTEXITCODE"
-  }
-
-  Add-ReviewLine "status: completed"
-  Add-ReviewLine "comparison CSV: $(Join-Path $OutputDir "low-gap-workload-trial-comparison-$Label.csv")"
-  Add-ReviewLine "comparison notes: $(Join-Path $OutputDir "low-gap-workload-trial-comparison-$Label.txt")"
+$WorkloadComparatorArguments = @{
+  Label                      = $Label
+  PreviousWorkloadSummaryCsv = $PreviousWorkloadSummaryCsv
+  CurrentWorkloadSummaryCsv  = $CurrentWorkloadSummaryCsv
+  OutputDir                  = $OutputDir
+  NoiseThreshold             = $NoiseThreshold
 }
 
-Add-ReviewLine ""
-Add-ReviewLine "Comparison availability summary"
-Add-ReviewLine "-------------------------------"
+Invoke-BenchmarkReviewComparisonStep `
+  -ReviewNotesPath $ReviewNotesPath `
+  -HostTitle "workload trial comparison" `
+  -ReviewTitle "Workload trial comparison" `
+  -ReviewUnderline "-------------------------" `
+  -PreviousPath $PreviousWorkloadSummaryCsv `
+  -CurrentPath $CurrentWorkloadSummaryCsv `
+  -PreviousDescription "previous workload trial summary" `
+  -CurrentDescription "current workload trial summary" `
+  -ScriptPath $WorkloadComparatorScript `
+  -ScriptArguments $WorkloadComparatorArguments `
+  -FailureMessage "workload trial comparison failed with exit code" `
+  -CompletedLines @(
+  "comparison CSV: $(Join-Path $OutputDir "low-gap-workload-trial-comparison-$Label.csv")",
+  "comparison notes: $(Join-Path $OutputDir "low-gap-workload-trial-comparison-$Label.txt")"
+)
 
-if ($PreviousLowSelectivityGapInput.Exists) {
-  Add-ReviewLine "single-run low-gap comparison: completed"
-}
-else {
-  Add-ReviewLine "single-run low-gap comparison: unavailable"
-  Add-ReviewLine "single-run low-gap comparison reason: previous low-selectivity gap CSV was $($PreviousLowSelectivityGapInput.Status)"
-}
+Add-BenchmarkReviewComparisonAvailabilitySummary `
+  -ReviewNotesPath $ReviewNotesPath `
+  -PreviousLowSelectivityGapInput $PreviousLowSelectivityGapInput `
+  -PreviousTrialSummaryInput $PreviousTrialSummaryInput `
+  -CurrentTrialSummaryCsv $CurrentTrialSummaryCsv `
+  -PreviousWorkloadSummaryInput $PreviousWorkloadSummaryInput `
+  -CurrentWorkloadSummaryCsv $CurrentWorkloadSummaryCsv `
+  -PreviousCountOnlySummaryInput $PreviousCountOnlySummaryInput `
+  -CurrentCountOnlyWorkloadSummaryCsv $CurrentCountOnlyWorkloadSummaryCsv `
+  -SkipTargetWorkloadReview ([bool]$SkipTargetWorkloadReview) `
+  -PreviousTargetSummaryInput $PreviousTargetSummaryInput `
+  -CurrentTargetSummaryCsv $CurrentTargetSummaryCsv
 
-if ($PreviousTrialSummaryInput.Exists -and (Test-Path -LiteralPath $CurrentTrialSummaryCsv)) {
-  Add-ReviewLine "aggregate repeated-trial comparison: completed"
-}
-elseif (!$PreviousTrialSummaryInput.Exists) {
-  Add-ReviewLine "aggregate repeated-trial comparison: skipped"
-  Add-ReviewLine "aggregate repeated-trial comparison reason: previous aggregate trial summary was $($PreviousTrialSummaryInput.Status)"
-}
-else {
-  Add-ReviewLine "aggregate repeated-trial comparison: skipped"
-  Add-ReviewLine "aggregate repeated-trial comparison reason: current aggregate trial summary was missing"
-}
-
-if ($PreviousWorkloadSummaryInput.Exists -and (Test-Path -LiteralPath $CurrentWorkloadSummaryCsv)) {
-  Add-ReviewLine "workload repeated-trial comparison: completed"
-}
-elseif (!$PreviousWorkloadSummaryInput.Exists) {
-  Add-ReviewLine "workload repeated-trial comparison: skipped"
-  Add-ReviewLine "workload repeated-trial comparison reason: previous workload trial summary was $($PreviousWorkloadSummaryInput.Status)"
-}
-else {
-  Add-ReviewLine "workload repeated-trial comparison: skipped"
-  Add-ReviewLine "workload repeated-trial comparison reason: current workload trial summary was missing"
-}
-
-if ($PreviousCountOnlySummaryInput.Exists -and (Test-Path -LiteralPath $CurrentCountOnlyWorkloadSummaryCsv)) {
-  Add-ReviewLine "count-only workload summary comparison: completed"
-}
-elseif (!$PreviousCountOnlySummaryInput.Exists) {
-  Add-ReviewLine "count-only workload summary comparison: skipped"
-  Add-ReviewLine "count-only workload summary comparison reason: previous count-only workload summary was $($PreviousCountOnlySummaryInput.Status)"
-}
-else {
-  Add-ReviewLine "count-only workload summary comparison: skipped"
-  Add-ReviewLine "count-only workload summary comparison reason: current count-only workload summary was missing"
-}
-
-if ($SkipTargetWorkloadReview) {
-  Add-ReviewLine "target workload summary: skipped"
-  Add-ReviewLine "target workload summary reason: target workload review was disabled"
-  Add-ReviewLine "target workload comparison: skipped"
-  Add-ReviewLine "target workload comparison reason: target workload review was disabled"
-}
-else {
-  if (Test-Path -LiteralPath $CurrentTargetSummaryCsv) {
-    Add-ReviewLine "target workload summary: completed"
-  }
-  else {
-    Add-ReviewLine "target workload summary: unavailable"
-    Add-ReviewLine "target workload summary reason: current target workload summary was missing"
-  }
-
-  if ($PreviousTargetSummaryInput.Exists -and (Test-Path -LiteralPath $CurrentTargetSummaryCsv)) {
-    Add-ReviewLine "target workload comparison: completed"
-  }
-  elseif (!$PreviousTargetSummaryInput.Exists) {
-    Add-ReviewLine "target workload comparison: skipped"
-    Add-ReviewLine "target workload comparison reason: previous target workload summary was $($PreviousTargetSummaryInput.Status)"
-  }
-  else {
-    Add-ReviewLine "target workload comparison: skipped"
-    Add-ReviewLine "target workload comparison reason: current target workload summary was missing"
-  }
-}
-
-Add-ReviewLine ""
-Add-ReviewLine "Review artifact summary"
-Add-ReviewLine "-----------------------"
-Add-ReviewLine "benchmark output: $(Join-Path $OutputDir "benchmark-output-$Label.txt")"
-Add-ReviewLine "debug output: $(Join-Path $OutputDir "debug-output-$Label.txt")"
-Add-ReviewLine "summary CSV: $(Join-Path $OutputDir "summary-$Label.csv")"
-Add-ReviewLine "workloads CSV: $(Join-Path $OutputDir "workloads-$Label.csv")"
-Add-ReviewLine "count-only workload summary: $(Join-Path $OutputDir "count-only-workload-summary-$Label.csv")"
-Add-ReviewLine "count-only workload notes: $(Join-Path $OutputDir "count-only-workload-summary-$Label.txt")"
-Add-ReviewLine "count-only workload comparison CSV: $(Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.csv")"
-Add-ReviewLine "count-only workload comparison notes: $(Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.txt")"
-Add-ReviewLine "low-selectivity gap CSV: $(Join-Path $OutputDir "low-selectivity-gap-$Label.csv")"
-Add-ReviewLine "low-gap regression notes: $(Join-Path $OutputDir "low-gap-regression-notes-$Label.txt")"
-Add-ReviewLine "low-gap trial details: $(Join-Path $OutputDir "low-gap-trial-details-$Label.csv")"
-Add-ReviewLine "low-gap trial summary: $(Join-Path $OutputDir "low-gap-trial-summary-$Label.csv")"
-Add-ReviewLine "low-gap trial notes: $(Join-Path $OutputDir "low-gap-trial-notes-$Label.txt")"
-Add-ReviewLine "low-gap workload trial details: $(Join-Path $OutputDir "low-gap-workload-trial-details-$Label.csv")"
-Add-ReviewLine "low-gap workload trial summary: $(Join-Path $OutputDir "low-gap-workload-trial-summary-$Label.csv")"
-Add-ReviewLine "target workload trial details: $(Join-Path $OutputDir "target-workload-trial-details-$Label.csv")"
-Add-ReviewLine "target workload trial summary: $(Join-Path $OutputDir "target-workload-trial-summary-$Label.csv")"
-Add-ReviewLine "target workload trial notes: $(Join-Path $OutputDir "target-workload-trial-notes-$Label.txt")"
-Add-ReviewLine "target workload trial comparison CSV: $(Join-Path $OutputDir "target-workload-trial-comparison-$Label.csv")"
-Add-ReviewLine "target workload trial comparison notes: $(Join-Path $OutputDir "target-workload-trial-comparison-$Label.txt")"
-Add-ReviewLine "low-gap review notes: $ReviewNotesPath"
-Add-ReviewLine "low-gap review manifest: $ReviewManifestPath"
-Add-ReviewLine ""
-Add-ReviewLine "Decision guidance"
-Add-ReviewLine "-----------------"
-Add-ReviewLine "Use this review script for query-performance commits."
-Add-ReviewLine "Use aggregate comparison artifacts for low-selectivity bucket movement."
-Add-ReviewLine "Use workload comparison artifacts for weakest-workload movement."
-Add-ReviewLine "Use count-only workload comparison artifacts for count-only query mode movement."
-Add-ReviewLine "Use target-workload comparison artifacts for $TargetWorkloadName movement."
-Add-ReviewLine "Do not accept a performance commit based on one noisy single-run result."
+Add-BenchmarkReviewArtifactSummary `
+  -ReviewNotesPath $ReviewNotesPath `
+  -OutputDir $OutputDir `
+  -Label $Label `
+  -ReviewManifestPath $ReviewManifestPath `
+  -TargetWorkloadName $TargetWorkloadName
 
 Write-ReviewManifest
 
 if ($CopyArtifactsToRunFolder) {
-  Add-ReviewLine ""
-  Add-ReviewLine "Organized artifact copy"
-  Add-ReviewLine "-----------------------"
-  Add-ReviewLine "status: running"
-  Add-ReviewLine "destination: $OrganizedRunDirectory"
-  Add-ReviewLine "force: $ForceOrganizedArtifacts"
-
-  Write-Host ""
-  Write-Host "Copying current review artifacts to organized run folder"
-  Write-Host "  label: $Label"
-  Write-Host "  destination: $OrganizedRunDirectory"
-
-  $OrganizerArguments = @{
-    ArtifactRoot = $OutputDir
-    Label        = $Label
-    Copy         = $true
-  }
-
-  if ($ForceOrganizedArtifacts) {
-    $OrganizerArguments["Force"] = $true
-  }
-
-  & $ArtifactOrganizerScript @OrganizerArguments
-
-  if ($LASTEXITCODE -ne 0) {
-    throw "organized artifact copy failed with exit code $LASTEXITCODE"
-  }
-
-  Add-ReviewLine "status: completed"
-
-  Copy-ReviewNotesToOrganizedRun
+  Invoke-BenchmarkReviewOrganizedArtifactCopy `
+    -ReviewNotesPath $ReviewNotesPath `
+    -OutputDir $OutputDir `
+    -Label $Label `
+    -OrganizedRunDirectory $OrganizedRunDirectory `
+    -ForceOrganizedArtifacts ([bool]$ForceOrganizedArtifacts) `
+    -ArtifactOrganizerScript $ArtifactOrganizerScript
 }
 
 if ($ValidateArtifacts) {
@@ -1048,7 +738,10 @@ if ($ValidateArtifacts) {
   Add-ReviewLine "status: completed"
 }
 
-Copy-ReviewNotesToOrganizedRun
+Copy-BenchmarkReviewNotesToOrganizedRun `
+  -ReviewNotesPath $ReviewNotesPath `
+  -OrganizedRunDirectory $OrganizedRunDirectory `
+  -CopyArtifactsToRunFolder ([bool]$CopyArtifactsToRunFolder)
 
 if ($CleanupFlatArtifacts) {
   Add-ReviewLine ""
@@ -1057,7 +750,10 @@ if ($CleanupFlatArtifacts) {
   Add-ReviewLine "status: requested"
   Add-ReviewLine "reason: organized artifacts were copied and validated before flat cleanup"
 
-  Copy-ReviewNotesToOrganizedRun
+  Copy-BenchmarkReviewNotesToOrganizedRun `
+    -ReviewNotesPath $ReviewNotesPath `
+    -OrganizedRunDirectory $OrganizedRunDirectory `
+    -CopyArtifactsToRunFolder ([bool]$CopyArtifactsToRunFolder)
 
   Write-Host ""
   Write-Host "Cleaning flat benchmark artifacts"
@@ -1075,19 +771,9 @@ if ($CleanupFlatArtifacts) {
   }
 }
 
-Write-Host ""
-Write-Host "Low-gap review complete:"
-
-if ($CleanupFlatArtifacts -and $CopyArtifactsToRunFolder) {
-  Write-Host "  organized review notes: $(Join-Path $OrganizedRunDirectory (Split-Path -Leaf $ReviewNotesPath))"
-  Write-Host "  organized review manifest: $(Join-Path $OrganizedRunDirectory (Split-Path -Leaf $ReviewManifestPath))"
-  Write-Host "  organized run folder: $OrganizedRunDirectory"
-}
-else {
-  Write-Host "  $ReviewNotesPath"
-  Write-Host "  $ReviewManifestPath"
-
-  if ($CopyArtifactsToRunFolder) {
-    Write-Host "  organized run folder: $OrganizedRunDirectory"
-  }
-}
+Write-BenchmarkReviewCompletionOutput `
+  -ReviewNotesPath $ReviewNotesPath `
+  -ReviewManifestPath $ReviewManifestPath `
+  -OrganizedRunDirectory $OrganizedRunDirectory `
+  -CopyArtifactsToRunFolder ([bool]$CopyArtifactsToRunFolder) `
+  -CleanupFlatArtifacts ([bool]$CleanupFlatArtifacts)

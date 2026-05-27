@@ -29,8 +29,116 @@ $BenchmarkReviewArtifactNames = [ordered]@{
   TargetWorkloadTrialComparisonNotes = "target workload trial comparison notes"
   LowGapReviewNotes                  = "low-gap review notes"
   LowGapReviewManifest               = "low-gap review manifest"
+
 }
 
+function Get-BenchmarkReviewPreviousOrganizedRunDirectory {
+  param(
+    [string]$PreviousLabel,
+    [string]$OrganizedRunRoot
+  )
+
+  if ([string]::IsNullOrWhiteSpace($PreviousLabel)) {
+    return ""
+  }
+
+  return Join-Path $OrganizedRunRoot $PreviousLabel
+}
+
+function Resolve-BenchmarkReviewOptionalPreviousPath {
+  param(
+    [string]$ExplicitPath,
+    [string]$DefaultPath,
+    [string]$PreviousLabel,
+    [string]$PreviousOrganizedRunDirectory
+  )
+
+  if (![string]::IsNullOrWhiteSpace($ExplicitPath)) {
+    return $ExplicitPath
+  }
+
+  if ([string]::IsNullOrWhiteSpace($PreviousLabel)) {
+    return ""
+  }
+
+  if (Test-Path -LiteralPath $DefaultPath) {
+    return $DefaultPath
+  }
+
+  if (![string]::IsNullOrWhiteSpace($PreviousOrganizedRunDirectory)) {
+    $FileName = Split-Path -Leaf $DefaultPath
+    $OrganizedPath = Join-Path $PreviousOrganizedRunDirectory $FileName
+
+    if (Test-Path -LiteralPath $OrganizedPath) {
+      return $OrganizedPath
+    }
+  }
+
+  return $DefaultPath
+}
+
+function Get-BenchmarkReviewInputStatus {
+  param(
+    [string]$Path
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return [PSCustomObject]@{
+      Status       = "not provided"
+      Exists       = $false
+      ResolvedPath = ""
+    }
+  }
+
+  if (!(Test-Path -LiteralPath $Path)) {
+    return [PSCustomObject]@{
+      Status       = "path not found"
+      Exists       = $false
+      ResolvedPath = ""
+    }
+  }
+
+  return [PSCustomObject]@{
+    Status       = "found"
+    Exists       = $true
+    ResolvedPath = (Resolve-Path -LiteralPath $Path).Path
+  }
+}
+
+function Add-BenchmarkReviewPreviousInputStatusLines {
+  param(
+    [string]$ReviewNotesPath,
+    [object]$SingleRunInput,
+    [object]$AggregateInput,
+    [object]$WorkloadInput,
+    [object]$TargetInput
+  )
+
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Previous input status`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "---------------------`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "single-run low-selectivity CSV status: $($SingleRunInput.Status)`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "aggregate trial summary status: $($AggregateInput.Status)`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "workload trial summary status: $($WorkloadInput.Status)`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "target workload trial summary status: $($TargetInput.Status)`r`n"
+
+  if ($SingleRunInput.Exists) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "single-run low-selectivity CSV resolved path: $($SingleRunInput.ResolvedPath)`r`n"
+  }
+
+  if ($AggregateInput.Exists) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "aggregate trial summary resolved path: $($AggregateInput.ResolvedPath)`r`n"
+  }
+
+  if ($WorkloadInput.Exists) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "workload trial summary resolved path: $($WorkloadInput.ResolvedPath)`r`n"
+  }
+
+  if ($TargetInput.Exists) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "target workload trial summary resolved path: $($TargetInput.ResolvedPath)`r`n"
+  }
+
+  Add-Utf8Text -Path $ReviewNotesPath -Text "`r`n"
+}
 
 function Write-BenchmarkReviewManifestHeader {
   param(
@@ -88,6 +196,253 @@ function Add-BenchmarkReviewManifestInterpretation {
   Add-Utf8Text -Path $ManifestPath -Text "missing: the artifact was expected but was not found`r`n"
   Add-Utf8Text -Path $ManifestPath -Text "skipped: the artifact was intentionally not generated because an input or flag made that step unavailable`r`n"
 }
+
+
+function Get-BenchmarkReviewComparisonSkipReason {
+  param(
+    [string]$PreviousPath,
+    [string]$CurrentPath,
+    [string]$PreviousDescription,
+    [string]$CurrentDescription,
+    [bool]$Disabled = $false,
+    [string]$DisabledReason = ""
+  )
+
+  if ($Disabled) {
+    if ([string]::IsNullOrWhiteSpace($DisabledReason)) {
+      return "$CurrentDescription was disabled"
+    }
+
+    return $DisabledReason
+  }
+
+  if ([string]::IsNullOrWhiteSpace($PreviousPath)) {
+    return "$PreviousDescription was not provided"
+  }
+
+  if (!(Test-BenchmarkReviewPathExists -Path $PreviousPath)) {
+    return "$PreviousDescription was not found"
+  }
+
+  if (!(Test-BenchmarkReviewPathExists -Path $CurrentPath)) {
+    return "$CurrentDescription was not found"
+  }
+
+  return ""
+}
+
+
+function Invoke-BenchmarkReviewComparisonStep {
+  param(
+    [string]$ReviewNotesPath,
+    [string]$HostTitle,
+    [string]$ReviewTitle,
+    [string]$ReviewUnderline,
+    [string]$PreviousPath,
+    [string]$CurrentPath,
+    [string]$PreviousDescription,
+    [string]$CurrentDescription,
+    [string]$ScriptPath,
+    [hashtable]$ScriptArguments,
+    [string]$FailureMessage,
+    [string[]]$CompletedLines,
+    [bool]$Disabled = $false,
+    [string]$DisabledConsoleReason = "",
+    [string]$DisabledReviewReason = ""
+  )
+
+  Write-Host ""
+  Write-Host "Running $HostTitle"
+
+  Add-Utf8Text -Path $ReviewNotesPath -Text "$ReviewTitle`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "$ReviewUnderline`r`n"
+
+  $SkipReason = Get-BenchmarkReviewComparisonSkipReason `
+    -PreviousPath $PreviousPath `
+    -CurrentPath $CurrentPath `
+    -PreviousDescription $PreviousDescription `
+    -CurrentDescription $CurrentDescription `
+    -Disabled $Disabled `
+    -DisabledReason $DisabledConsoleReason
+
+  if (![string]::IsNullOrWhiteSpace($SkipReason)) {
+    Write-Host "  skipped: $SkipReason"
+
+    if (!$Disabled -and ![string]::IsNullOrWhiteSpace($PreviousPath) -and !(Test-BenchmarkReviewPathExists -Path $PreviousPath)) {
+      Write-Host "  $PreviousPath"
+    }
+    elseif (!$Disabled -and ![string]::IsNullOrWhiteSpace($PreviousPath) -and (Test-BenchmarkReviewPathExists -Path $PreviousPath) -and !(Test-BenchmarkReviewPathExists -Path $CurrentPath)) {
+      Write-Host "  $CurrentPath"
+    }
+
+    $ReviewReason = $SkipReason
+
+    if ($Disabled -and ![string]::IsNullOrWhiteSpace($DisabledReviewReason)) {
+      $ReviewReason = $DisabledReviewReason
+    }
+
+    Add-Utf8Text -Path $ReviewNotesPath -Text "status: skipped`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "reason: $ReviewReason`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "`r`n"
+
+    return
+  }
+
+  & $ScriptPath @ScriptArguments
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "$FailureMessage $LASTEXITCODE"
+  }
+
+  Add-Utf8Text -Path $ReviewNotesPath -Text "status: completed`r`n"
+
+  foreach ($CompletedLine in $CompletedLines) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "$CompletedLine`r`n"
+  }
+
+  Add-Utf8Text -Path $ReviewNotesPath -Text "`r`n"
+}
+
+
+
+function Add-BenchmarkReviewArtifactSummary {
+  param(
+    [string]$ReviewNotesPath,
+    [string]$OutputDir,
+    [string]$Label,
+    [string]$ReviewManifestPath,
+    [string]$TargetWorkloadName
+  )
+
+  Add-Utf8Text -Path $ReviewNotesPath -Text "`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Review artifacts`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "-----------------------`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "benchmark output: $(Join-Path $OutputDir "benchmark-output-$Label.txt")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "debug output: $(Join-Path $OutputDir "debug-output-$Label.txt")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "summary CSV: $(Join-Path $OutputDir "summary-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "workloads CSV: $(Join-Path $OutputDir "workloads-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload summary: $(Join-Path $OutputDir "count-only-workload-summary-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload notes: $(Join-Path $OutputDir "count-only-workload-summary-$Label.txt")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload comparison CSV: $(Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload comparison notes: $(Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.txt")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "low-selectivity gap CSV: $(Join-Path $OutputDir "low-selectivity-gap-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "low-gap regression notes: $(Join-Path $OutputDir "low-gap-regression-notes-$Label.txt")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "low-gap trial details: $(Join-Path $OutputDir "low-gap-trial-details-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "low-gap trial summary: $(Join-Path $OutputDir "low-gap-trial-summary-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "low-gap trial notes: $(Join-Path $OutputDir "low-gap-trial-notes-$Label.txt")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "low-gap workload trial details: $(Join-Path $OutputDir "low-gap-workload-trial-details-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "low-gap workload trial summary: $(Join-Path $OutputDir "low-gap-workload-trial-summary-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "target workload trial details: $(Join-Path $OutputDir "target-workload-trial-details-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "target workload trial summary: $(Join-Path $OutputDir "target-workload-trial-summary-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "target workload trial notes: $(Join-Path $OutputDir "target-workload-trial-notes-$Label.txt")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "target workload trial comparison CSV: $(Join-Path $OutputDir "target-workload-trial-comparison-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "target workload trial comparison notes: $(Join-Path $OutputDir "target-workload-trial-comparison-$Label.txt")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "low-gap review notes: $ReviewNotesPath`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "low-gap review manifest: $ReviewManifestPath`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Decision guidance`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "-----------------`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Use this review script for query-performance commits.`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Use aggregate comparison artifacts for low-selectivity bucket movement.`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Use workload comparison artifacts for weakest-workload movement.`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Use count-only workload comparison artifacts for count-only query mode movement.`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Use target-workload comparison artifacts for $TargetWorkloadName movement.`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Do not accept a performance commit based on one noisy single-run result.`r`n"
+}
+
+
+function Add-BenchmarkReviewComparisonAvailabilitySummary {
+  param(
+    [string]$ReviewNotesPath,
+    [object]$PreviousLowSelectivityGapInput,
+    [object]$PreviousTrialSummaryInput,
+    [string]$CurrentTrialSummaryCsv,
+    [object]$PreviousWorkloadSummaryInput,
+    [string]$CurrentWorkloadSummaryCsv,
+    [object]$PreviousCountOnlySummaryInput,
+    [string]$CurrentCountOnlyWorkloadSummaryCsv,
+    [bool]$SkipTargetWorkloadReview,
+    [object]$PreviousTargetSummaryInput,
+    [string]$CurrentTargetSummaryCsv
+  )
+
+  Add-Utf8Text -Path $ReviewNotesPath -Text "`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Comparison availability summary`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "-------------------------------`r`n"
+
+  if ($PreviousLowSelectivityGapInput.Exists) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "single-run low-gap comparison: completed`r`n"
+  }
+  else {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "single-run low-gap comparison: unavailable`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "single-run low-gap comparison reason: previous low-selectivity gap CSV was $($PreviousLowSelectivityGapInput.Status)`r`n"
+  }
+
+  if ($PreviousTrialSummaryInput.Exists -and (Test-BenchmarkReviewPathExists -Path $CurrentTrialSummaryCsv)) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "aggregate repeated-trial comparison: completed`r`n"
+  }
+  elseif (!$PreviousTrialSummaryInput.Exists) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "aggregate repeated-trial comparison: skipped`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "aggregate repeated-trial comparison reason: previous aggregate trial summary was $($PreviousTrialSummaryInput.Status)`r`n"
+  }
+  else {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "aggregate repeated-trial comparison: skipped`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "aggregate repeated-trial comparison reason: current aggregate trial summary was missing`r`n"
+  }
+
+  if ($PreviousWorkloadSummaryInput.Exists -and (Test-BenchmarkReviewPathExists -Path $CurrentWorkloadSummaryCsv)) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "workload repeated-trial comparison: completed`r`n"
+  }
+  elseif (!$PreviousWorkloadSummaryInput.Exists) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "workload repeated-trial comparison: skipped`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "workload repeated-trial comparison reason: previous workload trial summary was $($PreviousWorkloadSummaryInput.Status)`r`n"
+  }
+  else {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "workload repeated-trial comparison: skipped`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "workload repeated-trial comparison reason: current workload trial summary was missing`r`n"
+  }
+
+  if ($PreviousCountOnlySummaryInput.Exists -and (Test-BenchmarkReviewPathExists -Path $CurrentCountOnlyWorkloadSummaryCsv)) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload summary comparison: completed`r`n"
+  }
+  elseif (!$PreviousCountOnlySummaryInput.Exists) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload summary comparison: skipped`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload summary comparison reason: previous count-only workload summary was $($PreviousCountOnlySummaryInput.Status)`r`n"
+  }
+  else {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload summary comparison: skipped`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload summary comparison reason: current count-only workload summary was missing`r`n"
+  }
+
+  if ($SkipTargetWorkloadReview) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "target workload summary: skipped`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "target workload summary reason: target workload review was disabled`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "target workload comparison: skipped`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "target workload comparison reason: target workload review was disabled`r`n"
+    return
+  }
+
+  if (Test-BenchmarkReviewPathExists -Path $CurrentTargetSummaryCsv) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "target workload summary: completed`r`n"
+  }
+  else {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "target workload summary: unavailable`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "target workload summary reason: current target workload summary was missing`r`n"
+  }
+
+  if ($PreviousTargetSummaryInput.Exists -and (Test-BenchmarkReviewPathExists -Path $CurrentTargetSummaryCsv)) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "target workload comparison: completed`r`n"
+  }
+  elseif (!$PreviousTargetSummaryInput.Exists) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "target workload comparison: skipped`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "target workload comparison reason: previous target workload summary was $($PreviousTargetSummaryInput.Status)`r`n"
+  }
+  else {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "target workload comparison: skipped`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "target workload comparison reason: current target workload summary was missing`r`n"
+  }
+}
+
 
 
 function Get-BenchmarkReviewArtifactState {
@@ -632,5 +987,161 @@ function Read-BenchmarkReviewPolicyValidatedCsv {
   }
 
   return $Rows
+}
+
+
+
+
+function Invoke-BenchmarkReviewPolicyCsvValidation {
+  param(
+    [object]$Entry,
+    [string]$Description,
+    [string[]]$RequiredColumns,
+    [int]$MinimumRows = 1,
+    [string[]]$BooleanTrueColumns = @(),
+    [bool]$RequireBaselines = $false,
+    [string]$TrialCountColumn = "",
+    [int]$ExpectedTrials = 0,
+    [scriptblock]$OnFailure
+  )
+
+  Read-BenchmarkReviewPolicyValidatedCsv `
+    -Entry $Entry `
+    -Description $Description `
+    -RequiredColumns $RequiredColumns `
+    -MinimumRows $MinimumRows `
+    -BooleanTrueColumns $BooleanTrueColumns `
+    -RequireBaselines $RequireBaselines `
+    -TrialCountColumn $TrialCountColumn `
+    -ExpectedTrials $ExpectedTrials `
+    -OnFailure $OnFailure | Out-Null
+}
+
+function Copy-BenchmarkReviewNotesToOrganizedRun {
+  param(
+    [string]$ReviewNotesPath,
+    [string]$OrganizedRunDirectory,
+    [bool]$CopyArtifactsToRunFolder
+  )
+
+  if (!$CopyArtifactsToRunFolder) {
+    return
+  }
+
+  New-Item -ItemType Directory -Force -Path $OrganizedRunDirectory | Out-Null
+
+  Copy-Item `
+    -LiteralPath $ReviewNotesPath `
+    -Destination (Join-Path $OrganizedRunDirectory (Split-Path -Leaf $ReviewNotesPath)) `
+    -Force
+}
+
+function Invoke-BenchmarkReviewOrganizedArtifactCopy {
+  param(
+    [string]$ReviewNotesPath,
+    [string]$OutputDir,
+    [string]$Label,
+    [string]$OrganizedRunDirectory,
+    [bool]$ForceOrganizedArtifacts,
+    [string]$ArtifactOrganizerScript
+  )
+
+  Add-Utf8Text -Path $ReviewNotesPath -Text "`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Organized artifact copy`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "-----------------------`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "status: running`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "destination: $OrganizedRunDirectory`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "force: $ForceOrganizedArtifacts`r`n"
+
+  Write-Host ""
+  Write-Host "Copying current review artifacts to organized run folder"
+  Write-Host "  label: $Label"
+  Write-Host "  destination: $OrganizedRunDirectory"
+
+  $OrganizerArguments = @{
+    ArtifactRoot = $OutputDir
+    Label        = $Label
+    Copy         = $true
+  }
+
+  if ($ForceOrganizedArtifacts) {
+    $OrganizerArguments["Force"] = $true
+  }
+
+  & $ArtifactOrganizerScript @OrganizerArguments
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "organized artifact copy failed with exit code $LASTEXITCODE"
+  }
+
+  Add-Utf8Text -Path $ReviewNotesPath -Text "status: completed`r`n"
+
+  Copy-BenchmarkReviewNotesToOrganizedRun `
+    -ReviewNotesPath $ReviewNotesPath `
+    -OrganizedRunDirectory $OrganizedRunDirectory `
+    -CopyArtifactsToRunFolder $true
+}
+
+
+function Write-BenchmarkReviewValidationReport {
+  param(
+    [string]$Label,
+    [string]$OutputDir,
+    [string]$ManifestPath,
+    [int]$ExpectedTrials,
+    [bool]$RequireComparisons,
+    [bool]$AllowSkippedTargetWorkloadReview,
+    [int]$ManifestEntryCount,
+    [string[]]$Failures = @()
+  )
+
+  Write-Host "Benchmark review artifact validation"
+  Write-Host "===================================="
+  Write-Host ""
+  Write-Host "Label:                     $Label"
+  Write-Host "Output dir:                $OutputDir"
+  Write-Host "Manifest:                  $ManifestPath"
+  Write-Host "Expected trials:           $ExpectedTrials"
+  Write-Host "Require comparisons:       $RequireComparisons"
+  Write-Host "Allow skipped target:      $AllowSkippedTargetWorkloadReview"
+  Write-Host "Manifest artifacts loaded: $ManifestEntryCount"
+  Write-Host "Failures:                  $($Failures.Count)"
+  Write-Host ""
+
+  if ($Failures.Count -gt 0) {
+    Write-Host "Validation failures:"
+    Write-Host ""
+
+    foreach ($Failure in $Failures) {
+      Write-Host "  $Failure"
+    }
+  }
+}
+
+function Write-BenchmarkReviewCompletionOutput {
+  param(
+    [string]$ReviewNotesPath,
+    [string]$ReviewManifestPath,
+    [string]$OrganizedRunDirectory,
+    [bool]$CopyArtifactsToRunFolder,
+    [bool]$CleanupFlatArtifacts
+  )
+
+  Write-Host ""
+  Write-Host "Low-gap review complete:"
+
+  if ($CleanupFlatArtifacts -and $CopyArtifactsToRunFolder) {
+    Write-Host "  organized review notes: $(Join-Path $OrganizedRunDirectory (Split-Path -Leaf $ReviewNotesPath))"
+    Write-Host "  organized review manifest: $(Join-Path $OrganizedRunDirectory (Split-Path -Leaf $ReviewManifestPath))"
+    Write-Host "  organized run folder: $OrganizedRunDirectory"
+  }
+  else {
+    Write-Host "  $ReviewNotesPath"
+    Write-Host "  $ReviewManifestPath"
+
+    if ($CopyArtifactsToRunFolder) {
+      Write-Host "  organized run folder: $OrganizedRunDirectory"
+    }
+  }
 }
 

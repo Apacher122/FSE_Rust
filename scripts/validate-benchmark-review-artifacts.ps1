@@ -89,42 +89,22 @@ function Get-ReviewManifestPath {
   }
 }
 
-function Write-ValidationReport {
-  param(
-    [string]$ManifestPath,
-    [int]$ManifestEntryCount
-  )
-
-  Write-Host "Benchmark review artifact validation"
-  Write-Host "===================================="
-  Write-Host ""
-  Write-Host "Label:                     $Label"
-  Write-Host "Output dir:                $OutputDir"
-  Write-Host "Manifest:                  $ManifestPath"
-  Write-Host "Expected trials:           $ExpectedTrials"
-  Write-Host "Require comparisons:       $RequireComparisons"
-  Write-Host "Allow skipped target:      $AllowSkippedTargetWorkloadReview"
-  Write-Host "Manifest artifacts loaded: $ManifestEntryCount"
-  Write-Host "Failures:                  $($Failures.Count)"
-  Write-Host ""
-
-  if ($Failures.Count -gt 0) {
-    Write-Host "Validation failures:"
-    Write-Host ""
-
-    foreach ($Failure in $Failures) {
-      Write-Host "  $Failure"
-    }
-  }
-}
-
 function Fail-Validation {
   param(
     [string]$ManifestPath,
     [int]$ManifestEntryCount
   )
 
-  Write-ValidationReport -ManifestPath $ManifestPath -ManifestEntryCount $ManifestEntryCount
+  Write-BenchmarkReviewValidationReport `
+    -Label $Label `
+    -OutputDir $OutputDir `
+    -ManifestPath $ManifestPath `
+    -ExpectedTrials $ExpectedTrials `
+    -RequireComparisons ([bool]$RequireComparisons) `
+    -AllowSkippedTargetWorkloadReview ([bool]$AllowSkippedTargetWorkloadReview) `
+    -ManifestEntryCount $ManifestEntryCount `
+    -Failures $Failures
+
   throw "benchmark review artifact validation failed"
 }
 
@@ -219,7 +199,7 @@ Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $Target
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $ReviewNotesEntry -Description "low-gap review notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $ReviewManifestEntry -Description "low-gap review manifest"
 
-$SummaryRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddValidationFailure `
+Invoke-BenchmarkReviewPolicyCsvValidation -OnFailure $AddValidationFailure `
   -Entry $SummaryEntry `
   -Description "summary CSV" `
   -RequiredColumns @(
@@ -238,7 +218,7 @@ $SummaryRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddValidationF
 ) `
   -RequireBaselines $true
 
-$WorkloadRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddValidationFailure `
+Invoke-BenchmarkReviewPolicyCsvValidation -OnFailure $AddValidationFailure `
   -Entry $WorkloadsEntry `
   -Description "workloads CSV" `
   -RequiredColumns @(
@@ -256,7 +236,7 @@ $WorkloadRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddValidation
 ) `
   -RequireBaselines $true
 
-$CountOnlySummaryRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddValidationFailure `
+Invoke-BenchmarkReviewPolicyCsvValidation -OnFailure $AddValidationFailure `
   -Entry $CountOnlySummaryEntry `
   -Description "count-only workload summary" `
   -RequiredColumns @(
@@ -274,7 +254,7 @@ $CountOnlySummaryRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddVa
 ) `
   -RequireBaselines $true
 
-$LowGapRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddValidationFailure `
+Invoke-BenchmarkReviewPolicyCsvValidation -OnFailure $AddValidationFailure `
   -Entry $LowGapEntry `
   -Description "low-selectivity gap CSV" `
   -RequiredColumns @(
@@ -286,7 +266,7 @@ $LowGapRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddValidationFa
   -MinimumRows 2 `
   -RequireBaselines $true
 
-$TrialSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddValidationFailure `
+Invoke-BenchmarkReviewPolicyCsvValidation -OnFailure $AddValidationFailure `
   -Entry $TrialSummaryEntry `
   -Description "low-gap trial summary" `
   -RequiredColumns @(
@@ -300,7 +280,7 @@ $TrialSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddValida
   -TrialCountColumn "trial_count" `
   -ExpectedTrials $ExpectedTrials
 
-$WorkloadSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddValidationFailure `
+Invoke-BenchmarkReviewPolicyCsvValidation -OnFailure $AddValidationFailure `
   -Entry $WorkloadSummaryEntry `
   -Description "low-gap workload trial summary" `
   -RequiredColumns @(
@@ -315,7 +295,7 @@ $WorkloadSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddVal
   -ExpectedTrials $ExpectedTrials
 
 if ($null -ne $TargetSummaryEntry -and $TargetSummaryEntry.State -eq $BenchmarkReviewManifestStateFound) {
-  $TargetSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddValidationFailure `
+  Invoke-BenchmarkReviewPolicyCsvValidation -OnFailure $AddValidationFailure `
     -Entry $TargetSummaryEntry `
     -Description "target workload trial summary" `
     -RequiredColumns @(
@@ -332,7 +312,7 @@ if ($null -ne $TargetSummaryEntry -and $TargetSummaryEntry.State -eq $BenchmarkR
 }
 
 if ($RequireComparisons) {
-  $AggregateComparisonRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddValidationFailure `
+  Invoke-BenchmarkReviewPolicyCsvValidation -OnFailure $AddValidationFailure `
     -Entry $AggregateComparisonEntry `
     -Description "aggregate trial comparison CSV" `
     -RequiredColumns @(
@@ -344,7 +324,7 @@ if ($RequireComparisons) {
     -MinimumRows 2 `
     -RequireBaselines $true
 
-  $WorkloadComparisonRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddValidationFailure `
+  Invoke-BenchmarkReviewPolicyCsvValidation -OnFailure $AddValidationFailure `
     -Entry $WorkloadComparisonEntry `
     -Description "workload trial comparison CSV" `
     -RequiredColumns @(
@@ -356,7 +336,7 @@ if ($RequireComparisons) {
     -MinimumRows 2 `
     -RequireBaselines $true
 
-  $CountOnlyComparisonRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddValidationFailure `
+  Invoke-BenchmarkReviewPolicyCsvValidation -OnFailure $AddValidationFailure `
     -Entry $CountOnlyComparisonEntry `
     -Description "count-only workload comparison CSV" `
     -RequiredColumns @(
@@ -369,7 +349,7 @@ if ($RequireComparisons) {
     -MinimumRows 1 `
     -RequireBaselines $true
 
-  $TargetComparisonRows = Read-BenchmarkReviewPolicyValidatedCsv -OnFailure $AddValidationFailure `
+  Invoke-BenchmarkReviewPolicyCsvValidation -OnFailure $AddValidationFailure `
     -Entry $TargetComparisonEntry `
     -Description "target workload trial comparison CSV" `
     -RequiredColumns @(
@@ -388,5 +368,14 @@ if ($Failures.Count -gt 0) {
   Fail-Validation -ManifestPath $ManifestPath -ManifestEntryCount $ManifestEntries.Count
 }
 
-Write-ValidationReport -ManifestPath $ManifestPath -ManifestEntryCount $ManifestEntries.Count
+Write-BenchmarkReviewValidationReport `
+  -Label $Label `
+  -OutputDir $OutputDir `
+  -ManifestPath $ManifestPath `
+  -ExpectedTrials $ExpectedTrials `
+  -RequireComparisons ([bool]$RequireComparisons) `
+  -AllowSkippedTargetWorkloadReview ([bool]$AllowSkippedTargetWorkloadReview) `
+  -ManifestEntryCount $ManifestEntries.Count `
+  -Failures $Failures
+
 Write-Host "Benchmark review artifacts are valid."
