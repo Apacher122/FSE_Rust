@@ -6,6 +6,7 @@
 /dev_notes
 c[0-9]*-*.txt
 /old_output
+*.zip
 
 # VS Code
 .vscode/*

@@ -2,7 +2,9 @@
 
 use std::cmp::Ordering;
 
-use crate::build::metrics::{SplitQualityMetrics, split_quality_metrics_from_bounds};
+use crate::build::metrics::{
+    SplitQualityMetrics, bounds_overlap_extent_sum_prevalidated, split_quality_metrics_from_bounds,
+};
 use crate::build::variance::variance_by_dimension;
 use crate::math::{BoundingBox, Scalar, Vector};
 
@@ -377,21 +379,7 @@ fn child_overlap_extent_sum(left_bounds: &BoundingBox, right_bounds: &BoundingBo
         "child bounds should have matching dimensionality"
     );
 
-    let mut overlap_extent = 0.0;
-
-    for dimension in 0..left_bounds.dimensions() {
-        let overlap_min = left_bounds.min[dimension].max(right_bounds.min[dimension]);
-        let overlap_max = left_bounds.max[dimension].min(right_bounds.max[dimension]);
-        let overlap_width = overlap_max - overlap_min;
-
-        if overlap_width < 0.0 {
-            return 0.0;
-        }
-
-        overlap_extent += overlap_width;
-    }
-
-    overlap_extent
+    bounds_overlap_extent_sum_prevalidated(left_bounds, right_bounds)
 }
 
 fn sorted_points_on_axis(points: &[Vector], split_dimension: usize) -> Vec<Vector> {

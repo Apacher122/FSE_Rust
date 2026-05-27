@@ -352,6 +352,26 @@ pub fn sibling_overlap_extent_sum(left_bounds: &BoundingBox, right_bounds: &Boun
         "sibling bounds must have matching dimensionality"
     );
 
+    bounds_overlap_extent_sum_prevalidated(left_bounds, right_bounds)
+}
+
+/// Computes summed overlap extent for already-compatible bounding boxes.
+///
+/// # Runtime Role
+///
+/// This is the shared implementation for sibling-overlap diagnostics and split
+/// scoring. Callers own the release-mode dimensionality contract so hot split
+/// scoring can keep its existing debug-only validation behavior.
+pub(crate) fn bounds_overlap_extent_sum_prevalidated(
+    left_bounds: &BoundingBox,
+    right_bounds: &BoundingBox,
+) -> Scalar {
+    debug_assert_eq!(
+        left_bounds.dimensions(),
+        right_bounds.dimensions(),
+        "bounds should have matching dimensionality"
+    );
+
     let mut overlap_extent = 0.0;
 
     for dimension in 0..left_bounds.dimensions() {
