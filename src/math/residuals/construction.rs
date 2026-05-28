@@ -1,22 +1,8 @@
-//! Centroid-relative residual storage.
+//! Residual block construction helpers.
 
 use crate::math::{Scalar, Vector};
 
-/// Residual vectors stored in structure-of-arrays layout.
-///
-/// # Runtime Role
-///
-/// `ResidualBlock` stores residual coordinates by dimension instead of by row.
-/// This layout supports cache-friendly traversal and later SIMD reconstruction.
-///
-/// # Formal Reference
-///
-/// This structure corresponds to the residual encoding `Delta_k(x) = x - mu_k`.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ResidualBlock {
-    /// Residual values grouped by dimension.
-    pub dimensions: Vec<Vec<Scalar>>,
-}
+use super::ResidualBlock;
 
 impl ResidualBlock {
     /// Creates a new residual block from residual values.
@@ -45,7 +31,7 @@ impl ResidualBlock {
     ///
     /// # Formal Reference
     ///
-    /// This implements `Delta_k(x) = x - mu_k`.
+    /// This implements $\Delta_k(x) = x - \mu_k$.
     ///
     /// # Panics
     ///
@@ -70,48 +56,6 @@ impl ResidualBlock {
         }
 
         Self::new(residuals)
-    }
-
-    /// Returns the total number of dimensions tracked by this residual block.
-    pub fn dimensions(&self) -> usize {
-        self.dimensions.len()
-    }
-
-    /// Returns the number of individual records represented within the block.
-    pub fn cardinality(&self) -> usize {
-        self.dimensions.first().map_or(0, Vec::len)
-    }
-
-    /// Returns true when all residual dimensions contain the same number of rows.
-    ///
-    /// # Runtime Role
-    ///
-    /// This is useful for validation paths that need to inspect residual storage
-    /// without constructing a new block.
-    pub fn has_consistent_shape(&self) -> bool {
-        let Some(first_dimension) = self.dimensions.first() else {
-            return true;
-        };
-
-        let expected_rows = first_dimension.len();
-
-        self.dimensions
-            .iter()
-            .all(|dimension| dimension.len() == expected_rows)
-    }
-
-    /// Returns the row count stored by each residual dimension.
-    ///
-    /// # Runtime Role
-    ///
-    /// This supports diagnostics and tests for malformed residual storage.
-    pub fn dimension_lengths(&self) -> Vec<usize> {
-        self.dimensions.iter().map(Vec::len).collect()
-    }
-
-    /// Checks if the residual block is completely empty.
-    pub fn is_empty(&self) -> bool {
-        self.cardinality() == 0
     }
 
     fn assert_consistent_shape(dimensions: &[Vec<Scalar>]) {
