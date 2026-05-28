@@ -32,6 +32,172 @@ $BenchmarkReviewArtifactNames = [ordered]@{
 
 }
 
+function Resolve-BenchmarkReviewTargetWorkloadName {
+  param(
+    [string]$TargetWorkloadName,
+    [string]$Dataset
+  )
+
+  if (![string]::IsNullOrWhiteSpace($TargetWorkloadName)) {
+    return $TargetWorkloadName
+  }
+
+  if ($Dataset -eq "large") {
+    return "large_cross_cluster_boundary"
+  }
+
+  return "cluster_boundary_range"
+}
+
+function Resolve-BenchmarkReviewEffectiveMaxDepth {
+  param(
+    [int]$MaxDepth,
+    [string]$Dataset
+  )
+
+  if ($MaxDepth -gt 0) {
+    return $MaxDepth
+  }
+
+  if ($Dataset -eq "large") {
+    return 16
+  }
+
+  return 8
+}
+
+function Assert-BenchmarkReviewPreflight {
+  param(
+    [string]$Label,
+    [int]$Trials,
+    [string]$TargetWorkloadName,
+    [bool]$CleanupFlatArtifacts,
+    [bool]$CopyArtifactsToRunFolder
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Label)) {
+    throw "`-Label` cannot be empty"
+  }
+
+  if ($Trials -lt 1) {
+    throw "`-Trials` must be at least 1"
+  }
+
+  if ([string]::IsNullOrWhiteSpace($TargetWorkloadName)) {
+    throw "`-TargetWorkloadName` could not be resolved"
+  }
+
+  if ($CleanupFlatArtifacts -and !$CopyArtifactsToRunFolder) {
+    throw "-CleanupFlatArtifacts requires -CopyArtifactsToRunFolder so flat artifacts are not removed before an organized run copy exists"
+  }
+}
+
+function Assert-BenchmarkReviewScript {
+  param(
+    [string]$Path
+  )
+
+  if (!(Test-Path -LiteralPath $Path)) {
+    throw "required script was not found: $Path"
+  }
+}
+
+function Assert-BenchmarkReviewScripts {
+  param(
+    [string[]]$Paths
+  )
+
+  foreach ($Path in $Paths) {
+    Assert-BenchmarkReviewScript -Path $Path
+  }
+}
+
+
+function New-BenchmarkReviewPathSet {
+  param(
+    [string]$ScriptDirectory,
+    [string]$OutputDir,
+    [string]$Label,
+    [string]$PreviousLabel
+  )
+
+  $OrganizedRunRoot = Join-Path $OutputDir "runs"
+  $PreviousOrganizedRunDirectory = Get-BenchmarkReviewPreviousOrganizedRunDirectory `
+    -PreviousLabel $PreviousLabel `
+    -OrganizedRunRoot $OrganizedRunRoot
+
+  return [PSCustomObject]@{
+    SmallBenchmarkScript                 = Join-Path $ScriptDirectory "run-small-benchmark.ps1"
+    LowGapTrialsScript                   = Join-Path $ScriptDirectory "run-low-gap-trials.ps1"
+    AggregateComparatorScript            = Join-Path $ScriptDirectory "compare-low-gap-trial-summary.ps1"
+    WorkloadComparatorScript             = Join-Path $ScriptDirectory "compare-low-gap-workload-summary.ps1"
+    CountOnlyComparatorScript            = Join-Path $ScriptDirectory "compare-count-only-workload-summary.ps1"
+    TargetSummaryScript                  = Join-Path $ScriptDirectory "summarize-target-workload-trials.ps1"
+    TargetComparatorScript               = Join-Path $ScriptDirectory "compare-target-workload-summary.ps1"
+    ArtifactOrganizerScript              = Join-Path $ScriptDirectory "organize-benchmark-artifacts.ps1"
+    ArtifactValidatorScript              = Join-Path $ScriptDirectory "validate-benchmark-review-artifacts.ps1"
+    FlatArtifactCleanupScript            = Join-Path $ScriptDirectory "cleanup-flat-benchmark-artifacts.ps1"
+    OrganizedRunRoot                     = $OrganizedRunRoot
+    OrganizedRunDirectory                = Join-Path $OrganizedRunRoot $Label
+    PreviousOrganizedRunDirectory        = $PreviousOrganizedRunDirectory
+    ReviewNotesPath                      = Join-Path $OutputDir "low-gap-review-notes-$Label.txt"
+    ReviewManifestPath                   = Join-Path $OutputDir "low-gap-review-manifest-$Label.txt"
+    CurrentTrialSummaryCsv               = Join-Path $OutputDir "low-gap-trial-summary-$Label.csv"
+    CurrentWorkloadSummaryCsv            = Join-Path $OutputDir "low-gap-workload-trial-summary-$Label.csv"
+    CurrentCountOnlyWorkloadSummaryCsv   = Join-Path $OutputDir "count-only-workload-summary-$Label.csv"
+    CurrentCountOnlyWorkloadSummaryNotes = Join-Path $OutputDir "count-only-workload-summary-$Label.txt"
+    CurrentCountOnlyComparisonCsv        = Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.csv"
+    CurrentCountOnlyComparisonNotes      = Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.txt"
+    CurrentTargetDetailCsv               = Join-Path $OutputDir "target-workload-trial-details-$Label.csv"
+    CurrentTargetSummaryCsv              = Join-Path $OutputDir "target-workload-trial-summary-$Label.csv"
+    CurrentTargetNotesPath               = Join-Path $OutputDir "target-workload-trial-notes-$Label.txt"
+    PreviousLowSelectivityGapDefaultPath = Join-Path $OutputDir "low-selectivity-gap-$PreviousLabel.csv"
+    PreviousTrialSummaryDefaultPath      = Join-Path $OutputDir "low-gap-trial-summary-$PreviousLabel.csv"
+    PreviousWorkloadSummaryDefaultPath   = Join-Path $OutputDir "low-gap-workload-trial-summary-$PreviousLabel.csv"
+    PreviousCountOnlySummaryDefaultPath  = Join-Path $OutputDir "count-only-workload-summary-$PreviousLabel.csv"
+    PreviousTargetSummaryDefaultPath     = Join-Path $OutputDir "target-workload-trial-summary-$PreviousLabel.csv"
+  }
+}
+
+function Get-BenchmarkReviewRequiredScripts {
+  param(
+    [object]$PathSet,
+    [bool]$SkipTargetWorkloadReview,
+    [bool]$CopyArtifactsToRunFolder,
+    [bool]$ValidateArtifacts,
+    [bool]$CleanupFlatArtifacts
+  )
+
+  $RequiredScripts = @(
+    $PathSet.SmallBenchmarkScript,
+    $PathSet.LowGapTrialsScript,
+    $PathSet.AggregateComparatorScript,
+    $PathSet.WorkloadComparatorScript,
+    $PathSet.CountOnlyComparatorScript
+  )
+
+  if (!$SkipTargetWorkloadReview) {
+    $RequiredScripts += @(
+      $PathSet.TargetSummaryScript,
+      $PathSet.TargetComparatorScript
+    )
+  }
+
+  if ($CopyArtifactsToRunFolder) {
+    $RequiredScripts += $PathSet.ArtifactOrganizerScript
+  }
+
+  if ($ValidateArtifacts) {
+    $RequiredScripts += $PathSet.ArtifactValidatorScript
+  }
+
+  if ($CleanupFlatArtifacts) {
+    $RequiredScripts += $PathSet.FlatArtifactCleanupScript
+  }
+
+  return $RequiredScripts
+}
+
 function Get-BenchmarkReviewPreviousOrganizedRunDirectory {
   param(
     [string]$PreviousLabel,
@@ -135,6 +301,81 @@ function Add-BenchmarkReviewPreviousInputStatusLines {
 
   if ($TargetInput.Exists) {
     Add-Utf8Text -Path $ReviewNotesPath -Text "target workload trial summary resolved path: $($TargetInput.ResolvedPath)`r`n"
+  }
+
+  Add-Utf8Text -Path $ReviewNotesPath -Text "`r`n"
+}
+
+function Initialize-BenchmarkReviewNotes {
+  param(
+    [string]$ReviewNotesPath,
+    [string]$Label,
+    [string]$PreviousLabel,
+    [string]$Dataset,
+    [int]$MaxDepth,
+    [int]$Trials,
+    [int]$Iterations,
+    [string]$OutputDir,
+    [string]$OrganizedRunRoot,
+    [string]$PreviousOrganizedRunDirectory,
+    [double]$NoiseThreshold,
+    [bool]$SkipTargetWorkloadReview,
+    [string]$TargetWorkloadName,
+    [bool]$CopyArtifactsToRunFolder,
+    [bool]$ForceOrganizedArtifacts,
+    [bool]$ValidateArtifacts,
+    [bool]$RequireValidatedComparisons,
+    [bool]$CleanupFlatArtifacts,
+    [string]$PreviousLowSelectivityGapCsv,
+    [string]$PreviousTrialSummaryCsv,
+    [string]$PreviousWorkloadSummaryCsv,
+    [string]$PreviousCountOnlySummaryCsv,
+    [string]$PreviousTargetSummaryCsv,
+    [object]$PreviousLowSelectivityGapInput,
+    [object]$PreviousTrialSummaryInput,
+    [object]$PreviousWorkloadSummaryInput,
+    [object]$PreviousCountOnlySummaryInput,
+    [object]$PreviousTargetSummaryInput
+  )
+
+  Set-Utf8Text -Path $ReviewNotesPath -Text "Low-gap benchmark review`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "========================`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Label: $Label`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Previous label: $PreviousLabel`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Dataset: $Dataset`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Max depth: $MaxDepth`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Trials: $Trials`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Iterations: $Iterations`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Output directory: $OutputDir`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Organized run root: $OrganizedRunRoot`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Previous organized run directory: $PreviousOrganizedRunDirectory`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Noise threshold: +/- $(Format-InvariantDouble -Value $NoiseThreshold)`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Target workload review skipped: $SkipTargetWorkloadReview`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Target workload name: $TargetWorkloadName`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Copy artifacts to run folder: $CopyArtifactsToRunFolder`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Force organized artifacts: $ForceOrganizedArtifacts`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Validate artifacts: $ValidateArtifacts`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Require validated comparisons: $RequireValidatedComparisons`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Cleanup flat artifacts: $CleanupFlatArtifacts`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Previous low-selectivity gap CSV: $PreviousLowSelectivityGapCsv`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Previous aggregate trial summary CSV: $PreviousTrialSummaryCsv`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Previous workload trial summary CSV: $PreviousWorkloadSummaryCsv`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Previous count-only workload summary CSV: $PreviousCountOnlySummaryCsv`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Previous target workload summary CSV: $PreviousTargetSummaryCsv`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "`r`n"
+
+  Add-BenchmarkReviewPreviousInputStatusLines `
+    -ReviewNotesPath $ReviewNotesPath `
+    -SingleRunInput $PreviousLowSelectivityGapInput `
+    -AggregateInput $PreviousTrialSummaryInput `
+    -WorkloadInput $PreviousWorkloadSummaryInput `
+    -TargetInput $PreviousTargetSummaryInput
+
+  Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload summary status: $($PreviousCountOnlySummaryInput.Status)`r`n"
+
+  if ($PreviousCountOnlySummaryInput.Exists) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload summary resolved path: $($PreviousCountOnlySummaryInput.ResolvedPath)`r`n"
   }
 
   Add-Utf8Text -Path $ReviewNotesPath -Text "`r`n"
@@ -303,6 +544,52 @@ function Invoke-BenchmarkReviewComparisonStep {
   Add-Utf8Text -Path $ReviewNotesPath -Text "`r`n"
 }
 
+
+
+
+function Invoke-BenchmarkReviewValidationStep {
+  param(
+    [string]$ReviewNotesPath,
+    [string]$Label,
+    [string]$OutputDir,
+    [int]$ExpectedTrials,
+    [bool]$RequireValidatedComparisons,
+    [bool]$AllowSkippedTargetWorkloadReview,
+    [string]$ArtifactValidatorScript
+  )
+
+  Add-Utf8Text -Path $ReviewNotesPath -Text "`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Review artifact validation`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "--------------------------`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "status: running`r`n"
+
+  Write-Host ""
+  Write-Host "Validating review artifacts"
+  Write-Host "  label: $Label"
+
+  $ValidatorArguments = @{
+    Label          = $Label
+    OutputDir      = $OutputDir
+    ExpectedTrials = $ExpectedTrials
+  }
+
+  if ($RequireValidatedComparisons) {
+    $ValidatorArguments["RequireComparisons"] = $true
+  }
+
+  if ($AllowSkippedTargetWorkloadReview) {
+    $ValidatorArguments["AllowSkippedTargetWorkloadReview"] = $true
+  }
+
+  & $ArtifactValidatorScript @ValidatorArguments
+
+  if ($LASTEXITCODE -ne 0) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "status: failed`r`n"
+    throw "review artifact validation failed with exit code $LASTEXITCODE"
+  }
+
+  Add-Utf8Text -Path $ReviewNotesPath -Text "status: completed`r`n"
+}
 
 
 function Add-BenchmarkReviewArtifactSummary {
