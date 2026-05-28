@@ -14,7 +14,7 @@ function Get-LowGapRow {
     [string]$BaselineName
   )
 
-  return $Rows | Where-Object { $_.baseline_name -eq $BaselineName } | Select-Object -First 1
+  return Get-BaselineRow -Rows $Rows -BaselineName $BaselineName
 }
 
 function Get-LowGapMetric {
@@ -23,17 +23,7 @@ function Get-LowGapMetric {
     [string]$FieldName
   )
 
-  if ($null -eq $Row) {
-    return $null
-  }
-
-  $RawValue = $Row.$FieldName
-
-  if ([string]::IsNullOrWhiteSpace($RawValue)) {
-    return $null
-  }
-
-  return Convert-ToInvariantDouble -Value $RawValue
+  return Get-Metric -Row $Row -FieldName $FieldName
 }
 
 function Get-WorkloadMetric {
@@ -42,17 +32,7 @@ function Get-WorkloadMetric {
     [string]$FieldName
   )
 
-  if ($null -eq $Row) {
-    return $null
-  }
-
-  $RawValue = $Row.$FieldName
-
-  if ([string]::IsNullOrWhiteSpace($RawValue)) {
-    return $null
-  }
-
-  return Convert-ToInvariantDouble -Value $RawValue
+  return Get-Metric -Row $Row -FieldName $FieldName
 }
 
 function Get-RatioOrNull {
@@ -81,17 +61,5 @@ function Get-LowGapClassification {
     [double]$Threshold
   )
 
-  if ($null -eq $Delta) {
-    return "unavailable"
-  }
-
-  if ($Delta -ge $Threshold) {
-    return "improved"
-  }
-
-  if ($Delta -le (-1.0 * $Threshold)) {
-    return "regressed"
-  }
-
-  return "stable/noise"
+  return Get-Classification -Delta $Delta -Threshold $Threshold
 }

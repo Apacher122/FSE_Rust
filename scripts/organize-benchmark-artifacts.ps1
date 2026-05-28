@@ -79,32 +79,12 @@ function Move-OrCopy-Artifact {
   Write-Host "$Action`: $($Item.Name) -> $DestinationPath"
 }
 
-$Items = Get-ChildItem -LiteralPath $ArtifactRootPath -Force
+$ArtifactDiscovery = Find-BenchmarkArtifacts `
+  -ArtifactRootPath $ArtifactRootPath `
+  -ExpectedLabel $Label
 
-$RecognizedItems = New-Object System.Collections.Generic.List[object]
-$UnrecognizedItems = New-Object System.Collections.Generic.List[object]
-
-foreach ($Item in $Items) {
-  if ($Item.PSIsContainer -and ($BenchmarkArtifactReservedDirectoryNames -contains $Item.Name)) {
-    continue
-  }
-
-  $DiscoveredLabel = Get-BenchmarkArtifactLabel -Item $Item
-
-  if ([string]::IsNullOrWhiteSpace($DiscoveredLabel)) {
-    $UnrecognizedItems.Add($Item)
-    continue
-  }
-
-  if (!(Test-BenchmarkArtifactLabelMatches -DiscoveredLabel $DiscoveredLabel -ExpectedLabel $Label)) {
-    continue
-  }
-
-  $RecognizedItems.Add([PSCustomObject]@{
-      Item  = $Item
-      Label = $DiscoveredLabel
-    })
-}
+$RecognizedItems = $ArtifactDiscovery.RecognizedItems
+$UnrecognizedItems = $ArtifactDiscovery.UnrecognizedItems
 
 if ($RecognizedItems.Count -eq 0) {
   if ([string]::IsNullOrWhiteSpace($Label)) {

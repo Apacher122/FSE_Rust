@@ -132,6 +132,16 @@ function Write-CsvDocument {
   }
 }
 
+
+function Get-BaselineRow {
+  param(
+    [object[]]$Rows,
+    [string]$BaselineName
+  )
+
+  return $Rows | Where-Object { $_.baseline_name -eq $BaselineName } | Select-Object -First 1
+}
+
 function Get-Metric {
   param(
     [object]$Row,

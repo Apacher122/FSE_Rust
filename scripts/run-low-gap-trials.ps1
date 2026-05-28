@@ -54,25 +54,6 @@ $NotesPath = Join-Path $OutputDir "low-gap-trial-notes-$Label.txt"
 
 $TreeBaselines = @("kd_tree", "r_tree")
 
-function Get-WorkloadText {
-    param(
-        [object]$Row,
-        [string]$FieldName
-    )
-
-    if ($null -eq $Row) {
-        return ""
-    }
-
-    $RawValue = $Row.$FieldName
-
-    if ($null -eq $RawValue) {
-        return ""
-    }
-
-    return $RawValue.ToString()
-}
-
 function Get-CsvLoadStatus {
     param(
         [string]$Path
@@ -307,7 +288,7 @@ function Read-WeakestLowWorkloadRows {
         $TrialRows += [PSCustomObject]@{
             Trial                    = $TrialNumber
             BaselineName             = $BaselineName
-            WorkloadName             = Get-WorkloadText -Row $WeakestRow -FieldName "workload_name"
+            WorkloadName             = Get-TextField -Row $WeakestRow -FieldName "workload_name"
             AverageTimingRatio       = Get-WorkloadMetric -Row $WeakestRow -FieldName "average_timing_ratio"
             BaselineAverageElapsedNs = Get-WorkloadMetric -Row $WeakestRow -FieldName "baseline_average_elapsed_ns"
             FseAverageElapsedNs      = Get-WorkloadMetric -Row $WeakestRow -FieldName "fse_average_elapsed_ns"

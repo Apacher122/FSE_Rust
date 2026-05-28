@@ -60,28 +60,18 @@ function Remove-FlatArtifact {
   Write-Host "removed: $($Item.FullName)"
 }
 
-$Items = Get-ChildItem -LiteralPath $ArtifactRootPath -Force
+$ArtifactDiscovery = Find-BenchmarkArtifacts `
+  -ArtifactRootPath $ArtifactRootPath `
+  -ExpectedLabel $Label
 
 $RecognizedItems = New-Object System.Collections.Generic.List[object]
 $EligibleItems = New-Object System.Collections.Generic.List[object]
 $SkippedItems = New-Object System.Collections.Generic.List[object]
-$UnrecognizedItems = New-Object System.Collections.Generic.List[object]
+$UnrecognizedItems = $ArtifactDiscovery.UnrecognizedItems
 
-foreach ($Item in $Items) {
-  if ($Item.PSIsContainer -and ($BenchmarkArtifactReservedDirectoryNames -contains $Item.Name)) {
-    continue
-  }
-
-  $DiscoveredLabel = Get-BenchmarkArtifactLabel -Item $Item
-
-  if ([string]::IsNullOrWhiteSpace($DiscoveredLabel)) {
-    $UnrecognizedItems.Add($Item)
-    continue
-  }
-
-  if (!(Test-BenchmarkArtifactLabelMatches -DiscoveredLabel $DiscoveredLabel -ExpectedLabel $Label)) {
-    continue
-  }
+foreach ($DiscoveredEntry in $ArtifactDiscovery.RecognizedItems) {
+  $Item = $DiscoveredEntry.Item
+  $DiscoveredLabel = $DiscoveredEntry.Label
 
   $OrganizedPath = Get-OrganizedArtifactPath `
     -DiscoveredLabel $DiscoveredLabel `

@@ -1,3 +1,13 @@
+$BenchmarkCsvLibrary = Join-Path $PSScriptRoot "benchmark-csv.ps1"
+
+if (!(Get-Command Get-BaselineRow -ErrorAction SilentlyContinue)) {
+  if (!(Test-Path -LiteralPath $BenchmarkCsvLibrary)) {
+    throw "benchmark CSV helper library was not found: $BenchmarkCsvLibrary"
+  }
+
+  . $BenchmarkCsvLibrary
+}
+
 function Get-BenchmarkTreeBaselineNames {
   return @("kd_tree", "r_tree")
 }
@@ -8,7 +18,7 @@ function Get-BenchmarkSummaryRow {
     [string]$BaselineName
   )
 
-  return $Rows | Where-Object { $_.baseline_name -eq $BaselineName } | Select-Object -First 1
+  return Get-BaselineRow -Rows $Rows -BaselineName $BaselineName
 }
 
 function New-BenchmarkBaselineComparisonObjects {

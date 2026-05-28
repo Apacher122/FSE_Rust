@@ -75,3 +75,49 @@ function Test-BenchmarkArtifactLabelMatches {
 
   return $DiscoveredLabel -eq $ExpectedLabel
 }
+
+function Find-BenchmarkArtifacts {
+  param(
+    [string]$ArtifactRootPath,
+    [string]$ExpectedLabel = "",
+    [string[]]$ReservedDirectoryNames = $BenchmarkArtifactReservedDirectoryNames,
+    [string[]]$FilePrefixes = $BenchmarkArtifactFilePrefixes,
+    [string[]]$DirectoryPrefixes = $BenchmarkArtifactDirectoryPrefixes
+  )
+
+  $RecognizedItems = New-Object System.Collections.Generic.List[object]
+  $UnrecognizedItems = New-Object System.Collections.Generic.List[object]
+
+  foreach ($Item in (Get-ChildItem -LiteralPath $ArtifactRootPath -Force)) {
+    if ($Item.PSIsContainer -and ($ReservedDirectoryNames -contains $Item.Name)) {
+      continue
+    }
+
+    $DiscoveredLabel = Get-BenchmarkArtifactLabel `
+      -Item $Item `
+      -FilePrefixes $FilePrefixes `
+      -DirectoryPrefixes $DirectoryPrefixes
+
+    if ([string]::IsNullOrWhiteSpace($DiscoveredLabel)) {
+      $UnrecognizedItems.Add($Item)
+      continue
+    }
+
+    if (!(Test-BenchmarkArtifactLabelMatches `
+          -DiscoveredLabel $DiscoveredLabel `
+          -ExpectedLabel $ExpectedLabel)) {
+      continue
+    }
+
+    $RecognizedItems.Add([PSCustomObject]@{
+        Item  = $Item
+        Label = $DiscoveredLabel
+      })
+  }
+
+  return [PSCustomObject]@{
+    RecognizedItems   = $RecognizedItems
+    UnrecognizedItems = $UnrecognizedItems
+  }
+}
+
