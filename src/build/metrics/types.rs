@@ -1,0 +1,161 @@
+//! Structural metric report types.
+
+use crate::math::Scalar;
+
+/// Metrics describing the geometric quality of one split.
+///
+/// # Runtime Role
+///
+/// `SplitQualityMetrics` quantifies whether a proposed split improves the
+/// geometric tightness of a partition. The primary signal is combined child
+/// bounding volume relative to parent bounding volume.
+///
+/// # Formal Reference
+///
+/// These values estimate the structural tightness objective used by FSE
+/// partitioning. Tighter child support regions reduce geometric false positives
+/// during metadata traversal.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SplitQualityMetrics {
+    /// Parent bounding volume before the split.
+    pub parent_volume: Scalar,
+
+    /// Sum of child bounding volumes after the split.
+    pub combined_child_volume: Scalar,
+
+    /// Relative reduction from parent volume to combined child volume.
+    pub volume_reduction_ratio: Scalar,
+
+    /// Sum of parent bounding extents across dimensions.
+    pub parent_extent: Scalar,
+
+    /// Sum of child bounding extents across dimensions.
+    pub combined_child_extent: Scalar,
+
+    /// Relative reduction from parent extent to combined child extent.
+    pub extent_reduction_ratio: Scalar,
+
+    /// Number of records in the parent partition.
+    pub parent_cardinality: usize,
+
+    /// Number of records in the left child partition.
+    pub left_cardinality: usize,
+
+    /// Number of records in the right child partition.
+    pub right_cardinality: usize,
+
+    /// Absolute difference between child cardinalities.
+    pub balance_penalty: usize,
+}
+
+impl SplitQualityMetrics {
+    /// Returns true when the split reduces combined child bounding volume.
+    pub fn reduces_volume(&self) -> bool {
+        self.combined_child_volume < self.parent_volume
+    }
+
+    /// Returns true when the split reduces combined child bounding extent.
+    pub fn reduces_extent(&self) -> bool {
+        self.combined_child_extent < self.parent_extent
+    }
+
+    /// Returns true when both children have equal cardinality.
+    pub fn is_balanced(&self) -> bool {
+        self.balance_penalty == 0
+    }
+}
+
+/// Aggregate structural metrics for an FSE index.
+///
+/// # Runtime Role
+///
+/// `IndexStructureMetrics` summarizes the physical hierarchy produced by the
+/// builder. These values make it possible to connect build policy choices to
+/// query pruning behavior and reconstruction cost.
+///
+/// # Formal Reference
+///
+/// These metrics approximate structural density and bounding efficiency across
+/// the leaf support regions used by query traversal and deferred reconstruction.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct IndexStructureMetrics {
+    /// Total number of nodes in the index.
+    pub node_count: usize,
+
+    /// Number of leaf partitions.
+    pub leaf_count: usize,
+
+    /// Number of internal hierarchy nodes.
+    pub internal_node_count: usize,
+
+    /// Total number of records stored across leaf partitions.
+    pub total_leaf_cardinality: usize,
+
+    /// Smallest leaf cardinality.
+    pub min_leaf_cardinality: usize,
+
+    /// Largest leaf cardinality.
+    pub max_leaf_cardinality: usize,
+
+    /// Average number of records per leaf.
+    pub average_leaf_cardinality: Scalar,
+
+    /// Sum of all leaf bounding volumes.
+    pub total_leaf_volume: Scalar,
+
+    /// Average leaf bounding volume.
+    pub average_leaf_volume: Scalar,
+
+    /// Structural density across leaf partitions.
+    pub index_density: Scalar,
+
+    /// Number of leaves with zero bounding volume.
+    pub zero_volume_leaf_count: usize,
+}
+
+impl IndexStructureMetrics {
+    /// Returns true when the index has no leaf partitions.
+    pub fn is_empty(&self) -> bool {
+        self.leaf_count == 0
+    }
+}
+
+/// Sibling-overlap metrics for an FSE hierarchy.
+///
+/// # Runtime Role
+///
+/// `SiblingOverlapMetrics` summarizes how much child bounding geometry overlaps
+/// inside internal nodes. Overlap between siblings can increase retained
+/// partitions because a query can intersect more than one child for the same
+/// local region.
+///
+/// # Formal Reference
+///
+/// These metrics approximate the sibling-level over-approximation pressure that
+/// affects Stage I geometric traversal.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SiblingOverlapMetrics {
+    /// Number of sibling child-bound pairs inspected.
+    pub sibling_pair_count: usize,
+
+    /// Number of sibling pairs with positive overlap extent.
+    pub overlapping_sibling_pair_count: usize,
+
+    /// Sum of overlap extents across all sibling pairs.
+    pub total_overlap_extent: Scalar,
+
+    /// Average overlap extent per sibling pair.
+    pub average_overlap_extent: Scalar,
+}
+
+impl SiblingOverlapMetrics {
+    /// Returns true when no sibling pairs were measured.
+    pub fn is_empty(&self) -> bool {
+        self.sibling_pair_count == 0
+    }
+
+    /// Returns true when at least one sibling pair overlaps.
+    pub fn has_overlap(&self) -> bool {
+        self.overlapping_sibling_pair_count > 0
+    }
+}
