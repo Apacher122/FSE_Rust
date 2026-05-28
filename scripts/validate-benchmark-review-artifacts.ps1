@@ -48,31 +48,6 @@ $AddValidationFailure = {
   Add-Failure $Message
 }
 
-function Test-SafePathExists {
-  param(
-    [string]$Path
-  )
-
-  Test-BenchmarkReviewPathExists `
-    -Path $Path `
-    -OnInvalidPath {
-    param($InvalidPath)
-
-    Add-Failure "invalid path: $InvalidPath"
-  }
-}
-
-
-function Get-ReviewManifestPath {
-  Get-BenchmarkReviewManifestPath `
-    -OutputDir $OutputDir `
-    -Label $Label `
-    -OnInvalidPath {
-    param($InvalidPath)
-
-    Add-Failure "invalid path: $InvalidPath"
-  }
-}
 
 function Fail-Validation {
   param(
@@ -96,45 +71,26 @@ function Fail-Validation {
 
 
 
-$ManifestPath = Get-ReviewManifestPath
-
-if (!(Test-SafePathExists -Path $ManifestPath)) {
-  Add-Failure "low-gap review manifest was not found: $ManifestPath"
-  $ManifestEntries = @()
-}
-else {
-  $ManifestEntries = @(
-    Read-BenchmarkReviewManifestEntries `
-      -Path $ManifestPath `
-      -OnMalformedArtifactLine {
-      param($Line)
-
-      Add-Failure "manifest has malformed artifact line: $Line"
-    }
-  )
-}
-
-if ($Failures.Count -gt 0) {
-  Fail-Validation -ManifestPath $ManifestPath -ManifestEntryCount $ManifestEntries.Count
-}
-
-if ($ManifestEntries.Count -eq 0) {
-  Add-Failure "manifest did not contain any artifact entries: $ManifestPath"
-  Fail-Validation -ManifestPath $ManifestPath -ManifestEntryCount $ManifestEntries.Count
-}
-
-$ResolvedArtifacts = Resolve-BenchmarkReviewManifestArtifactSet `
-  -Entries $ManifestEntries `
-  -RequireComparisons ([bool]$RequireComparisons) `
-  -AllowSkippedTargetWorkloadReview ([bool]$AllowSkippedTargetWorkloadReview) `
+$ManifestLoadResult = Get-BenchmarkReviewManifestLoadResult `
   -OutputDir $OutputDir `
   -Label $Label `
+  -RequireComparisons ([bool]$RequireComparisons) `
+  -AllowSkippedTargetWorkloadReview ([bool]$AllowSkippedTargetWorkloadReview) `
   -OnFailure $AddValidationFailure `
   -OnInvalidPath {
   param($InvalidPath)
 
   Add-Failure "invalid path: $InvalidPath"
 }
+
+$ManifestPath = $ManifestLoadResult.ManifestPath
+$ManifestEntries = @($ManifestLoadResult.Entries)
+
+if ($ManifestLoadResult.HasBlockingFailures -or $Failures.Count -gt 0) {
+  Fail-Validation -ManifestPath $ManifestPath -ManifestEntryCount $ManifestEntries.Count
+}
+
+$ResolvedArtifacts = $ManifestLoadResult.ResolvedArtifacts
 
 $BenchmarkOutputEntry = $ResolvedArtifacts.BenchmarkOutput
 $DebugOutputEntry = $ResolvedArtifacts.DebugOutput

@@ -696,6 +696,95 @@ function Get-BenchmarkReviewManifestPath {
   return $FlatManifestPath
 }
 
+function Get-BenchmarkReviewManifestLoadResult {
+  param(
+    [string]$OutputDir,
+    [string]$Label,
+    [bool]$RequireComparisons = $false,
+    [bool]$AllowSkippedTargetWorkloadReview = $false,
+    [scriptblock]$OnFailure,
+    [scriptblock]$OnInvalidPath = $null
+  )
+
+  $ManifestPath = Get-BenchmarkReviewManifestPath `
+    -OutputDir $OutputDir `
+    -Label $Label `
+    -OnInvalidPath $OnInvalidPath
+
+  if (
+    !(
+      Test-BenchmarkReviewPathExists `
+        -Path $ManifestPath `
+        -OnInvalidPath $OnInvalidPath
+    )
+  ) {
+    if ($null -ne $OnFailure) {
+      & $OnFailure "low-gap review manifest was not found: $ManifestPath"
+    }
+
+    return [pscustomobject]@{
+      ManifestPath        = $ManifestPath
+      Entries             = @()
+      ResolvedArtifacts   = $null
+      HasBlockingFailures = $true
+    }
+  }
+
+  $MalformedArtifactLines = [System.Collections.Generic.List[string]]::new()
+
+  $ManifestEntries = @(
+    Read-BenchmarkReviewManifestEntries `
+      -Path $ManifestPath `
+      -OnMalformedArtifactLine {
+      param($Line)
+
+      $MalformedArtifactLines.Add($Line) | Out-Null
+
+      if ($null -ne $OnFailure) {
+        & $OnFailure "manifest has malformed artifact line: $Line"
+      }
+    }
+  )
+
+  if ($MalformedArtifactLines.Count -gt 0) {
+    return [pscustomobject]@{
+      ManifestPath        = $ManifestPath
+      Entries             = $ManifestEntries
+      ResolvedArtifacts   = $null
+      HasBlockingFailures = $true
+    }
+  }
+
+  if ($ManifestEntries.Count -eq 0) {
+    if ($null -ne $OnFailure) {
+      & $OnFailure "manifest did not contain any artifact entries: $ManifestPath"
+    }
+
+    return [pscustomobject]@{
+      ManifestPath        = $ManifestPath
+      Entries             = $ManifestEntries
+      ResolvedArtifacts   = $null
+      HasBlockingFailures = $true
+    }
+  }
+
+  $ResolvedArtifacts = Resolve-BenchmarkReviewManifestArtifactSet `
+    -Entries $ManifestEntries `
+    -RequireComparisons $RequireComparisons `
+    -AllowSkippedTargetWorkloadReview $AllowSkippedTargetWorkloadReview `
+    -OutputDir $OutputDir `
+    -Label $Label `
+    -OnFailure $OnFailure `
+    -OnInvalidPath $OnInvalidPath
+
+  return [pscustomobject]@{
+    ManifestPath        = $ManifestPath
+    Entries             = $ManifestEntries
+    ResolvedArtifacts   = $ResolvedArtifacts
+    HasBlockingFailures = $false
+  }
+}
+
 
 function Resolve-BenchmarkReviewManifestArtifact {
   param(
