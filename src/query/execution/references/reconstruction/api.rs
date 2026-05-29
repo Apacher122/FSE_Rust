@@ -1,10 +1,11 @@
-//! Reference-result reconstruction helpers.
+//! Public reference-result reconstruction API.
 
 use crate::math::{Scalar, Vector};
 use crate::query::reconstruction::{reconstruct_point, reconstruct_row_into};
-use crate::storage::{FSEIndex, PartitionNode};
+use crate::storage::FSEIndex;
 
-use super::super::reports::QueryResultReference;
+use super::super::super::reports::QueryResultReference;
+use super::validation::reference_leaf_node;
 
 /// Reconstructs an owned row from an exact query result reference.
 ///
@@ -17,9 +18,9 @@ use super::super::reports::QueryResultReference;
 ///
 /// # Formal Reference
 ///
-/// This applies the reconstruction operator `Phi_k(Delta) = mu_k + Delta` to
-/// the referenced residual row. It does not rerun geometric pruning or exact
-/// predicate evaluation.
+/// This applies the reconstruction operator
+/// $\Phi_k(\Delta) = \mu_k + \Delta$ to the referenced residual row. It does
+/// not rerun geometric pruning or exact predicate evaluation.
 ///
 /// # Panics
 ///
@@ -43,9 +44,9 @@ pub fn reconstruct_query_result_reference(
 ///
 /// # Formal Reference
 ///
-/// This applies `Phi_k(Delta) = mu_k + Delta` to the referenced residual row
-/// while preserving the same row-level reconstruction semantics as owned-result
-/// query execution.
+/// This applies $\Phi_k(\Delta) = \mu_k + \Delta$ to the referenced residual
+/// row while preserving the same row-level reconstruction semantics as
+/// owned-result query execution.
 ///
 /// # Panics
 ///
@@ -67,12 +68,12 @@ pub fn reconstruct_query_result_reference_into(
 ///
 /// This helper reconstructs a reference-result batch only when a caller chooses
 /// to materialize the referenced rows. Query execution can still return
-/// references without paying owned `Vector` materialization cost up front.
+/// references without paying owned [`Vector`] materialization cost up front.
 ///
 /// # Formal Reference
 ///
-/// Each reference is reconstructed by applying `Phi_k(Delta) = mu_k + Delta` to
-/// its referenced residual row.
+/// Each reference is reconstructed by applying
+/// $\Phi_k(\Delta) = \mu_k + \Delta$ to its referenced residual row.
 ///
 /// # Panics
 ///
@@ -141,21 +142,4 @@ fn reconstruct_reference_into_result_slot(
     } else {
         results.push(reconstruct_point(node, reference.row_index));
     }
-}
-
-fn reference_leaf_node(index: &FSEIndex, reference: QueryResultReference) -> &PartitionNode {
-    let node = index.nodes.get(reference.node_id).unwrap_or_else(|| {
-        panic!(
-            "query result reference node id {} is outside the index",
-            reference.node_id
-        )
-    });
-
-    assert!(
-        node.is_leaf,
-        "query result reference node id {} must reference a leaf partition",
-        reference.node_id
-    );
-
-    node
 }
