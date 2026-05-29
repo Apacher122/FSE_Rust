@@ -82,3 +82,45 @@ impl TraversalStack {
         self.inline_frames[self.inline_len].take()
     }
 }
+
+/// Pushes child node frames so traversal preserves left-to-right pop order.
+///
+/// # Runtime Role
+///
+/// Hierarchy traversal uses a LIFO stack. Children are pushed in reverse order
+/// so the leftmost child is visited first when frames are popped. The 1-child
+/// and 2-child branches keep the current binary hierarchy hot path direct,
+/// while the generic fallback preserves correctness for wider future fanout.
+#[inline]
+pub(super) fn push_child_frames(
+    children: &[usize],
+    inherited_covered: bool,
+    stack: &mut TraversalStack,
+) {
+    match children.len() {
+        0 => {}
+        1 => {
+            stack.push(child_frame(children[0], inherited_covered));
+        }
+        2 => {
+            // preserve left to right pop order without the iterator path
+            stack.push(child_frame(children[1], inherited_covered));
+            stack.push(child_frame(children[0], inherited_covered));
+        }
+        _ => {
+            // keep the generic fallback in case future splitters use wider fanout
+            for child in children.iter().rev() {
+                stack.push(child_frame(*child, inherited_covered));
+            }
+        }
+    }
+}
+
+#[inline]
+fn child_frame(node_id: usize, inherited_covered: bool) -> TraversalFrame {
+    if inherited_covered {
+        TraversalFrame::covered(node_id)
+    } else {
+        TraversalFrame::normal(node_id)
+    }
+}

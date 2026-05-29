@@ -4,9 +4,11 @@
 //! which leaf partitions are geometrically admissible before reconstruction and
 //! exact predicate evaluation run.
 
+mod covered;
 mod execution;
 mod report;
 mod retained_leaf;
+mod retention;
 mod stack;
 
 pub(crate) use execution::traverse_with_known_root_classification;

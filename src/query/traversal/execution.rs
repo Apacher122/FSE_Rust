@@ -1,15 +1,14 @@
 //! Traversal execution algorithm.
 
-use crate::math::Scalar;
 use crate::query::QueryRegion;
 use crate::query::region::QueryBoundsClassification;
-use crate::storage::{FSEIndex, LeafReconstructionShape};
+use crate::storage::FSEIndex;
 
+use super::covered::retain_or_descend_covered_node;
 use super::report::{QueryTraversalReport, QueryTraversalStats};
-use super::retained_leaf::{RetainedLeaf, RetainedLeafCoverage};
-use super::stack::{TraversalFrame, TraversalStack};
-
-const DEFAULT_RETAINED_LEAF_CAPACITY: usize = 4;
+use super::retained_leaf::RetainedLeafCoverage;
+use super::retention::{finish_traversal_report, retain_leaf, retained_leaf_capacity};
+use super::stack::{TraversalStack, push_child_frames};
 
 /// Traverses the FSE hierarchy and returns retained leaf partitions.
 ///
@@ -178,110 +177,4 @@ pub(crate) fn traverse_with_known_root_classification(
     }
 
     finish_traversal_report(retained_leaves, stats)
-}
-
-/// Returns initial capacity for retained leaves.
-///
-/// # Runtime Role
-///
-/// Small selective queries usually retain only a couple of leaves. Starting
-/// with a small buffer avoids overallocating for those hot paths while still
-/// allowing broad partial queries to grow normally.
-#[inline]
-fn retained_leaf_capacity(total_leaves: usize) -> usize {
-    total_leaves.min(DEFAULT_RETAINED_LEAF_CAPACITY)
-}
-
-#[inline]
-fn retained_leaf_ratio(retained_leaves: usize, total_leaves: usize) -> Scalar {
-    if total_leaves == 0 {
-        0.0
-    } else {
-        retained_leaves as Scalar / total_leaves as Scalar
-    }
-}
-
-#[inline]
-fn retain_or_descend_covered_node(
-    index: &FSEIndex,
-    node_id: usize,
-    retained_leaves: &mut Vec<RetainedLeaf>,
-    stats: &mut QueryTraversalStats,
-    stack: &mut TraversalStack,
-) {
-    let node = &index.nodes[node_id];
-
-    if node.is_leaf {
-        retain_leaf(
-            index.leaf_reconstruction_shape(node_id),
-            RetainedLeafCoverage::Covered,
-            retained_leaves,
-            stats,
-        );
-    } else {
-        // covered subtree means no more bounds math below this point
-        push_child_frames(&node.children, true, stack);
-    }
-}
-
-#[inline]
-fn push_child_frames(children: &[usize], inherited_covered: bool, stack: &mut TraversalStack) {
-    match children.len() {
-        0 => {}
-        1 => {
-            stack.push(child_frame(children[0], inherited_covered));
-        }
-        2 => {
-            // preserve left to right pop order without the iterator path
-            stack.push(child_frame(children[1], inherited_covered));
-            stack.push(child_frame(children[0], inherited_covered));
-        }
-        _ => {
-            // keep the generic fallback in case future splitters use wider fanout
-            for child in children.iter().rev() {
-                stack.push(child_frame(*child, inherited_covered));
-            }
-        }
-    }
-}
-
-#[inline]
-fn child_frame(node_id: usize, inherited_covered: bool) -> TraversalFrame {
-    if inherited_covered {
-        TraversalFrame::covered(node_id)
-    } else {
-        TraversalFrame::normal(node_id)
-    }
-}
-
-#[inline]
-fn retain_leaf(
-    shape: LeafReconstructionShape,
-    coverage: RetainedLeafCoverage,
-    retained_leaves: &mut Vec<RetainedLeaf>,
-    stats: &mut QueryTraversalStats,
-) {
-    stats.retained_leaves += 1;
-    stats.retained_candidate_records += shape.cardinality;
-    retained_leaves.push(RetainedLeaf::with_shape(shape.node_id, coverage, shape));
-}
-
-fn finish_traversal_report(
-    retained_leaves: Vec<RetainedLeaf>,
-    mut stats: QueryTraversalStats,
-) -> QueryTraversalReport {
-    stats.retained_leaf_ratio = retained_leaf_ratio(stats.retained_leaves, stats.total_leaves);
-
-    #[cfg(test)]
-    let retained_leaf_ids = retained_leaves
-        .iter()
-        .map(|retained_leaf| retained_leaf.node_id)
-        .collect();
-
-    QueryTraversalReport {
-        #[cfg(test)]
-        retained_leaf_ids,
-        retained_leaves,
-        stats,
-    }
 }
