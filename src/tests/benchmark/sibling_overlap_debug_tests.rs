@@ -98,6 +98,7 @@ fn debug_report_uses_large_dataset_target_workload() {
     assert!(output.contains("workload: large_cross_cluster_boundary"));
     assert!(output.contains("Target workload resultless timing estimate"));
     assert!(output.contains("Target workload materialization mode comparison"));
+    assert!(output.contains("Target workload exact existence timing"));
     assert!(output.contains("Workload materialization mode summary"));
     assert!(output.contains("all matched records agree: true"));
     assert!(output.contains("query min:"));
@@ -229,6 +230,32 @@ fn debug_report_renders_target_workload_materialization_mode_comparison() {
 }
 
 #[test]
+fn debug_report_renders_target_workload_existence_timing() {
+    let context = BenchmarkApplicationContext::from_cli_config(debug_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert!(output.contains("Target workload exact existence timing"));
+    assert!(output.contains("workload: cluster_boundary_range"));
+    assert!(output.contains("timing iterations:"));
+    assert!(output.contains("fresh owned average elapsed:"));
+    assert!(output.contains("count-only average elapsed:"));
+    assert!(output.contains("existence average elapsed:"));
+    assert!(output.contains("estimated owned above existence:"));
+    assert!(output.contains("estimated count-only above existence:"));
+    assert!(output.contains("existence speedup vs fresh owned:"));
+    assert!(output.contains("existence speedup vs count-only:"));
+    assert!(output.contains("fresh owned has match: true"));
+    assert!(output.contains("count-only has match: true"));
+    assert!(output.contains("existence has match: true"));
+    assert!(output.contains("existence matches owned presence: true"));
+    assert!(output.contains("existence matches count-only presence: true"));
+    assert!(output.contains("all existence results agree: true"));
+}
+
+#[test]
 fn debug_report_renders_workload_materialization_mode_summary() {
     let context = BenchmarkApplicationContext::from_cli_config(debug_cli_config());
     let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
@@ -242,6 +269,24 @@ fn debug_report_renders_workload_materialization_mode_summary() {
     ));
     assert!(output.contains("cluster_range_000 |"));
     assert!(output.contains("cluster_boundary_range |"));
+    assert!(output.contains(" | pass"));
+}
+
+#[test]
+fn debug_report_renders_workload_existence_timing_summary() {
+    let context = BenchmarkApplicationContext::from_cli_config(debug_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert!(output.contains("Workload exact existence timing summary"));
+    assert!(output.contains(
+        "workload | owned has match | count-only has match | existence has match | fresh owned | count-only | existence | existence speedup vs owned | existence speedup vs count-only | agreement"
+    ));
+    assert!(output.contains("cluster_range_000 | true | true | true |"));
+    assert!(output.contains("empty_far_range | false | false | false |"));
+    assert!(output.contains("cluster_boundary_range | true | true | true |"));
     assert!(output.contains(" | pass"));
 }
 
@@ -302,12 +347,16 @@ fn compact_report_does_not_render_debug_structure_metrics() {
     assert!(!output.contains("estimated result ownership overhead:"));
     assert!(!output.contains("estimated resultless retained share:"));
     assert!(!output.contains("Target workload materialization mode comparison"));
+    assert!(!output.contains("Target workload exact existence timing"));
     assert!(!output.contains("Workload materialization mode summary"));
+    assert!(!output.contains("Workload exact existence timing summary"));
     assert!(!output.contains("fresh owned average elapsed:"));
     assert!(!output.contains("reference-result average elapsed:"));
     assert!(!output.contains("count-only average elapsed:"));
     assert!(!output.contains("estimated owned above count-only:"));
     assert!(!output.contains("count-only speedup:"));
+    assert!(!output.contains("existence average elapsed:"));
+    assert!(!output.contains("all existence results agree:"));
 }
 
 fn summary_cli_config() -> BenchmarkCliConfig {
