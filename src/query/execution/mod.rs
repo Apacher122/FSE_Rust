@@ -7,6 +7,8 @@
 
 mod api;
 mod count;
+#[cfg(any(test, debug_assertions))]
+mod leaf_shape_debug;
 mod options;
 mod parallel;
 mod ratio;
@@ -16,6 +18,7 @@ mod retained;
 mod root;
 mod root_coverage;
 mod serial;
+mod stats;
 
 pub use api::{
     execute_query, execute_query_into, execute_query_into_with_options, execute_query_with_options,

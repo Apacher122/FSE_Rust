@@ -3,9 +3,11 @@
 //! This module contains the Stage II and Stage III retained-leaf execution
 //! helpers used after geometric traversal has selected candidate leaves.
 
+mod covered;
 mod dispatch;
 mod leaf;
 mod merge;
+mod partial;
 
 #[cfg(any(test, debug_assertions))]
 mod validation;

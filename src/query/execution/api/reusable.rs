@@ -11,10 +11,10 @@ use super::super::reports::QueryExecutionStats;
 use super::super::root::classify_query_root;
 use super::super::root_coverage::execute_fully_covered_index_serial_with_results;
 use super::super::serial::execute_classified_retained_leaves_serial_with_candidate_count_and_results;
-use super::owned::execute_query_with_stats_and_options;
-use super::stats::{
+use super::super::stats::{
     apply_batch_report_to_stats, root_covered_stats, root_disjoint_stats, stats_from_traversal,
 };
+use super::owned::execute_query_with_stats_and_options;
 
 /// Executes a query into a caller-provided result buffer.
 ///

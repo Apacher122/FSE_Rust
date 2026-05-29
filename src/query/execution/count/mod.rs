@@ -6,8 +6,8 @@
 
 mod api;
 mod execution;
-mod stats;
+mod matching;
 
 pub use api::{count_query_matches, count_query_matches_with_stats};
 
-pub(crate) use execution::count_retained_matches_without_results;
+pub(crate) use matching::count_retained_matches_without_results;

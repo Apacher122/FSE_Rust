@@ -5,11 +5,11 @@ use crate::query::{QueryRegion, RetainedLeaf};
 use crate::storage::FSEIndex;
 
 use super::options::{QueryExecutionMode, QueryExecutionOptions};
-use super::ratio::ratio_or_zero;
-use super::reports::{QueryExecutionReport, QueryExecutionStats, RetainedLeafBatchExecutionReport};
+use super::reports::{QueryExecutionReport, RetainedLeafBatchExecutionReport};
 use super::retained::{
     append_covered_retained_leaf_results, execute_classified_retained_leaves_with_candidate_count,
 };
+use super::stats::root_covered_stats;
 
 /// Executes a query that fully contains the root bounding region.
 ///
@@ -27,7 +27,6 @@ pub(crate) fn execute_fully_covered_index_with_options(
     query: &QueryRegion,
     options: QueryExecutionOptions,
 ) -> QueryExecutionReport {
-    let total_leaves = index.leaf_count();
     let total_records = index.root_node().cardinality;
 
     let batch_report = match options.mode {
@@ -44,16 +43,7 @@ pub(crate) fn execute_fully_covered_index_with_options(
         }
     };
 
-    let stats = QueryExecutionStats {
-        visited_nodes: 1,
-        total_leaves,
-        retained_leaves: total_leaves,
-        retained_leaf_ratio: if total_leaves == 0 { 0.0 } else { 1.0 },
-        total_records,
-        reconstructed_records: batch_report.reconstructed_records,
-        matched_records: batch_report.matched_records,
-        candidate_ratio: ratio_or_zero(batch_report.reconstructed_records, total_records),
-    };
+    let stats = root_covered_stats(index, &batch_report);
 
     QueryExecutionReport {
         results: batch_report.results,

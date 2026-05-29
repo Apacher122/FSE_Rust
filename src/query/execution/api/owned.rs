@@ -11,7 +11,7 @@ use super::super::reports::QueryExecutionReport;
 use super::super::retained::execute_classified_retained_leaves_with_candidate_count;
 use super::super::root::classify_query_root;
 use super::super::root_coverage::execute_fully_covered_index_with_options;
-use super::stats::{apply_batch_report_to_stats, root_disjoint_stats, stats_from_traversal};
+use super::super::stats::{apply_batch_report_to_stats, root_disjoint_stats, stats_from_traversal};
 
 /// Executes a query against an FSE index.
 ///

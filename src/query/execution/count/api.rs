@@ -7,10 +7,9 @@ use crate::storage::FSEIndex;
 
 use super::super::reports::QueryCountReport;
 use super::super::root::classify_query_root;
-use super::execution::{
-    count_fully_covered_index, count_retained_matches_without_results, count_root_disjoint_query,
-};
-use super::stats::count_stats_from_traversal;
+use super::super::stats::stats_from_traversal_with_counts;
+use super::execution::{count_fully_covered_index, count_root_disjoint_query};
+use super::matching::count_retained_matches_without_results;
 
 /// Counts exact query matches without materializing owned result vectors.
 ///
@@ -59,7 +58,7 @@ pub fn count_query_matches_with_stats(index: &FSEIndex, query: &QueryRegion) -> 
             return count_root_disjoint_query(index);
         }
         QueryBoundsClassification::Partial => {
-            // normal path uses the root classification we already paid for
+            // normal path uses the root classification already paid for
         }
     }
 
@@ -71,6 +70,11 @@ pub fn count_query_matches_with_stats(index: &FSEIndex, query: &QueryRegion) -> 
 
     QueryCountReport {
         matched_records,
-        stats: count_stats_from_traversal(index, &traversal_report, matched_records),
+        stats: stats_from_traversal_with_counts(
+            index,
+            &traversal_report,
+            traversal_report.stats.retained_candidate_records,
+            matched_records,
+        ),
     }
 }

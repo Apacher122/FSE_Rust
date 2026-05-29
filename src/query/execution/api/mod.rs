@@ -2,13 +2,11 @@
 //!
 //! This module owns the public owned-result query APIs and the internal
 //! diagnostic retained-leaf execution seam. Fresh owned-result execution,
-//! reusable-buffer execution, diagnostic execution, and shared stats helpers are
-//! split by responsibility.
+//! reusable-buffer execution, and diagnostic execution are split by responsibility.
 
 mod diagnostics;
 mod owned;
 mod reusable;
-mod stats;
 
 pub use owned::{
     execute_query, execute_query_with_options, execute_query_with_stats,
