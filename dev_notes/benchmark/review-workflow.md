@@ -88,6 +88,51 @@ If re-running the same label and intentionally replacing the organized copy:
       -CopyArtifactsToRunFolder `
       -ForceOrganizedArtifacts
 
+## Full comparison validation path
+
+Use the full comparison validation path when the previous review run has every comparison input available.
+
+A previous run should first be generated and copied to the organized run folder:
+
+    ```powershell
+    .\scripts\run-low-gap-review.ps1 `
+    -Label "<previous-label>" `
+    -Dataset "small" `
+    -Trials 5 `
+    -Iterations 10000 `
+    -CopyArtifactsToRunFolder `
+    -ValidateArtifacts
+    ```
+
+A current run can then validate the full previous/current comparison set by using `-PreviousLabel` and `-RequireValidatedComparisons`:
+
+    ```powershell
+    .\scripts\run-low-gap-review.ps1 `
+    -Label "<current-label>" `
+    -PreviousLabel "<previous-label>" `
+    -Dataset "small" `
+    -Trials 5 `
+    -Iterations 10000 `
+    -CopyArtifactsToRunFolder `
+    -ValidateArtifacts `
+    -RequireValidatedComparisons
+    ```
+
+`-RequireValidatedComparisons` is for the full comparison set:
+
+    ```text
+    single-run low-selectivity comparison
+    aggregate trial comparison
+    workload trial comparison
+    count-only workload comparison
+    materialization mode comparison
+    target workload comparison
+    ```
+
+Do not use `-RequireValidatedComparisons` for a partial smoke unless all required previous artifacts are present.
+
+If only target workload or materialization comparison is being smoke-tested, provide the specific previous summary path and omit `-RequireValidatedComparisons`. The validator still checks target/materialization equivalence when those comparison artifacts are present.
+
 ## Dataset defaults
 
 Small dataset default:
@@ -200,7 +245,8 @@ The debug output should show:
     target retained execution phase estimate
     target retained allocation estimate
     target resultless timing estimate
-    target count-only comparison
+    target materialization mode comparison
+    workload materialization mode summary
 
 The count-only workload summary is generated from the workload CSV.
 
@@ -711,3 +757,21 @@ The review validator requires:
 The comparison artifact is validated whenever it is present. It does not require the full comparison set unless `-RequireValidatedComparisons` is explicitly used.
 
 A timing improvement is not review-grade evidence if owned, reusable-owned, reference-result, and count-only output contracts disagree.
+
+## Validation coverage reference
+
+Use `validation-coverage.md` as the source of truth for review validator scope.
+
+It defines:
+
+    ```text
+    required artifacts
+    required CSV columns
+    index-validity gates
+    count-only equivalence gates
+    materialization agreement gates
+    target workload equivalence gates
+    optional comparison behavior
+    ```
+
+The review workflow should not treat timing regression as a validation failure by itself. Timing movement is review evidence. Validation failures are reserved for missing artifacts, malformed artifact contracts, invalid index state, or semantic/equivalence drift.

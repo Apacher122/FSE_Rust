@@ -17,6 +17,7 @@ That file now acts as an index into these topic files.
 | `diagnostic-conclusions.md` | Boundary fixed-cost conclusions, retained execution conclusions, and result ownership conclusions. |
 | `count-only-workflow.md` | Count-only API timing, count-only summary artifacts, and count-only comparison artifacts. |
 | `review-workflow.md` | Low-gap review runner, target workload review, trial comparison commands, and expected review flow. |
+| `validation-coverage.md` | Review validator artifact contracts, equivalence gates, comparison scope, and failure conditions. |
 | `artifact-workflow.md` | Artifact organization, organized run folders, organized previous-label lookup, organized copy, and cleanup. |
 | `leaf-policy.md` | Leaf policy experiments and the current 8/8 policy conclusion. |
 
@@ -53,6 +54,7 @@ The benchmark workflow now has:
     count-only comparison artifacts
     target workload diagnostics
     small and large dataset review workflows
+    review artifact validation gates
     organized artifact management
 
 ## Primary review files
@@ -80,6 +82,14 @@ For review commands and generated review artifacts, use:
 For organizing, copying, resolving, and cleaning benchmark artifacts, use:
 
     artifact-workflow.md
+
+For review validator artifact contracts and equivalence gates, use:
+
+    validation-coverage.md
+
+For the full previous/current comparison validation path, use:
+
+    review-workflow.md
 
 For leaf policy decisions, use:
 
