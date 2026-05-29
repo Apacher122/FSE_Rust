@@ -10,7 +10,7 @@ use super::super::root::classify_query_root;
 use super::super::stats::{
     root_covered_stats_with_counts, root_disjoint_stats, stats_from_traversal_with_counts,
 };
-use super::matching::{append_covered_leaf_references, append_retained_reference_matches};
+use super::matching::{append_fully_covered_index_references, append_retained_reference_matches};
 
 /// Executes a query and returns exact matching row references.
 ///
@@ -103,9 +103,7 @@ fn reference_fully_covered_index(index: &FSEIndex) -> QueryReferenceReport {
     let total_records = index.root_node().cardinality;
     let mut matches = Vec::with_capacity(result_capacity_hint(total_records));
 
-    for shape in index.leaf_reconstruction_shapes() {
-        append_covered_leaf_references(*shape, &mut matches);
-    }
+    append_fully_covered_index_references(index, &mut matches);
 
     QueryReferenceReport {
         matches,

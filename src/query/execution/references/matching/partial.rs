@@ -1,77 +1,22 @@
-//! Reference-result retained-leaf matching.
+//! Partially covered retained-leaf reference matching.
 
-use crate::query::{QueryRegion, RetainedLeaf, RetainedLeafCoverage};
-use crate::storage::{FSEIndex, LeafReconstructionShape, PartitionNode};
+use crate::query::QueryRegion;
+use crate::storage::{LeafReconstructionShape, PartitionNode};
 
-use super::super::reports::QueryResultReference;
+use super::super::super::reports::QueryResultReference;
 
 #[cfg(any(test, debug_assertions))]
-use super::super::leaf_shape_debug::{
+use super::super::super::leaf_shape_debug::{
     debug_assert_leaf_reconstruction_shape, debug_assert_query_reconstruction_shape,
 };
 
-/// Appends exact row references for traversal-retained leaves.
+/// Appends exact row references from a partially covered retained leaf.
 ///
 /// # Runtime Role
 ///
-/// This function performs the reference-result equivalent of retained-leaf
-/// execution. Covered leaves append every row reference directly. Partial leaves
-/// reconstruct only enough coordinate data to run exact predicate checks before
-/// recording a row reference.
-pub(super) fn append_retained_reference_matches(
-    index: &FSEIndex,
-    query: &QueryRegion,
-    retained_leaves: &[RetainedLeaf],
-    matches: &mut Vec<QueryResultReference>,
-) {
-    for retained_leaf in retained_leaves {
-        let node = &index.nodes[retained_leaf.node_id];
-        let shape = retained_leaf.reconstruction_shape(index);
-
-        append_retained_leaf_reference_matches(node, shape, retained_leaf.coverage, query, matches);
-    }
-}
-
-fn append_retained_leaf_reference_matches(
-    node: &PartitionNode,
-    shape: LeafReconstructionShape,
-    coverage: RetainedLeafCoverage,
-    query: &QueryRegion,
-    matches: &mut Vec<QueryResultReference>,
-) {
-    match coverage {
-        RetainedLeafCoverage::Covered => append_covered_leaf_references(shape, matches),
-        RetainedLeafCoverage::Partial => {
-            append_partial_leaf_reference_matches(node, shape, query, matches)
-        }
-    }
-}
-
-/// Appends every row reference from a covered retained leaf.
-///
-/// # Runtime Role
-///
-/// A covered retained leaf has already passed geometric containment, so exact
-/// predicate checks are unnecessary for every row in the leaf.
-pub(super) fn append_covered_leaf_references(
-    shape: LeafReconstructionShape,
-    matches: &mut Vec<QueryResultReference>,
-) {
-    let available_capacity = matches.capacity().saturating_sub(matches.len());
-
-    if shape.cardinality > available_capacity {
-        matches.reserve_exact(shape.cardinality - available_capacity);
-    }
-
-    for row_index in 0..shape.cardinality {
-        matches.push(QueryResultReference {
-            node_id: shape.node_id,
-            row_index,
-        });
-    }
-}
-
-fn append_partial_leaf_reference_matches(
+/// Partial leaves still require exact predicate evaluation. Matching rows are
+/// returned as leaf/row references instead of owned vectors.
+pub(super) fn append_partial_leaf_reference_matches(
     node: &PartitionNode,
     shape: LeafReconstructionShape,
     query: &QueryRegion,
