@@ -11,6 +11,18 @@ use crate::math::Vector;
 use crate::query::execution::DEFAULT_PARALLEL_MIN_RETAINED_LEAVES;
 use crate::query::{QueryExecutionMode, QueryExecutionOptions};
 
+/// Default target and maximum leaf cardinality used by benchmark runs.
+pub const DEFAULT_BENCHMARK_LEAF_SIZE: usize = 8;
+
+/// Default maximum build depth for the small clustered benchmark dataset.
+pub const SMALL_DATASET_DEFAULT_MAX_DEPTH: usize = 8;
+
+/// Default maximum build depth for the large clustered benchmark dataset.
+///
+/// The large dataset contains enough records that an eight-level binary tree
+/// cannot satisfy the default hard leaf cardinality limit.
+pub const LARGE_DATASET_DEFAULT_MAX_DEPTH: usize = 16;
+
 /// Dataset selection for benchmark suite execution.
 ///
 /// # Runtime Role
@@ -211,9 +223,9 @@ impl Default for BenchmarkSuiteConfig {
         Self {
             dataset_kind: BenchmarkDatasetKind::LargeClustered2D,
             baseline_kind: BaselineKind::FlatScan,
-            target_leaf_size: 8,
-            max_leaf_size: 8,
-            max_depth: 8,
+            target_leaf_size: DEFAULT_BENCHMARK_LEAF_SIZE,
+            max_leaf_size: DEFAULT_BENCHMARK_LEAF_SIZE,
+            max_depth: LARGE_DATASET_DEFAULT_MAX_DEPTH,
             timing_iterations: 10,
             fse_execution_mode: QueryExecutionMode::Serial,
             fse_parallel_min_retained_leaves: DEFAULT_PARALLEL_MIN_RETAINED_LEAVES,

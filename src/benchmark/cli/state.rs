@@ -2,7 +2,8 @@
 
 use crate::benchmark::{
     BaselineKind, BenchmarkBaselineSet, BenchmarkCsvOutputConfig, BenchmarkDatasetKind,
-    BenchmarkSuiteConfig,
+    BenchmarkSuiteConfig, DEFAULT_BENCHMARK_LEAF_SIZE, LARGE_DATASET_DEFAULT_MAX_DEPTH,
+    SMALL_DATASET_DEFAULT_MAX_DEPTH,
 };
 
 use super::parsing::{
@@ -11,8 +12,6 @@ use super::parsing::{
 };
 use super::types::{BenchmarkCliConfig, BenchmarkTerminalOutputMode};
 use super::usage::benchmark_usage;
-
-const SMALL_DATASET_DEFAULT_TARGET_LEAF_SIZE: usize = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum BaselineSelectionState {
@@ -74,6 +73,7 @@ pub(super) struct BenchmarkCliParseState {
     terminal_output_mode: BenchmarkTerminalOutputMode,
     target_leaf_size_was_set: bool,
     max_leaf_size_was_set: bool,
+    max_depth_was_set: bool,
 }
 
 impl Default for BenchmarkCliParseState {
@@ -85,6 +85,7 @@ impl Default for BenchmarkCliParseState {
             terminal_output_mode: BenchmarkTerminalOutputMode::default(),
             target_leaf_size_was_set: false,
             max_leaf_size_was_set: false,
+            max_depth_was_set: false,
         }
     }
 }
@@ -138,6 +139,7 @@ impl BenchmarkCliParseState {
 
     pub(super) fn set_max_depth(&mut self, value: &str) -> Result<(), String> {
         self.suite_config.max_depth = parse_usize("--max-depth", value)?;
+        self.max_depth_was_set = true;
 
         Ok(())
     }
@@ -175,7 +177,7 @@ impl BenchmarkCliParseState {
     }
 
     pub(super) fn finish(mut self) -> Result<BenchmarkCliConfig, String> {
-        self.apply_dataset_default_leaf_policy();
+        self.apply_dataset_default_build_policy();
 
         self.suite_config.validate_leaf_size_policy()?;
 
@@ -195,7 +197,14 @@ impl BenchmarkCliParseState {
         })
     }
 
-    fn apply_dataset_default_leaf_policy(&mut self) {
+    fn apply_dataset_default_build_policy(&mut self) {
+        if !self.max_depth_was_set {
+            self.suite_config.max_depth = match self.suite_config.dataset_kind {
+                BenchmarkDatasetKind::SmallClustered2D => SMALL_DATASET_DEFAULT_MAX_DEPTH,
+                BenchmarkDatasetKind::LargeClustered2D => LARGE_DATASET_DEFAULT_MAX_DEPTH,
+            };
+        }
+
         if self.target_leaf_size_was_set || self.max_leaf_size_was_set {
             return;
         }
@@ -205,7 +214,8 @@ impl BenchmarkCliParseState {
             BenchmarkDatasetKind::SmallClustered2D
         ) {
             // gap-aware construction made 8/8 the better tiny benchmark default again
-            self.suite_config.target_leaf_size = SMALL_DATASET_DEFAULT_TARGET_LEAF_SIZE;
+            self.suite_config.target_leaf_size = DEFAULT_BENCHMARK_LEAF_SIZE;
+            self.suite_config.max_leaf_size = DEFAULT_BENCHMARK_LEAF_SIZE;
         }
     }
 }

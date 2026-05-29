@@ -35,7 +35,10 @@ pub use cli::{
     parse_benchmark_config,
 };
 
-pub use config::{BenchmarkDatasetKind, BenchmarkSuiteConfig};
+pub use config::{
+    BenchmarkDatasetKind, BenchmarkSuiteConfig, DEFAULT_BENCHMARK_LEAF_SIZE,
+    LARGE_DATASET_DEFAULT_MAX_DEPTH, SMALL_DATASET_DEFAULT_MAX_DEPTH,
+};
 
 pub use reports::{
     AggregateWorkloadMetrics, BaselineAggregateSummary, BenchmarkCsvMetadata,
