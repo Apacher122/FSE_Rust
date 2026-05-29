@@ -71,18 +71,7 @@ pub(crate) fn execute_fully_covered_index_serial(
     let mut batch_report =
         RetainedLeafBatchExecutionReport::with_candidate_capacity(candidate_count);
 
-    // full coverage can materialize rows directly
-    for shape in index.leaf_reconstruction_shapes() {
-        let node = &index.nodes[shape.node_id];
-        append_covered_retained_leaf_results(node, *shape, &mut batch_report);
-    }
-
-    batch_report.truncate_to_accepted_results();
-
-    debug_assert_eq!(
-        batch_report.reconstructed_records, candidate_count,
-        "fully covered index reconstruction should match root cardinality"
-    );
+    materialize_fully_covered_index_into_batch_report(index, candidate_count, &mut batch_report);
 
     batch_report
 }
@@ -103,9 +92,32 @@ pub(crate) fn execute_fully_covered_index_serial_with_results(
     let mut batch_report =
         RetainedLeafBatchExecutionReport::with_result_buffer(candidate_count, results);
 
+    materialize_fully_covered_index_into_batch_report(index, candidate_count, &mut batch_report);
+
+    batch_report
+}
+
+/// Materializes all leaf rows into an existing root-covered batch report.
+///
+/// # Runtime Role
+///
+/// This shared helper keeps the normal serial path and reusable-buffer serial
+/// path on the same reconstruction loop while preserving their different result
+/// allocation strategies.
+///
+/// # Panics
+///
+/// Panics when the sum of reconstructed leaf rows does not match root
+/// cardinality in debug builds.
+fn materialize_fully_covered_index_into_batch_report(
+    index: &FSEIndex,
+    candidate_count: usize,
+    batch_report: &mut RetainedLeafBatchExecutionReport,
+) {
+    // full coverage can materialize rows directly
     for shape in index.leaf_reconstruction_shapes() {
         let node = &index.nodes[shape.node_id];
-        append_covered_retained_leaf_results(node, *shape, &mut batch_report);
+        append_covered_retained_leaf_results(node, *shape, batch_report);
     }
 
     batch_report.truncate_to_accepted_results();
@@ -114,8 +126,6 @@ pub(crate) fn execute_fully_covered_index_serial_with_results(
         batch_report.reconstructed_records, candidate_count,
         "fully covered index reconstruction should match root cardinality"
     );
-
-    batch_report
 }
 
 /// Returns retained-leaf records for every leaf in the index.
