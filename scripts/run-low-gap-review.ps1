@@ -12,6 +12,7 @@ param(
   [string]$PreviousTrialSummaryCsv = "",
   [string]$PreviousWorkloadSummaryCsv = "",
   [string]$PreviousCountOnlySummaryCsv = "",
+  [string]$PreviousMaterializationSummaryCsv = "",
   [string]$TargetWorkloadName = "",
   [string]$PreviousTargetSummaryCsv = "",
   [switch]$SkipTargetWorkloadReview,
@@ -69,6 +70,7 @@ $LowGapTrialsScript = $ReviewPaths.LowGapTrialsScript
 $AggregateComparatorScript = $ReviewPaths.AggregateComparatorScript
 $WorkloadComparatorScript = $ReviewPaths.WorkloadComparatorScript
 $CountOnlyComparatorScript = $ReviewPaths.CountOnlyComparatorScript
+$MaterializationComparatorScript = $ReviewPaths.MaterializationComparatorScript
 $TargetSummaryScript = $ReviewPaths.TargetSummaryScript
 $TargetComparatorScript = $ReviewPaths.TargetComparatorScript
 $ArtifactOrganizerScript = $ReviewPaths.ArtifactOrganizerScript
@@ -85,6 +87,10 @@ $CurrentCountOnlyWorkloadSummaryCsv = $ReviewPaths.CurrentCountOnlyWorkloadSumma
 $CurrentCountOnlyWorkloadSummaryNotes = $ReviewPaths.CurrentCountOnlyWorkloadSummaryNotes
 $CurrentCountOnlyComparisonCsv = $ReviewPaths.CurrentCountOnlyComparisonCsv
 $CurrentCountOnlyComparisonNotes = $ReviewPaths.CurrentCountOnlyComparisonNotes
+$CurrentMaterializationSummaryCsv = $ReviewPaths.CurrentMaterializationSummaryCsv
+$CurrentMaterializationSummaryNotes = $ReviewPaths.CurrentMaterializationSummaryNotes
+$CurrentMaterializationComparisonCsv = $ReviewPaths.CurrentMaterializationComparisonCsv
+$CurrentMaterializationComparisonNotes = $ReviewPaths.CurrentMaterializationComparisonNotes
 $CurrentTargetDetailCsv = $ReviewPaths.CurrentTargetDetailCsv
 $CurrentTargetSummaryCsv = $ReviewPaths.CurrentTargetSummaryCsv
 $CurrentTargetNotesPath = $ReviewPaths.CurrentTargetNotesPath
@@ -124,6 +130,14 @@ function Get-CountOnlyComparisonSkipReason {
     -CurrentDescription "current count-only workload summary"
 }
 
+function Get-MaterializationComparisonSkipReason {
+  return Get-BenchmarkReviewComparisonSkipReason `
+    -PreviousPath $PreviousMaterializationSummaryCsv `
+    -CurrentPath $CurrentMaterializationSummaryCsv `
+    -PreviousDescription "previous materialization mode summary" `
+    -CurrentDescription "current materialization mode summary"
+}
+
 function Get-TargetComparisonSkipReason {
   return Get-BenchmarkReviewComparisonSkipReason `
     -PreviousPath $PreviousTargetSummaryCsv `
@@ -138,11 +152,13 @@ function Write-ReviewManifest {
   $AggregateComparisonSkipReason = Get-AggregateComparisonSkipReason
   $WorkloadComparisonSkipReason = Get-WorkloadComparisonSkipReason
   $CountOnlyComparisonSkipReason = Get-CountOnlyComparisonSkipReason
+  $MaterializationComparisonSkipReason = Get-MaterializationComparisonSkipReason
   $TargetComparisonSkipReason = Get-TargetComparisonSkipReason
 
   $AggregateComparisonSkipped = ![string]::IsNullOrWhiteSpace($AggregateComparisonSkipReason)
   $WorkloadComparisonSkipped = ![string]::IsNullOrWhiteSpace($WorkloadComparisonSkipReason)
   $CountOnlyComparisonSkipped = ![string]::IsNullOrWhiteSpace($CountOnlyComparisonSkipReason)
+  $MaterializationComparisonSkipped = ![string]::IsNullOrWhiteSpace($MaterializationComparisonSkipReason)
   $TargetSummarySkipped = [bool]$SkipTargetWorkloadReview
   $TargetComparisonSkipped = ![string]::IsNullOrWhiteSpace($TargetComparisonSkipReason)
 
@@ -208,6 +224,28 @@ function Write-ReviewManifest {
       -Path (Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.txt") `
       -Skipped $CountOnlyComparisonSkipped `
       -Note $CountOnlyComparisonSkipReason
+
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.MaterializationModeSummary `
+      -Path $CurrentMaterializationSummaryCsv `
+      -Skipped $false
+
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.MaterializationModeNotes `
+      -Path $CurrentMaterializationSummaryNotes `
+      -Skipped $false
+
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.MaterializationModeComparisonCsv `
+      -Path $CurrentMaterializationComparisonCsv `
+      -Skipped $MaterializationComparisonSkipped `
+      -Note $MaterializationComparisonSkipReason
+
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.MaterializationModeComparisonNotes `
+      -Path $CurrentMaterializationComparisonNotes `
+      -Skipped $MaterializationComparisonSkipped `
+      -Note $MaterializationComparisonSkipReason
 
     New-BenchmarkReviewManifestArtifact `
       -Name $BenchmarkReviewArtifactNames.LowSelectivityGapCsv `
@@ -348,6 +386,12 @@ $PreviousCountOnlySummaryCsv = Resolve-BenchmarkReviewOptionalPreviousPath `
   -DefaultPath $ReviewPaths.PreviousCountOnlySummaryDefaultPath `
   -PreviousLabel $PreviousLabel `
   -PreviousOrganizedRunDirectory $PreviousOrganizedRunDirectory
+
+$PreviousMaterializationSummaryCsv = Resolve-BenchmarkReviewOptionalPreviousPath `
+  -ExplicitPath $PreviousMaterializationSummaryCsv `
+  -DefaultPath $ReviewPaths.PreviousMaterializationSummaryDefaultPath `
+  -PreviousLabel $PreviousLabel `
+  -PreviousOrganizedRunDirectory $PreviousOrganizedRunDirectory
   
 $PreviousTargetSummaryCsv = Resolve-BenchmarkReviewOptionalPreviousPath `
   -ExplicitPath $PreviousTargetSummaryCsv `
@@ -359,6 +403,7 @@ $PreviousLowSelectivityGapInput = Get-BenchmarkReviewInputStatus -Path $Previous
 $PreviousTrialSummaryInput = Get-BenchmarkReviewInputStatus -Path $PreviousTrialSummaryCsv
 $PreviousWorkloadSummaryInput = Get-BenchmarkReviewInputStatus -Path $PreviousWorkloadSummaryCsv
 $PreviousCountOnlySummaryInput = Get-BenchmarkReviewInputStatus -Path $PreviousCountOnlySummaryCsv
+$PreviousMaterializationSummaryInput = Get-BenchmarkReviewInputStatus -Path $PreviousMaterializationSummaryCsv
 $PreviousTargetSummaryInput = Get-BenchmarkReviewInputStatus -Path $PreviousTargetSummaryCsv
 
 Initialize-BenchmarkReviewNotes `
@@ -384,11 +429,13 @@ Initialize-BenchmarkReviewNotes `
   -PreviousTrialSummaryCsv $PreviousTrialSummaryCsv `
   -PreviousWorkloadSummaryCsv $PreviousWorkloadSummaryCsv `
   -PreviousCountOnlySummaryCsv $PreviousCountOnlySummaryCsv `
+  -PreviousMaterializationSummaryCsv $PreviousMaterializationSummaryCsv `
   -PreviousTargetSummaryCsv $PreviousTargetSummaryCsv `
   -PreviousLowSelectivityGapInput $PreviousLowSelectivityGapInput `
   -PreviousTrialSummaryInput $PreviousTrialSummaryInput `
   -PreviousWorkloadSummaryInput $PreviousWorkloadSummaryInput `
   -PreviousCountOnlySummaryInput $PreviousCountOnlySummaryInput `
+  -PreviousMaterializationSummaryInput $PreviousMaterializationSummaryInput `
   -PreviousTargetSummaryInput $PreviousTargetSummaryInput
 
 Write-Host ""
@@ -427,6 +474,8 @@ if ($LASTEXITCODE -ne 0) {
 Add-ReviewLine "status: completed"
 Add-ReviewLine "count-only workload summary: $CurrentCountOnlyWorkloadSummaryCsv"
 Add-ReviewLine "count-only workload notes: $CurrentCountOnlyWorkloadSummaryNotes"
+Add-ReviewLine "materialization mode summary: $CurrentMaterializationSummaryCsv"
+Add-ReviewLine "materialization mode notes: $CurrentMaterializationSummaryNotes"
 
 if ($PreviousLowSelectivityGapInput.Exists) {
   Add-ReviewLine "single-run comparison status: completed by run-small-benchmark"
@@ -547,6 +596,31 @@ $CountOnlyComparatorArguments = @{
   NoiseThreshold              = $NoiseThreshold
 }
 
+$MaterializationComparatorArguments = @{
+  Label                             = $Label
+  PreviousMaterializationSummaryCsv = $PreviousMaterializationSummaryCsv
+  CurrentMaterializationSummaryCsv  = $CurrentMaterializationSummaryCsv
+  OutputDir                         = $OutputDir
+  NoiseThreshold                    = $NoiseThreshold
+}
+
+Invoke-BenchmarkReviewComparisonStep `
+  -ReviewNotesPath $ReviewNotesPath `
+  -HostTitle "materialization mode summary comparison" `
+  -ReviewTitle "Materialization mode summary comparison" `
+  -ReviewUnderline "---------------------------------------" `
+  -PreviousPath $PreviousMaterializationSummaryCsv `
+  -CurrentPath $CurrentMaterializationSummaryCsv `
+  -PreviousDescription "previous materialization mode summary" `
+  -CurrentDescription "current materialization mode summary" `
+  -ScriptPath $MaterializationComparatorScript `
+  -ScriptArguments $MaterializationComparatorArguments `
+  -FailureMessage "materialization mode summary comparison failed with exit code" `
+  -CompletedLines @(
+  "comparison CSV: $CurrentMaterializationComparisonCsv",
+  "comparison notes: $CurrentMaterializationComparisonNotes"
+)
+
 Invoke-BenchmarkReviewComparisonStep `
   -ReviewNotesPath $ReviewNotesPath `
   -HostTitle "count-only workload summary comparison" `
@@ -623,6 +697,8 @@ Add-BenchmarkReviewComparisonAvailabilitySummary `
   -CurrentWorkloadSummaryCsv $CurrentWorkloadSummaryCsv `
   -PreviousCountOnlySummaryInput $PreviousCountOnlySummaryInput `
   -CurrentCountOnlyWorkloadSummaryCsv $CurrentCountOnlyWorkloadSummaryCsv `
+  -PreviousMaterializationSummaryInput $PreviousMaterializationSummaryInput `
+  -CurrentMaterializationSummaryCsv $CurrentMaterializationSummaryCsv `
   -SkipTargetWorkloadReview ([bool]$SkipTargetWorkloadReview) `
   -PreviousTargetSummaryInput $PreviousTargetSummaryInput `
   -CurrentTargetSummaryCsv $CurrentTargetSummaryCsv

@@ -100,7 +100,7 @@ Use `-Force` only when intentionally overwriting already-organized artifacts:
   -Force
 ```
 
-The organization script recognizes normal benchmark artifacts, low-gap artifacts, target workload artifacts, count-only artifacts, review manifests, review notes, and repeated-trial folders.
+The organization script recognizes normal benchmark artifacts, low-gap artifacts, target workload artifacts, count-only artifacts, materialization-mode artifacts, review manifests, review notes, and repeated-trial folders.
 
 Unrecognized files are left in place. This prevents accidental movement of manually-created notes, temporary files, or unrelated data.
 
@@ -556,3 +556,102 @@ materialization-mode-summary-comparison-<label>.txt
 ```
 
 Use these artifacts to review materialization movement separately from exactness agreement. A row can have noisy timing movement while still preserving exact result semantics.
+
+## Materialization mode artifacts
+
+Normal benchmark runs now produce materialization-mode evidence alongside the existing count-only workload summary.
+
+Generated files:
+
+```text
+materialization-mode-summary-<label>.csv
+materialization-mode-summary-<label>.txt
+materialization-mode-summary-comparison-<label>.csv
+materialization-mode-summary-comparison-<label>.txt
+```
+
+The summary CSV records workload-level timing for fresh owned, reusable owned, reference-result, and count-only query output modes. The comparison CSV compares those output-contract costs across review runs.
+
+Every materialization summary row should report `agreement = pass`; otherwise the output modes are not preserving the same exact query semantics.
+
+## Target workload artifacts
+
+Target workload review artifacts are generated from repeated trial workload CSVs.
+
+Artifacts:
+
+```text
+target-workload-trial-details-<label>.csv
+target-workload-trial-summary-<label>.csv
+target-workload-trial-notes-<label>.txt
+```
+
+When a previous target summary is available, the review workflow also generates:
+
+```text
+target-workload-trial-comparison-<label>.csv
+target-workload-trial-comparison-<label>.txt
+```
+
+The target summary is focused on one configured boundary workload and groups rows by tree baseline.
+
+Required summary fields include:
+
+```text
+baseline_name
+workload_name
+trial_count
+mean_timing_ratio
+mean_candidate_ratio
+all_count_only_stats_match_owned
+all_reference_stats_match_count_only
+all_reusable_owned_stats_match_owned
+```
+
+The review manifest should mark target workload artifacts as `found` when target review runs and `skipped` when `-SkipTargetWorkloadReview` is used.
+
+Review artifact validation enforces the target workload stats-equivalence fields when target artifacts are present:
+
+```text
+all_count_only_stats_match_owned
+all_reference_stats_match_count_only
+all_reusable_owned_stats_match_owned
+```
+
+When target comparison artifacts are required, validation also enforces the previous/current versions of those fields in the target comparison CSV.
+
+## Target comparison validation scope
+
+Target workload summary and target workload comparison artifacts are validated when present.
+
+The full `-RequireValidatedComparisons` review flag requires the broader comparison set, not just target workload comparison artifacts. A target-only review smoke should provide previous target and materialization summaries without forcing unrelated aggregate, workload, or count-only comparisons.
+
+## Materialization validation requirements
+
+Materialization summary artifacts are not valid merely because they exist.
+
+The review validator requires every row in:
+
+  ```text
+  materialization-mode-summary-<label>.csv
+  ```
+
+to report:
+
+  ```text
+  agreement = pass
+  ```
+
+When a materialization comparison artifact is present, every row in:
+
+  ```text
+  materialization-mode-summary-comparison-<label>.csv
+  ```
+
+must report:
+
+  ```text
+  agreement_status = pass
+  ```
+
+This protects the review workflow from accepting timing evidence when output contracts disagree on exact query semantics.

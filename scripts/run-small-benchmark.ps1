@@ -357,10 +357,13 @@ if (!(Test-Path -LiteralPath $CountOnlyWorkloadSummaryScript)) {
     throw "required script was not found: $CountOnlyWorkloadSummaryScript"
 }
 
-& $CountOnlyWorkloadSummaryScript `
-    -InputWorkloadsCsv $WorkloadsCsvPath `
-    -OutputCsv $CountOnlyWorkloadSummaryCsvPath `
-    -OutputNotesPath $CountOnlyWorkloadSummaryNotesPath
+$CountOnlyWorkloadSummaryArguments = @{
+    InputWorkloadsCsv = $WorkloadsCsvPath
+    OutputCsv         = $CountOnlyWorkloadSummaryCsvPath
+    OutputNotesPath   = $CountOnlyWorkloadSummaryNotesPath
+}
+
+& $CountOnlyWorkloadSummaryScript @CountOnlyWorkloadSummaryArguments
 
 if ($LASTEXITCODE -ne 0) {
     throw "count-only workload summary failed with exit code $LASTEXITCODE"
@@ -384,12 +387,15 @@ if (!(Test-Path -LiteralPath $MaterializationModeSummaryScript)) {
     throw "required script was not found: $MaterializationModeSummaryScript"
 }
 
-& $MaterializationModeSummaryScript `
-    -DebugOutputPath $DebugOutputPath `
-    -OutputCsv $MaterializationModeSummaryCsvPath `
-    -OutputNotesPath $MaterializationModeSummaryNotesPath `
-    -Dataset $Dataset `
-    -MaxDepth $EffectiveMaxDepthText
+$MaterializationModeSummaryArguments = @{
+    DebugOutputPath = $DebugOutputPath
+    OutputCsv       = $MaterializationModeSummaryCsvPath
+    OutputNotesPath = $MaterializationModeSummaryNotesPath
+    Dataset         = $Dataset
+    MaxDepth        = $EffectiveMaxDepthText
+}
+
+& $MaterializationModeSummaryScript @MaterializationModeSummaryArguments
 
 if ($LASTEXITCODE -ne 0) {
     throw "materialization mode summary failed with exit code $LASTEXITCODE"

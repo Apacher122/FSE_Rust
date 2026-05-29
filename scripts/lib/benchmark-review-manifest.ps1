@@ -11,6 +11,10 @@ $BenchmarkReviewArtifactNames = [ordered]@{
   CountOnlyWorkloadNotes             = "count-only workload notes"
   CountOnlyWorkloadComparisonCsv     = "count-only workload comparison CSV"
   CountOnlyWorkloadComparisonNotes   = "count-only workload comparison notes"
+  MaterializationModeSummary         = "materialization mode summary"
+  MaterializationModeNotes           = "materialization mode notes"
+  MaterializationModeComparisonCsv   = "materialization mode comparison CSV"
+  MaterializationModeComparisonNotes = "materialization mode comparison notes"
   LowSelectivityGapCsv               = "low-selectivity gap CSV"
   LowGapRegressionNotes              = "low-gap regression notes"
   LowGapTrialDetails                 = "low-gap trial details"
@@ -127,35 +131,41 @@ function New-BenchmarkReviewPathSet {
     -OrganizedRunRoot $OrganizedRunRoot
 
   return [PSCustomObject]@{
-    SmallBenchmarkScript                 = Join-Path $ScriptDirectory "run-small-benchmark.ps1"
-    LowGapTrialsScript                   = Join-Path $ScriptDirectory "run-low-gap-trials.ps1"
-    AggregateComparatorScript            = Join-Path $ScriptDirectory "compare-low-gap-trial-summary.ps1"
-    WorkloadComparatorScript             = Join-Path $ScriptDirectory "compare-low-gap-workload-summary.ps1"
-    CountOnlyComparatorScript            = Join-Path $ScriptDirectory "compare-count-only-workload-summary.ps1"
-    TargetSummaryScript                  = Join-Path $ScriptDirectory "summarize-target-workload-trials.ps1"
-    TargetComparatorScript               = Join-Path $ScriptDirectory "compare-target-workload-summary.ps1"
-    ArtifactOrganizerScript              = Join-Path $ScriptDirectory "organize-benchmark-artifacts.ps1"
-    ArtifactValidatorScript              = Join-Path $ScriptDirectory "validate-benchmark-review-artifacts.ps1"
-    FlatArtifactCleanupScript            = Join-Path $ScriptDirectory "cleanup-flat-benchmark-artifacts.ps1"
-    OrganizedRunRoot                     = $OrganizedRunRoot
-    OrganizedRunDirectory                = Join-Path $OrganizedRunRoot $Label
-    PreviousOrganizedRunDirectory        = $PreviousOrganizedRunDirectory
-    ReviewNotesPath                      = Join-Path $OutputDir "low-gap-review-notes-$Label.txt"
-    ReviewManifestPath                   = Join-Path $OutputDir "low-gap-review-manifest-$Label.txt"
-    CurrentTrialSummaryCsv               = Join-Path $OutputDir "low-gap-trial-summary-$Label.csv"
-    CurrentWorkloadSummaryCsv            = Join-Path $OutputDir "low-gap-workload-trial-summary-$Label.csv"
-    CurrentCountOnlyWorkloadSummaryCsv   = Join-Path $OutputDir "count-only-workload-summary-$Label.csv"
-    CurrentCountOnlyWorkloadSummaryNotes = Join-Path $OutputDir "count-only-workload-summary-$Label.txt"
-    CurrentCountOnlyComparisonCsv        = Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.csv"
-    CurrentCountOnlyComparisonNotes      = Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.txt"
-    CurrentTargetDetailCsv               = Join-Path $OutputDir "target-workload-trial-details-$Label.csv"
-    CurrentTargetSummaryCsv              = Join-Path $OutputDir "target-workload-trial-summary-$Label.csv"
-    CurrentTargetNotesPath               = Join-Path $OutputDir "target-workload-trial-notes-$Label.txt"
-    PreviousLowSelectivityGapDefaultPath = Join-Path $OutputDir "low-selectivity-gap-$PreviousLabel.csv"
-    PreviousTrialSummaryDefaultPath      = Join-Path $OutputDir "low-gap-trial-summary-$PreviousLabel.csv"
-    PreviousWorkloadSummaryDefaultPath   = Join-Path $OutputDir "low-gap-workload-trial-summary-$PreviousLabel.csv"
-    PreviousCountOnlySummaryDefaultPath  = Join-Path $OutputDir "count-only-workload-summary-$PreviousLabel.csv"
-    PreviousTargetSummaryDefaultPath     = Join-Path $OutputDir "target-workload-trial-summary-$PreviousLabel.csv"
+    SmallBenchmarkScript                      = Join-Path $ScriptDirectory "run-small-benchmark.ps1"
+    LowGapTrialsScript                        = Join-Path $ScriptDirectory "run-low-gap-trials.ps1"
+    AggregateComparatorScript                 = Join-Path $ScriptDirectory "compare-low-gap-trial-summary.ps1"
+    WorkloadComparatorScript                  = Join-Path $ScriptDirectory "compare-low-gap-workload-summary.ps1"
+    CountOnlyComparatorScript                 = Join-Path $ScriptDirectory "compare-count-only-workload-summary.ps1"
+    MaterializationComparatorScript           = Join-Path $ScriptDirectory "compare-materialization-mode-summary.ps1"
+    TargetSummaryScript                       = Join-Path $ScriptDirectory "summarize-target-workload-trials.ps1"
+    TargetComparatorScript                    = Join-Path $ScriptDirectory "compare-target-workload-summary.ps1"
+    ArtifactOrganizerScript                   = Join-Path $ScriptDirectory "organize-benchmark-artifacts.ps1"
+    ArtifactValidatorScript                   = Join-Path $ScriptDirectory "validate-benchmark-review-artifacts.ps1"
+    FlatArtifactCleanupScript                 = Join-Path $ScriptDirectory "cleanup-flat-benchmark-artifacts.ps1"
+    OrganizedRunRoot                          = $OrganizedRunRoot
+    OrganizedRunDirectory                     = Join-Path $OrganizedRunRoot $Label
+    PreviousOrganizedRunDirectory             = $PreviousOrganizedRunDirectory
+    ReviewNotesPath                           = Join-Path $OutputDir "low-gap-review-notes-$Label.txt"
+    ReviewManifestPath                        = Join-Path $OutputDir "low-gap-review-manifest-$Label.txt"
+    CurrentTrialSummaryCsv                    = Join-Path $OutputDir "low-gap-trial-summary-$Label.csv"
+    CurrentWorkloadSummaryCsv                 = Join-Path $OutputDir "low-gap-workload-trial-summary-$Label.csv"
+    CurrentCountOnlyWorkloadSummaryCsv        = Join-Path $OutputDir "count-only-workload-summary-$Label.csv"
+    CurrentCountOnlyWorkloadSummaryNotes      = Join-Path $OutputDir "count-only-workload-summary-$Label.txt"
+    CurrentCountOnlyComparisonCsv             = Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.csv"
+    CurrentCountOnlyComparisonNotes           = Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.txt"
+    CurrentMaterializationSummaryCsv          = Join-Path $OutputDir "materialization-mode-summary-$Label.csv"
+    CurrentMaterializationSummaryNotes        = Join-Path $OutputDir "materialization-mode-summary-$Label.txt"
+    CurrentMaterializationComparisonCsv       = Join-Path $OutputDir "materialization-mode-summary-comparison-$Label.csv"
+    CurrentMaterializationComparisonNotes     = Join-Path $OutputDir "materialization-mode-summary-comparison-$Label.txt"
+    CurrentTargetDetailCsv                    = Join-Path $OutputDir "target-workload-trial-details-$Label.csv"
+    CurrentTargetSummaryCsv                   = Join-Path $OutputDir "target-workload-trial-summary-$Label.csv"
+    CurrentTargetNotesPath                    = Join-Path $OutputDir "target-workload-trial-notes-$Label.txt"
+    PreviousLowSelectivityGapDefaultPath      = Join-Path $OutputDir "low-selectivity-gap-$PreviousLabel.csv"
+    PreviousTrialSummaryDefaultPath           = Join-Path $OutputDir "low-gap-trial-summary-$PreviousLabel.csv"
+    PreviousWorkloadSummaryDefaultPath        = Join-Path $OutputDir "low-gap-workload-trial-summary-$PreviousLabel.csv"
+    PreviousCountOnlySummaryDefaultPath       = Join-Path $OutputDir "count-only-workload-summary-$PreviousLabel.csv"
+    PreviousMaterializationSummaryDefaultPath = Join-Path $OutputDir "materialization-mode-summary-$PreviousLabel.csv"
+    PreviousTargetSummaryDefaultPath          = Join-Path $OutputDir "target-workload-trial-summary-$PreviousLabel.csv"
   }
 }
 
@@ -173,7 +183,8 @@ function Get-BenchmarkReviewRequiredScripts {
     $PathSet.LowGapTrialsScript,
     $PathSet.AggregateComparatorScript,
     $PathSet.WorkloadComparatorScript,
-    $PathSet.CountOnlyComparatorScript
+    $PathSet.CountOnlyComparatorScript,
+    $PathSet.MaterializationComparatorScript
   )
 
   if (!$SkipTargetWorkloadReview) {
@@ -330,11 +341,13 @@ function Initialize-BenchmarkReviewNotes {
     [string]$PreviousTrialSummaryCsv,
     [string]$PreviousWorkloadSummaryCsv,
     [string]$PreviousCountOnlySummaryCsv,
+    [string]$PreviousMaterializationSummaryCsv,
     [string]$PreviousTargetSummaryCsv,
     [object]$PreviousLowSelectivityGapInput,
     [object]$PreviousTrialSummaryInput,
     [object]$PreviousWorkloadSummaryInput,
     [object]$PreviousCountOnlySummaryInput,
+    [object]$PreviousMaterializationSummaryInput,
     [object]$PreviousTargetSummaryInput
   )
 
@@ -362,6 +375,7 @@ function Initialize-BenchmarkReviewNotes {
   Add-Utf8Text -Path $ReviewNotesPath -Text "Previous aggregate trial summary CSV: $PreviousTrialSummaryCsv`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Previous workload trial summary CSV: $PreviousWorkloadSummaryCsv`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Previous count-only workload summary CSV: $PreviousCountOnlySummaryCsv`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Previous materialization mode summary CSV: $PreviousMaterializationSummaryCsv`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Previous target workload summary CSV: $PreviousTargetSummaryCsv`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "`r`n"
 
@@ -376,6 +390,12 @@ function Initialize-BenchmarkReviewNotes {
 
   if ($PreviousCountOnlySummaryInput.Exists) {
     Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload summary resolved path: $($PreviousCountOnlySummaryInput.ResolvedPath)`r`n"
+  }
+
+  Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode summary status: $($PreviousMaterializationSummaryInput.Status)`r`n"
+
+  if ($PreviousMaterializationSummaryInput.Exists) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode summary resolved path: $($PreviousMaterializationSummaryInput.ResolvedPath)`r`n"
   }
 
   Add-Utf8Text -Path $ReviewNotesPath -Text "`r`n"
@@ -612,6 +632,10 @@ function Add-BenchmarkReviewArtifactSummary {
   Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload notes: $(Join-Path $OutputDir "count-only-workload-summary-$Label.txt")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload comparison CSV: $(Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.csv")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload comparison notes: $(Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.txt")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode summary: $(Join-Path $OutputDir "materialization-mode-summary-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode notes: $(Join-Path $OutputDir "materialization-mode-summary-$Label.txt")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode comparison CSV: $(Join-Path $OutputDir "materialization-mode-summary-comparison-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode comparison notes: $(Join-Path $OutputDir "materialization-mode-summary-comparison-$Label.txt")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "low-selectivity gap CSV: $(Join-Path $OutputDir "low-selectivity-gap-$Label.csv")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "low-gap regression notes: $(Join-Path $OutputDir "low-gap-regression-notes-$Label.txt")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "low-gap trial details: $(Join-Path $OutputDir "low-gap-trial-details-$Label.csv")`r`n"
@@ -633,6 +657,7 @@ function Add-BenchmarkReviewArtifactSummary {
   Add-Utf8Text -Path $ReviewNotesPath -Text "Use aggregate comparison artifacts for low-selectivity bucket movement.`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Use workload comparison artifacts for weakest-workload movement.`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Use count-only workload comparison artifacts for count-only query mode movement.`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Use materialization mode comparison artifacts for output-contract movement across fresh owned, reusable owned, reference-result, and count-only paths.`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Use target-workload comparison artifacts for $TargetWorkloadName movement.`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Do not accept a performance commit based on one noisy single-run result.`r`n"
 }
@@ -648,6 +673,8 @@ function Add-BenchmarkReviewComparisonAvailabilitySummary {
     [string]$CurrentWorkloadSummaryCsv,
     [object]$PreviousCountOnlySummaryInput,
     [string]$CurrentCountOnlyWorkloadSummaryCsv,
+    [object]$PreviousMaterializationSummaryInput,
+    [string]$CurrentMaterializationSummaryCsv,
     [bool]$SkipTargetWorkloadReview,
     [object]$PreviousTargetSummaryInput,
     [string]$CurrentTargetSummaryCsv
@@ -699,6 +726,18 @@ function Add-BenchmarkReviewComparisonAvailabilitySummary {
   else {
     Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload summary comparison: skipped`r`n"
     Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload summary comparison reason: current count-only workload summary was missing`r`n"
+  }
+
+  if ($PreviousMaterializationSummaryInput.Exists -and (Test-BenchmarkReviewPathExists -Path $CurrentMaterializationSummaryCsv)) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode summary comparison: completed`r`n"
+  }
+  elseif (!$PreviousMaterializationSummaryInput.Exists) {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode summary comparison: skipped`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode summary comparison reason: previous materialization mode summary was $($PreviousMaterializationSummaryInput.Status)`r`n"
+  }
+  else {
+    Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode summary comparison: skipped`r`n"
+    Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode summary comparison reason: current materialization mode summary was missing`r`n"
   }
 
   if ($SkipTargetWorkloadReview) {
@@ -1220,6 +1259,22 @@ function Resolve-BenchmarkReviewManifestArtifactSet {
     -OnFailure $OnFailure `
     -OnInvalidPath $OnInvalidPath
 
+  $ResolvedArtifacts.MaterializationSummary = Resolve-BenchmarkReviewManifestArtifact `
+    -Entries $Entries `
+    -ArtifactName $BenchmarkReviewArtifactNames.MaterializationModeSummary `
+    -OutputDir $OutputDir `
+    -Label $Label `
+    -OnFailure $OnFailure `
+    -OnInvalidPath $OnInvalidPath
+
+  $ResolvedArtifacts.MaterializationNotes = Resolve-BenchmarkReviewManifestArtifact `
+    -Entries $Entries `
+    -ArtifactName $BenchmarkReviewArtifactNames.MaterializationModeNotes `
+    -OutputDir $OutputDir `
+    -Label $Label `
+    -OnFailure $OnFailure `
+    -OnInvalidPath $OnInvalidPath
+
   $ResolvedArtifacts.LowGap = Resolve-BenchmarkReviewManifestArtifact `
     -Entries $Entries `
     -ArtifactName $BenchmarkReviewArtifactNames.LowSelectivityGapCsv `
@@ -1358,6 +1413,17 @@ function Resolve-BenchmarkReviewManifestArtifactSet {
     -OnFailure $OnFailure `
     -OnInvalidPath $OnInvalidPath
 
+  $ResolvedArtifacts.MaterializationComparison = Resolve-BenchmarkReviewManifestArtifact `
+    -Entries $Entries `
+    -ArtifactName $BenchmarkReviewArtifactNames.MaterializationModeComparisonCsv `
+    -Kind "comparison" `
+    -RequireComparisons $RequireComparisons `
+    -AllowSkippedTargetWorkloadReview $AllowSkippedTargetWorkloadReview `
+    -OutputDir $OutputDir `
+    -Label $Label `
+    -OnFailure $OnFailure `
+    -OnInvalidPath $OnInvalidPath
+
   $ResolvedArtifacts.TargetComparison = Resolve-BenchmarkReviewManifestArtifact `
     -Entries $Entries `
     -ArtifactName $BenchmarkReviewArtifactNames.TargetWorkloadTrialComparisonCsv `
@@ -1394,6 +1460,17 @@ function Resolve-BenchmarkReviewManifestArtifactSet {
   Resolve-BenchmarkReviewManifestArtifact `
     -Entries $Entries `
     -ArtifactName $BenchmarkReviewArtifactNames.CountOnlyWorkloadComparisonNotes `
+    -Kind "comparison" `
+    -RequireComparisons $RequireComparisons `
+    -AllowSkippedTargetWorkloadReview $AllowSkippedTargetWorkloadReview `
+    -OutputDir $OutputDir `
+    -Label $Label `
+    -OnFailure $OnFailure `
+    -OnInvalidPath $OnInvalidPath | Out-Null
+
+  Resolve-BenchmarkReviewManifestArtifact `
+    -Entries $Entries `
+    -ArtifactName $BenchmarkReviewArtifactNames.MaterializationModeComparisonNotes `
     -Kind "comparison" `
     -RequireComparisons $RequireComparisons `
     -AllowSkippedTargetWorkloadReview $AllowSkippedTargetWorkloadReview `

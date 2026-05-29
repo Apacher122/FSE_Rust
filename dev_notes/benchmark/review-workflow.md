@@ -231,7 +231,7 @@ Use these to review:
 
 ## Target workload review
 
-Unless skipped, the review runner generates target workload artifacts.
+Unless skipped, the review runner generates target workload artifacts from the repeated trial workload CSVs.
 
 Target workload artifacts include:
 
@@ -242,6 +242,7 @@ Target workload artifacts include:
 When previous target summaries are available, it also generates:
 
     target-workload-trial-comparison-<label>.csv
+    target-workload-trial-comparison-<label>.txt
 
 The target workload review is useful for focused boundary diagnostics.
 
@@ -253,18 +254,40 @@ Default target workloads:
     large:
       large_cross_cluster_boundary
 
+The target workload summary is grouped by tree baseline:
+
+    kd_tree
+    r_tree
+
 Target workload review should check:
 
     target workload name
+    trial count
     FSE average elapsed
     baseline average elapsed
     timing ratio
+    count-only average elapsed
+    reference-result average elapsed
+    reusable owned average elapsed
     visited nodes
     retained leaves
     reconstructed records
     matched records
     candidate ratio
     structural deltas versus previous run
+    stats-equivalence fields
+
+Required stats-equivalence fields:
+
+    all_count_only_stats_match_owned
+    all_reference_stats_match_count_only
+    all_reusable_owned_stats_match_owned
+
+These must be true before target workload timing movement is used as evidence.
+
+The review validator enforces these fields when target workload review artifacts are present. If any field is false, the review artifact validation must fail even if all files exist.
+
+If `-SkipTargetWorkloadReview` is used, target workload artifacts should be marked skipped in the manifest rather than missing.
 
 ## Count-only workload summary
 
@@ -662,3 +685,29 @@ Review rules:
     ```
 
 Do not treat a single materialization comparison as a performance proof. Use it to identify which output contract moved, then confirm with repeated benchmark evidence when a performance claim matters.
+
+## Target comparison validation scope
+
+Target workload summary equivalence is validated whenever target summary artifacts are found.
+
+Target workload comparison equivalence is validated whenever target comparison artifacts are found.
+
+The `-RequireValidatedComparisons` flag still applies to the broader comparison set, including aggregate trial, workload trial, and count-only workload comparisons. Do not use that flag for a target-only comparison smoke unless the full previous comparison input set is also provided.
+
+## Materialization agreement validation
+
+Materialization review artifacts are part of the benchmark evidence contract.
+
+The review validator requires:
+
+    ```text
+    materialization-mode-summary-<label>.csv
+    agreement = pass
+
+    materialization-mode-summary-comparison-<label>.csv
+    agreement_status = pass
+    ```
+
+The comparison artifact is validated whenever it is present. It does not require the full comparison set unless `-RequireValidatedComparisons` is explicitly used.
+
+A timing improvement is not review-grade evidence if owned, reusable-owned, reference-result, and count-only output contracts disagree.
