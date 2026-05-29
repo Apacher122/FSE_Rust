@@ -31,7 +31,8 @@ impl BenchmarkApplicationRenderer {
         self.append_target_workload_retained_execution_phase_debug_output(&mut output, context);
         self.append_target_workload_retained_allocation_debug_output(&mut output, context);
         self.append_target_workload_resultless_timing_debug_output(&mut output, context);
-        self.append_target_workload_count_only_comparison_debug_output(&mut output, context);
+        self.append_target_workload_materialization_mode_debug_output(&mut output, context);
+        self.append_workload_materialization_mode_summary_debug_output(&mut output, context);
         self.append_debug_suite_terminal_output(&mut output, context, result_bundle);
 
         output

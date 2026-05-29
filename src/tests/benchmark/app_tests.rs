@@ -275,6 +275,7 @@ fn benchmark_application_renderer_uses_detailed_output_for_debug_report() {
     assert!(output.contains("FSE parallel min leaves"));
     assert!(output.contains("Workload: cluster_range_000"));
     assert!(output.contains("Selectivity Bucket Summary"));
+    assert!(output.contains("Workload materialization mode summary"));
 }
 
 #[test]
@@ -370,6 +371,16 @@ fn benchmark_application_runs_debug_report_configuration() {
         output
             .terminal_output
             .contains("Selectivity Bucket Summary")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("Target workload materialization mode comparison")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("all matched records agree: true")
     );
     assert!(output.csv_status_lines.is_empty());
 }

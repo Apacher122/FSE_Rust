@@ -97,8 +97,9 @@ fn debug_report_uses_large_dataset_target_workload() {
     assert!(output.contains("Target workload retained leaf details"));
     assert!(output.contains("workload: large_cross_cluster_boundary"));
     assert!(output.contains("Target workload resultless timing estimate"));
-    assert!(output.contains("Target workload count-only comparison"));
-    assert!(output.contains("matched records agree: true"));
+    assert!(output.contains("Target workload materialization mode comparison"));
+    assert!(output.contains("Workload materialization mode summary"));
+    assert!(output.contains("all matched records agree: true"));
     assert!(output.contains("query min:"));
     assert!(output.contains("query max:"));
     assert!(output.contains("retained leaves:"));
@@ -197,29 +198,51 @@ fn debug_report_renders_target_workload_resultless_timing_estimate() {
 }
 
 #[test]
-fn debug_report_renders_target_workload_count_only_comparison() {
+fn debug_report_renders_target_workload_materialization_mode_comparison() {
     let context = BenchmarkApplicationContext::from_cli_config(debug_cli_config());
     let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
     let renderer = BenchmarkApplicationRenderer::new();
 
     let output = renderer.render_terminal_output(&context, &result_bundle);
 
-    assert!(output.contains("Target workload count-only comparison"));
+    assert!(output.contains("Target workload materialization mode comparison"));
     assert!(output.contains("workload: cluster_boundary_range"));
     assert!(output.contains("timing iterations:"));
-    assert!(output.contains("owned average elapsed:"));
+    assert!(output.contains("fresh owned average elapsed:"));
+    assert!(output.contains("reusable owned average elapsed:"));
+    assert!(output.contains("reference-result average elapsed:"));
     assert!(output.contains("count-only average elapsed:"));
-    assert!(output.contains("estimated owned result overhead:"));
+    assert!(output.contains("estimated owned above count-only:"));
+    assert!(output.contains("estimated owned above reference-result:"));
+    assert!(output.contains("estimated fresh above reusable owned:"));
     assert!(output.contains("count-only speedup:"));
-    assert!(output.contains("owned matched records:"));
+    assert!(output.contains("reference-result speedup:"));
+    assert!(output.contains("reusable owned speedup:"));
+    assert!(output.contains("fresh owned matched records:"));
+    assert!(output.contains("reusable owned matched records:"));
+    assert!(output.contains("reference-result matched records:"));
     assert!(output.contains("count-only matched records:"));
-    assert!(output.contains("matched records agree: true"));
-    assert!(output.contains("owned candidate records:"));
-    assert!(output.contains("count-only candidate records:"));
-    assert!(output.contains("owned retained leaves:"));
-    assert!(output.contains("count-only retained leaves:"));
-    assert!(output.contains("owned visited nodes:"));
-    assert!(output.contains("count-only visited nodes:"));
+    assert!(output.contains("count-only stats match owned: true"));
+    assert!(output.contains("reference stats match count-only: true"));
+    assert!(output.contains("reusable owned stats match owned: true"));
+    assert!(output.contains("all matched records agree: true"));
+}
+
+#[test]
+fn debug_report_renders_workload_materialization_mode_summary() {
+    let context = BenchmarkApplicationContext::from_cli_config(debug_cli_config());
+    let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
+    let renderer = BenchmarkApplicationRenderer::new();
+
+    let output = renderer.render_terminal_output(&context, &result_bundle);
+
+    assert!(output.contains("Workload materialization mode summary"));
+    assert!(output.contains(
+        "workload | matched | fresh owned | reusable owned | reference | count-only | count speedup | reference speedup | reusable speedup | agreement"
+    ));
+    assert!(output.contains("cluster_range_000 |"));
+    assert!(output.contains("cluster_boundary_range |"));
+    assert!(output.contains(" | pass"));
 }
 
 #[test]
@@ -278,10 +301,12 @@ fn compact_report_does_not_render_debug_structure_metrics() {
     assert!(!output.contains("average resultless retained elapsed:"));
     assert!(!output.contains("estimated result ownership overhead:"));
     assert!(!output.contains("estimated resultless retained share:"));
-    assert!(!output.contains("Target workload count-only comparison"));
-    assert!(!output.contains("owned average elapsed:"));
+    assert!(!output.contains("Target workload materialization mode comparison"));
+    assert!(!output.contains("Workload materialization mode summary"));
+    assert!(!output.contains("fresh owned average elapsed:"));
+    assert!(!output.contains("reference-result average elapsed:"));
     assert!(!output.contains("count-only average elapsed:"));
-    assert!(!output.contains("estimated owned result overhead:"));
+    assert!(!output.contains("estimated owned above count-only:"));
     assert!(!output.contains("count-only speedup:"));
 }
 

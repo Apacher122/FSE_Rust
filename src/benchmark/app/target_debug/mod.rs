@@ -5,8 +5,8 @@
 //! should not change query execution behavior.
 
 mod candidates;
-mod count_only;
 mod formatting;
+mod materialization_modes;
 mod reconstruction_timing;
 mod resultless_timing;
 mod retained_allocation;
