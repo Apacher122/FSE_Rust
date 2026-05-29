@@ -8,6 +8,7 @@ c[0-9]*-*.txt
 /old_output
 *.zip
 /temp
+*.txt
 
 # VS Code
 .vscode/*

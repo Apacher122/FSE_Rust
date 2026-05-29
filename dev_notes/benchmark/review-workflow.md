@@ -609,3 +609,56 @@ Use owned-result artifacts for:
 
     materialized row-return query performance
     baseline comparisons against flat scan, KD-tree, and R-tree
+
+## Materialization mode review artifact
+
+The review workflow now preserves the debug report's workload materialization mode summary as a CSV artifact.
+
+This artifact is separate from the count-only workload summary. Count-only summaries answer whether exact cardinality avoids owned-result materialization. Materialization mode summaries compare four output contracts for every workload:
+
+    ```text
+    fresh owned result
+    reusable owned result
+    reference-result
+    count-only
+    ```
+
+The review rule is:
+
+    ```text
+    Every materialization mode summary row must have agreement = pass.
+    ```
+
+Use this artifact to identify whether owned result materialization, reusable output buffers, reference-result construction, or count-only execution is the current output-contract cost driver. Do not use it as a standalone performance claim without repeated-trial evidence.
+
+## Materialization summary comparison
+
+Materialization summary comparison is a single-run artifact review helper. It compares the extracted materialization-mode summary CSV from one run against another run.
+
+Command:
+
+    ```powershell
+    .\scripts\compare-materialization-mode-summary.ps1 `
+    -Label "<label>" `
+    -PreviousMaterializationSummaryCsv "benchmark_artifacts\materialization-mode-summary-<previous>.csv" `
+    -CurrentMaterializationSummaryCsv "benchmark_artifacts\materialization-mode-summary-<current>.csv" `
+    -OutputDir "benchmark_artifacts"
+    ```
+
+The comparison output is:
+
+    ```text
+    materialization-mode-summary-comparison-<label>.csv
+    materialization-mode-summary-comparison-<label>.txt
+    ```
+
+Review rules:
+
+    ```text
+    agreement_status must remain pass
+    matched_records_delta should be 0
+    elapsed classifications are review signals only
+    speedup classifications are review signals only
+    ```
+
+Do not treat a single materialization comparison as a performance proof. Use it to identify which output contract moved, then confirm with repeated benchmark evidence when a performance claim matters.

@@ -479,3 +479,80 @@ Use `-Copy` before cleanup when preserving safety matters.
 Use `-Force` only when intentionally overwriting existing organized copies or deleting eligible flat artifacts.
 
 Keep artifact-management changes separate from query-performance changes.
+
+## Materialization mode summary artifact
+
+The debug report includes a workload materialization mode summary. The benchmark artifact workflow should keep a machine-readable copy of that section so owned-result, reusable-owned, reference-result, and count-only timings can be reviewed without manually scraping terminal output.
+
+The summary artifact is generated from the debug report:
+
+```powershell
+.\scripts\summarize-materialization-mode-summary.ps1 `
+  -DebugOutputPath "benchmark_artifacts\debug-output-<label>.txt" `
+  -OutputCsv "benchmark_artifacts\materialization-mode-summary-<label>.csv" `
+  -OutputNotesPath "benchmark_artifacts\materialization-mode-summary-<label>.txt"
+```
+
+The generated CSV uses these columns:
+
+```text
+dataset
+max_depth
+workload_name
+matched_records
+fresh_owned_elapsed
+reusable_owned_elapsed
+reference_elapsed
+count_only_elapsed
+count_speedup
+reference_speedup
+reusable_speedup
+agreement
+```
+
+The agreement column must remain `pass` for every workload before using materialization timing as evidence.
+
+## Materialization summary artifacts
+
+Materialization-mode summaries are extracted from benchmark debug output by:
+
+```text
+scripts/summarize-materialization-mode-summary.ps1
+```
+
+The normal benchmark script writes:
+
+```text
+materialization-mode-summary-<label>.csv
+materialization-mode-summary-<label>.txt
+```
+
+The CSV stores per-workload timing for:
+
+```text
+fresh owned
+reusable owned
+reference-result
+count-only
+```
+
+It also stores the dataset, effective max depth, matched record count, speedup ratios, and an agreement column.
+
+Use the comparison helper when comparing two materialization summary CSVs:
+
+```powershell
+.\scripts\compare-materialization-mode-summary.ps1 `
+  -Label "<label>" `
+  -PreviousMaterializationSummaryCsv "benchmark_artifacts\materialization-mode-summary-<previous>.csv" `
+  -CurrentMaterializationSummaryCsv "benchmark_artifacts\materialization-mode-summary-<current>.csv" `
+  -OutputDir "benchmark_artifacts"
+```
+
+The comparison helper writes:
+
+```text
+materialization-mode-summary-comparison-<label>.csv
+materialization-mode-summary-comparison-<label>.txt
+```
+
+Use these artifacts to review materialization movement separately from exactness agreement. A row can have noisy timing movement while still preserving exact result semantics.

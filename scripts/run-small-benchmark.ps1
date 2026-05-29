@@ -48,10 +48,13 @@ $SummaryCsvPath = Join-Path $OutputDir "summary-$Label.csv"
 $WorkloadsCsvPath = Join-Path $OutputDir "workloads-$Label.csv"
 $CountOnlyWorkloadSummaryCsvPath = Join-Path $OutputDir "count-only-workload-summary-$Label.csv"
 $CountOnlyWorkloadSummaryNotesPath = Join-Path $OutputDir "count-only-workload-summary-$Label.txt"
+$MaterializationModeSummaryCsvPath = Join-Path $OutputDir "materialization-mode-summary-$Label.csv"
+$MaterializationModeSummaryNotesPath = Join-Path $OutputDir "materialization-mode-summary-$Label.txt"
 $LowSelectivityGapCsvPath = Join-Path $OutputDir "low-selectivity-gap-$Label.csv"
 $LowGapRegressionNotesPath = Join-Path $OutputDir "low-gap-regression-notes-$Label.txt"
 
 $CountOnlyWorkloadSummaryScript = Join-Path $ScriptDirectory "summarize-count-only-workload-summary.ps1"
+$MaterializationModeSummaryScript = Join-Path $ScriptDirectory "summarize-materialization-mode-summary.ps1"
 
 
 function Write-BenchmarkSection {
@@ -377,6 +380,21 @@ Invoke-BenchmarkCommand `
     )) `
     -First
 
+if (!(Test-Path -LiteralPath $MaterializationModeSummaryScript)) {
+    throw "required script was not found: $MaterializationModeSummaryScript"
+}
+
+& $MaterializationModeSummaryScript `
+    -DebugOutputPath $DebugOutputPath `
+    -OutputCsv $MaterializationModeSummaryCsvPath `
+    -OutputNotesPath $MaterializationModeSummaryNotesPath `
+    -Dataset $Dataset `
+    -MaxDepth $EffectiveMaxDepthText
+
+if ($LASTEXITCODE -ne 0) {
+    throw "materialization mode summary failed with exit code $LASTEXITCODE"
+}
+
 Add-Utf8Text -Path $TextOutputPath -Text "`r`n---`r`n`r`nArtifacts:`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Dataset:                        $Dataset`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Max depth:                      $EffectiveMaxDepth`r`n"
@@ -386,6 +404,8 @@ Add-Utf8Text -Path $TextOutputPath -Text "  Summary CSV:                    $Sum
 Add-Utf8Text -Path $TextOutputPath -Text "  Workloads CSV:                  $WorkloadsCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Count-only workload summary:    $CountOnlyWorkloadSummaryCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Count-only workload notes:      $CountOnlyWorkloadSummaryNotesPath`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Materialization summary CSV:    $MaterializationModeSummaryCsvPath`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Materialization summary notes:  $MaterializationModeSummaryNotesPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Low-selectivity gap CSV:        $LowSelectivityGapCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Low-gap regression notes:       $LowGapRegressionNotesPath`r`n"
 
@@ -398,6 +418,8 @@ Add-Utf8Text -Path $DebugOutputPath -Text "  Summary CSV:                    $Su
 Add-Utf8Text -Path $DebugOutputPath -Text "  Workloads CSV:                  $WorkloadsCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Count-only workload summary:    $CountOnlyWorkloadSummaryCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Count-only workload notes:      $CountOnlyWorkloadSummaryNotesPath`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Materialization summary CSV:    $MaterializationModeSummaryCsvPath`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Materialization summary notes:  $MaterializationModeSummaryNotesPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Low-selectivity gap CSV:        $LowSelectivityGapCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Low-gap regression notes:       $LowGapRegressionNotesPath`r`n"
 
@@ -411,5 +433,7 @@ Write-Host "  $SummaryCsvPath"
 Write-Host "  $WorkloadsCsvPath"
 Write-Host "  $CountOnlyWorkloadSummaryCsvPath"
 Write-Host "  $CountOnlyWorkloadSummaryNotesPath"
+Write-Host "  $MaterializationModeSummaryCsvPath"
+Write-Host "  $MaterializationModeSummaryNotesPath"
 Write-Host "  $LowSelectivityGapCsvPath"
 Write-Host "  $LowGapRegressionNotesPath"
