@@ -7,6 +7,7 @@
 
 mod api;
 mod count;
+mod exists;
 #[cfg(any(test, debug_assertions))]
 mod leaf_shape_debug;
 mod options;
@@ -26,6 +27,8 @@ pub use api::{
 };
 
 pub use count::{count_query_matches, count_query_matches_with_stats};
+
+pub use exists::query_has_match;
 
 pub use references::{
     execute_query_references, execute_query_references_with_stats,

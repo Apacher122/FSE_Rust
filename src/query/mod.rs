@@ -16,7 +16,7 @@ pub use execution::{
     count_query_matches_with_stats, execute_query, execute_query_into,
     execute_query_into_with_options, execute_query_references, execute_query_references_with_stats,
     execute_query_with_options, execute_query_with_stats, execute_query_with_stats_and_options,
-    reconstruct_query_result_reference, reconstruct_query_result_reference_into,
+    query_has_match, reconstruct_query_result_reference, reconstruct_query_result_reference_into,
     reconstruct_query_result_references, reconstruct_query_result_references_into,
 };
 
