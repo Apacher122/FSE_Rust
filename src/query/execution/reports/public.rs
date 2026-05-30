@@ -31,13 +31,21 @@ pub struct QueryExecutionStats {
     /// Number of records represented by the index.
     pub total_records: usize,
 
-    /// Number of records logically reconstructed after pruning.
+    /// Number of records reconstructed or inspected after pruning.
+    ///
+    /// Full-result, reference-result, and count-only execution report the full
+    /// retained candidate count. Short-circuit output contracts report the
+    /// number of candidate records needed to establish their result.
     pub reconstructed_records: usize,
 
-    /// Number of records returned after exact predicate evaluation.
+    /// Number of records accepted by exact predicate evaluation for this report.
+    ///
+    /// Full-result, reference-result, and count-only execution report exact
+    /// cardinality. Short-circuit output contracts may report the accepted
+    /// record count required to establish their result.
     pub matched_records: usize,
 
-    /// Fraction of total records reconstructed after pruning.
+    /// Fraction of total records reconstructed or inspected after pruning.
     pub candidate_ratio: Scalar,
 }
 
@@ -64,6 +72,26 @@ pub struct QueryCountReport {
     pub matched_records: usize,
 
     /// Runtime statistics for the count-only query.
+    pub stats: QueryExecutionStats,
+}
+
+/// Exact existence query result paired with execution statistics.
+///
+/// # Runtime Role
+///
+/// `QueryExistenceReport` exposes whether the exact result set is non-empty.
+/// The associated statistics describe the work performed by the short-circuit
+/// existence path. `inspected_records` counts the candidate rows evaluated
+/// before the result was established.
+#[derive(Clone, Debug, PartialEq)]
+pub struct QueryExistenceReport {
+    /// Whether the exact query result set is non-empty.
+    pub has_match: bool,
+
+    /// Number of candidate rows inspected before the result was established.
+    pub inspected_records: usize,
+
+    /// Runtime statistics for the existence query.
     pub stats: QueryExecutionStats,
 }
 

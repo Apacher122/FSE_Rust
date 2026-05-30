@@ -16,7 +16,8 @@ use crate::benchmark::reports::output::format_duration_ascii;
 use crate::benchmark::reports::{duration_ratio, measure_repeated};
 use crate::benchmark::workloads::QueryWorkloadCase;
 use crate::query::{
-    count_query_matches_with_stats, execute_query_with_stats_and_options, query_has_match,
+    count_query_matches_with_stats, execute_query_with_stats_and_options,
+    query_has_match_with_stats,
 };
 
 #[derive(Clone, Debug)]
@@ -31,6 +32,7 @@ struct ExistenceTimingEvidence {
     fresh_owned_has_match: bool,
     count_only_has_match: bool,
     existence_has_match: bool,
+    existence_inspected_records: usize,
     existence_matches_owned_presence: bool,
     existence_matches_count_only_presence: bool,
     all_existence_results_agree: bool,
@@ -77,18 +79,19 @@ impl BenchmarkApplicationRenderer {
         output.push_str("Workload exact existence timing summary\n");
         output.push_str("---------------------------------------\n");
         output.push_str(
-            "workload | owned has match | count-only has match | existence has match | fresh owned | count-only | existence | existence speedup vs owned | existence speedup vs count-only | agreement\n",
+            "workload | owned has match | count-only has match | existence has match | existence inspected records | fresh owned | count-only | existence | existence speedup vs owned | existence speedup vs count-only | agreement\n",
         );
 
         for workload in &context.workloads {
             let evidence = collect_existence_timing_evidence(context, workload);
 
             output.push_str(&format!(
-                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {}\n",
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {}\n",
                 workload.name,
                 evidence.fresh_owned_has_match,
                 evidence.count_only_has_match,
                 evidence.existence_has_match,
+                evidence.existence_inspected_records,
                 format_duration_ascii(evidence.fresh_owned_elapsed),
                 format_duration_ascii(evidence.count_only_elapsed),
                 format_duration_ascii(evidence.existence_elapsed),
@@ -160,6 +163,11 @@ fn append_target_existence_timing_evidence(
     append_debug_line(output, "existence has match", evidence.existence_has_match);
     append_debug_line(
         output,
+        "existence inspected records",
+        evidence.existence_inspected_records,
+    );
+    append_debug_line(
+        output,
         "existence matches owned presence",
         evidence.existence_matches_owned_presence,
     );
@@ -198,15 +206,16 @@ fn collect_existence_timing_evidence(
     });
 
     let existence_timing = measure_repeated(timing_config, || {
-        let has_match = query_has_match(&context.index, &workload.query);
+        let report = query_has_match_with_stats(&context.index, &workload.query);
 
-        std::hint::black_box(has_match);
+        std::hint::black_box(report.has_match);
+        std::hint::black_box(report.inspected_records);
     });
 
     let fresh_owned_report =
         execute_query_with_stats_and_options(&context.index, &workload.query, query_options);
     let count_only_report = count_query_matches_with_stats(&context.index, &workload.query);
-    let existence_has_match = query_has_match(&context.index, &workload.query);
+    let existence_report = query_has_match_with_stats(&context.index, &workload.query);
 
     let fresh_owned_has_match = !fresh_owned_report.results.is_empty();
     let count_only_has_match = count_only_report.matched_records > 0;
@@ -217,7 +226,8 @@ fn collect_existence_timing_evidence(
         existence_timing.average_elapsed,
         fresh_owned_has_match,
         count_only_has_match,
-        existence_has_match,
+        existence_report.has_match,
+        existence_report.inspected_records,
     );
 
     assert_existence_timing_equivalence(&evidence);
@@ -232,6 +242,7 @@ fn existence_timing_evidence(
     fresh_owned_has_match: bool,
     count_only_has_match: bool,
     existence_has_match: bool,
+    existence_inspected_records: usize,
 ) -> ExistenceTimingEvidence {
     ExistenceTimingEvidence {
         fresh_owned_elapsed,
@@ -244,6 +255,7 @@ fn existence_timing_evidence(
         fresh_owned_has_match,
         count_only_has_match,
         existence_has_match,
+        existence_inspected_records,
         existence_matches_owned_presence: existence_has_match == fresh_owned_has_match,
         existence_matches_count_only_presence: existence_has_match == count_only_has_match,
         all_existence_results_agree: existence_has_match == fresh_owned_has_match

@@ -28,7 +28,7 @@ pub use api::{
 
 pub use count::{count_query_matches, count_query_matches_with_stats};
 
-pub use exists::query_has_match;
+pub use exists::{query_has_match, query_has_match_with_stats};
 
 pub use references::{
     execute_query_references, execute_query_references_with_stats,
@@ -44,8 +44,8 @@ pub use options::{
 };
 
 pub use reports::{
-    QueryCountReport, QueryExecutionReport, QueryExecutionStats, QueryReferenceReport,
-    QueryResultReference,
+    QueryCountReport, QueryExecutionReport, QueryExecutionStats, QueryExistenceReport,
+    QueryReferenceReport, QueryResultReference,
 };
 
 #[cfg(test)]

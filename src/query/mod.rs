@@ -12,12 +12,13 @@ pub mod traversal;
 pub use evaluator::evaluate_query;
 pub use execution::{
     QueryCountReport, QueryExecutionMode, QueryExecutionOptions, QueryExecutionReport,
-    QueryExecutionStats, QueryReferenceReport, QueryResultReference, count_query_matches,
-    count_query_matches_with_stats, execute_query, execute_query_into,
+    QueryExecutionStats, QueryExistenceReport, QueryReferenceReport, QueryResultReference,
+    count_query_matches, count_query_matches_with_stats, execute_query, execute_query_into,
     execute_query_into_with_options, execute_query_references, execute_query_references_with_stats,
     execute_query_with_options, execute_query_with_stats, execute_query_with_stats_and_options,
-    query_has_match, reconstruct_query_result_reference, reconstruct_query_result_reference_into,
-    reconstruct_query_result_references, reconstruct_query_result_references_into,
+    query_has_match, query_has_match_with_stats, reconstruct_query_result_reference,
+    reconstruct_query_result_reference_into, reconstruct_query_result_references,
+    reconstruct_query_result_references_into,
 };
 
 pub(crate) use execution::{

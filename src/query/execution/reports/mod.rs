@@ -9,8 +9,8 @@ mod public;
 mod retained;
 
 pub use public::{
-    QueryCountReport, QueryExecutionReport, QueryExecutionStats, QueryReferenceReport,
-    QueryResultReference,
+    QueryCountReport, QueryExecutionReport, QueryExecutionStats, QueryExistenceReport,
+    QueryReferenceReport, QueryResultReference,
 };
 
 pub(crate) use capacity::result_capacity_hint;
