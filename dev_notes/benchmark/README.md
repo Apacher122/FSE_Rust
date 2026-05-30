@@ -16,6 +16,7 @@ That file now acts as an index into these topic files.
 | `datasets-and-targets.md` | Small and large dataset baselines, max-depth choices, and target workload names. |
 | `diagnostic-conclusions.md` | Boundary fixed-cost conclusions, retained execution conclusions, and result ownership conclusions. |
 | `count-only-workflow.md` | Count-only API timing, count-only summary artifacts, and count-only comparison artifacts. |
+| `existence-workflow.md` | Exact existence API timing, debug evidence scope, and artifact promotion rules. |
 | `review-workflow.md` | Low-gap review runner, target workload review, trial comparison commands, and expected review flow. |
 | `validation-coverage.md` | Review validator artifact contracts, equivalence gates, comparison scope, and failure conditions. |
 | `artifact-workflow.md` | Artifact organization, organized run folders, organized previous-label lookup, organized copy, and cleanup. |

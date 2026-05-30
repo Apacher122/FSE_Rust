@@ -12,6 +12,7 @@ Use this file as the entry point.
 | Dataset baselines, target workloads, and review depths | `dev_notes/benchmark/datasets-and-targets.md` |
 | Boundary diagnostics, fixed-cost conclusions, and result ownership conclusions | `dev_notes/benchmark/diagnostic-conclusions.md` |
 | Count-only query timing, summary artifacts, and comparison artifacts | `dev_notes/benchmark/count-only-workflow.md` |
+| Exact existence query timing and artifact-scope decision | `dev_notes/benchmark/existence-workflow.md` |
 | Low-gap review runner, target workload review, and comparison commands | `dev_notes/benchmark/review-workflow.md` |
 | Artifact organization, organized previous-label resolution, organized copy, and cleanup | `dev_notes/benchmark/artifact-workflow.md` |
 | Leaf policy review and current policy conclusion | `dev_notes/benchmark/leaf-policy.md` |
@@ -36,6 +37,9 @@ owned-result query execution:
 
 count-only query execution:
   returns exact cardinality without owned Vector materialization
+
+existence query execution:
+  returns whether the exact result set is non-empty
 ```
 
 ## Preferred review command
@@ -83,3 +87,5 @@ Reporting/tooling-only commits should be judged by artifact correctness, not tim
 Performance commits should be accepted only when correctness is preserved and repeated-trial evidence supports the change.
 
 Count-only benchmark conclusions must stay separate from owned-result benchmark conclusions.
+
+Existence benchmark conclusions must stay separate from count-only conclusions unless a commit explicitly explains why the boolean output contract needs durable artifact review.

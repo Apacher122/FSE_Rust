@@ -24,9 +24,12 @@ owned-result query execution:
 
 count-only query execution:
   returns exact cardinality without owned Vector materialization
+
+existence query execution:
+  returns whether the exact result set is non-empty
 ```
 
-Owned-result benchmark conclusions and count-only benchmark conclusions must remain separate.
+Owned-result, count-only, and existence benchmark conclusions must remain separate.
 
 ## General acceptance requirements
 
@@ -127,6 +130,7 @@ target workload trial summary
 target workload comparison
 count-only workload summary
 count-only workload comparison
+debug-only existence timing summary
 ```
 
 A performance commit should explain:
@@ -460,4 +464,32 @@ review manifest is accurate
 owned-result conclusions are separate from count-only conclusions
 single-run timing is not overinterpreted
 repeated-trial evidence is used for performance claims
+```
+
+## Existence-related benchmark evidence
+
+Existence execution is a separate output contract.
+
+It answers:
+
+```text
+is |E(Q, F)| greater than zero
+```
+
+Existence timing should not be treated as count-only timing.
+
+Current existence evidence is debug-only. It should remain debug-only until repeated-trial evidence shows that the boolean output contract needs durable CSV/review tracking separate from count-only.
+
+Acceptance requirements for existence evidence:
+
+```text
+existence matches owned presence: true
+existence matches count-only presence: true
+all existence results agree: true
+```
+
+For workload-level existence debug summaries, every row should report:
+
+```text
+agreement = pass
 ```

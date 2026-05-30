@@ -25,6 +25,9 @@ resultless retained execution:
 count-only query execution:
   public exact-cardinality query API
 
+existence query execution:
+  public exact non-empty-result query API
+
 owned-result query execution:
   public materialized Vec<Vector> query API
 ```
@@ -449,6 +452,48 @@ Invalid interpretation:
 count-only speedup means owned-result query got faster
 count-only full-selectivity speedup means traversal improved
 resultless retained timing is public API timing
+```
+
+## Exact existence timing conclusion
+
+The exact existence query API answers whether the paper's exact execution result is non-empty:
+
+```text
+query_has_match(Q, F) = |E(Q, F)| > 0
+```
+
+This is a boolean output contract over the same `Geometry -> Reconstruction -> Logic` execution semantics.
+
+Commit 338 added workload-level debug timing for existence execution.
+
+Small dataset result:
+
+```text
+all workloads: agreement = pass
+empty_far_range: owned/count/existence all false
+full_dataset_range: existence speedup vs owned about 67.86x
+cluster_boundary_range: existence speedup vs owned about 2.61x
+cluster_boundary_range: existence speedup vs count-only about 1.12x
+```
+
+Large dataset result:
+
+```text
+all workloads: agreement = pass
+large_empty_far_range: owned/count/existence all false
+large_full_dataset_range: existence speedup vs owned about 11854.48x
+large_cross_cluster_boundary: existence speedup vs owned about 5.42x
+large_cross_cluster_boundary: existence speedup vs count-only about 0.79x
+```
+
+Conclusion:
+
+```text
+existence is semantically valid across the current benchmark workloads
+existence clearly avoids owned result materialization
+existence does not consistently outperform count-only on positive-match workloads
+existence should remain debug-only for now
+do not add an existence artifact pipeline unless new repeated-trial evidence justifies it
 ```
 
 ## Future optimization direction
