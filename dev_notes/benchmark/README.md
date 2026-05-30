@@ -108,7 +108,7 @@ For leaf policy decisions, use:
 
 After editing the split benchmark notes, run:
 
-    .\scripts\check-benchmark-docs.ps1
+    .\scripts\benchmark\check\check-benchmark-docs.ps1
 
 The check validates the markdown files under:
 
@@ -120,7 +120,7 @@ It catches malformed code fences and unclosed code fences before the notes are c
 
 Small dataset review:
 
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
       -Label "<label>" `
       -PreviousLabel "<previous-label>" `
       -Dataset "small" `
@@ -129,7 +129,7 @@ Small dataset review:
 
 Large dataset review:
 
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
       -Label "<label>" `
       -PreviousLabel "<previous-label>" `
       -Dataset "large" `
@@ -138,7 +138,7 @@ Large dataset review:
 
 Large dataset review with organized artifact copy:
 
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
       -Label "<label>" `
       -PreviousLabel "<previous-label>" `
       -Dataset "large" `

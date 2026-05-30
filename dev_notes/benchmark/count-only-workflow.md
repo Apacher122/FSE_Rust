@@ -428,7 +428,7 @@ The previous summary is resolved through the normal previous-label lookup rules:
 Example review command:
 
 ```powershell
-.\scripts\run-low-gap-review.ps1 `
+.\scripts\benchmark\review\run-low-gap-review.ps1 `
   -Label "current-review" `
   -PreviousLabel "previous-review" `
   -Dataset "large" `

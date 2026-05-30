@@ -47,7 +47,7 @@ existence query execution:
 Small dataset:
 
 ```powershell
-.\scripts\run-low-gap-review.ps1 `
+.\scripts\benchmark\review\run-low-gap-review.ps1 `
   -Label "<label>" `
   -PreviousLabel "<previous-label>" `
   -Dataset "small" `
@@ -58,7 +58,7 @@ Small dataset:
 Large dataset:
 
 ```powershell
-.\scripts\run-low-gap-review.ps1 `
+.\scripts\benchmark\review\run-low-gap-review.ps1 `
   -Label "<label>" `
   -PreviousLabel "<previous-label>" `
   -Dataset "large" `
@@ -69,7 +69,7 @@ Large dataset:
 With organized artifact copy:
 
 ```powershell
-.\scripts\run-low-gap-review.ps1 `
+.\scripts\benchmark\review\run-low-gap-review.ps1 `
   -Label "<label>" `
   -PreviousLabel "<previous-label>" `
   -Dataset "large" `

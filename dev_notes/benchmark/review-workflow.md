@@ -4,7 +4,7 @@ This file documents the benchmark review workflow for the FSE Rust implementatio
 
 The review workflow is centered on:
 
-    scripts/run-low-gap-review.ps1
+    scripts/benchmark/review/run-low-gap-review.ps1
 
 This script generates the normal benchmark artifact bundle, repeated low-gap trials, workload summaries, target workload summaries, count-only summaries, comparison artifacts, review notes, and a review manifest.
 
@@ -55,7 +55,7 @@ Owned-result, count-only, and existence conclusions are interpreted separately.
 
 Small dataset review:
 
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
       -Label "<label>" `
       -PreviousLabel "<previous-label>" `
       -Dataset "small" `
@@ -64,7 +64,7 @@ Small dataset review:
 
 Large dataset review:
 
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
       -Label "<label>" `
       -PreviousLabel "<previous-label>" `
       -Dataset "large" `
@@ -73,7 +73,7 @@ Large dataset review:
 
 Large dataset review with organized artifact copy:
 
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
       -Label "<label>" `
       -PreviousLabel "<previous-label>" `
       -Dataset "large" `
@@ -83,7 +83,7 @@ Large dataset review with organized artifact copy:
 
 If re-running the same label and intentionally replacing the organized copy:
 
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
       -Label "<label>" `
       -PreviousLabel "<previous-label>" `
       -Dataset "large" `
@@ -99,7 +99,7 @@ Use the full comparison validation path when the previous review run has every c
 A previous run should first be generated and copied to the organized run folder:
 
     ```powershell
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
     -Label "<previous-label>" `
     -Dataset "small" `
     -Trials 5 `
@@ -111,7 +111,7 @@ A previous run should first be generated and copied to the organized run folder:
 A current run can then validate the full previous/current comparison set by using `-PreviousLabel` and `-RequireValidatedComparisons`:
 
     ```powershell
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
     -Label "<current-label>" `
     -PreviousLabel "<previous-label>" `
     -Dataset "small" `
@@ -171,7 +171,7 @@ Default target workloads:
 
 Override the target workload only when intentionally investigating a specific workload:
 
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
       -Label "<label>" `
       -Dataset "large" `
       -TargetWorkloadName "<target-workload-name>" `
@@ -180,7 +180,7 @@ Override the target workload only when intentionally investigating a specific wo
 
 Manual target summary command:
 
-    .\scripts\summarize-target-workload-trials.ps1 `
+    .\scripts\benchmark\summarize\summarize-target-workload-trials.ps1 `
       -Label "<label>" `
       -InputLabel "<label>" `
       -TargetWorkloadName "<target-workload-name>" `
@@ -192,7 +192,7 @@ Manual max-depth override is allowed only when intentionally testing build-depth
 
 Example:
 
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
       -Label "<label>" `
       -Dataset "large" `
       -MaxDepth 16 `
@@ -439,7 +439,7 @@ Relevant previous artifact parameters include:
 
 Example:
 
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
       -Label "current-review" `
       -Dataset "large" `
       -PreviousCountOnlySummaryCsv "benchmark_artifacts\runs\previous-review\count-only-workload-summary-previous-review.csv" `
@@ -628,7 +628,7 @@ For Rust code changes:
 
 For benchmark-facing changes, also run at least one smoke review:
 
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
       -Label "<label>" `
       -Dataset "small" `
       -Trials 1 `
@@ -636,7 +636,7 @@ For benchmark-facing changes, also run at least one smoke review:
 
 and, when relevant:
 
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
       -Label "<label>" `
       -Dataset "large" `
       -Trials 1 `
@@ -712,7 +712,7 @@ Materialization summary comparison is a single-run artifact review helper. It co
 Command:
 
     ```powershell
-    .\scripts\compare-materialization-mode-summary.ps1 `
+    .\scripts\benchmark\compare\compare-materialization-mode-summary.ps1 `
     -Label "<label>" `
     -PreviousMaterializationSummaryCsv "benchmark_artifacts\materialization-mode-summary-<previous>.csv" `
     -CurrentMaterializationSummaryCsv "benchmark_artifacts\materialization-mode-summary-<current>.csv" `

@@ -238,7 +238,7 @@ The target workload can be manually overridden when intentionally investigating 
 Manual target summary example:
 
 ```powershell
-.\scripts\summarize-target-workload-trials.ps1 `
+.\scripts\benchmark\summarize\summarize-target-workload-trials.ps1 `
   -Label "<commit-label>" `
   -InputLabel "<commit-label>" `
   -TargetWorkloadName "<target-workload-name>"
@@ -247,7 +247,7 @@ Manual target summary example:
 Manual review override example:
 
 ```powershell
-.\scripts\run-low-gap-review.ps1 `
+.\scripts\benchmark\review\run-low-gap-review.ps1 `
   -Label "<commit-label>" `
   -Dataset "large" `
   -TargetWorkloadName "<target-workload-name>" `
@@ -264,7 +264,7 @@ Manual max-depth override is allowed only when the commit is intentionally testi
 Example:
 
 ```powershell
-.\scripts\run-low-gap-review.ps1 `
+.\scripts\benchmark\review\run-low-gap-review.ps1 `
   -Label "<commit-label>" `
   -Dataset "large" `
   -MaxDepth 16 `
@@ -289,7 +289,7 @@ whether old artifacts remain comparable
 Preferred small review command:
 
 ```powershell
-.\scripts\run-low-gap-review.ps1 `
+.\scripts\benchmark\review\run-low-gap-review.ps1 `
   -Label "<commit-label>" `
   -PreviousLabel "<previous-label>" `
   -Dataset "small" `
@@ -300,7 +300,7 @@ Preferred small review command:
 Preferred large review command:
 
 ```powershell
-.\scripts\run-low-gap-review.ps1 `
+.\scripts\benchmark\review\run-low-gap-review.ps1 `
   -Label "<commit-label>" `
   -PreviousLabel "<previous-label>" `
   -Dataset "large" `
@@ -311,7 +311,7 @@ Preferred large review command:
 Preferred large review command with organized artifact copy:
 
 ```powershell
-.\scripts\run-low-gap-review.ps1 `
+.\scripts\benchmark\review\run-low-gap-review.ps1 `
   -Label "<commit-label>" `
   -PreviousLabel "<previous-label>" `
   -Dataset "large" `

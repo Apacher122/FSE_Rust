@@ -299,7 +299,7 @@ Example labels:
 
 Small policy review:
 
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
       -Label "<label>" `
       -PreviousLabel "<previous-label>" `
       -Dataset "small" `
@@ -308,7 +308,7 @@ Small policy review:
 
 Large policy review:
 
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
       -Label "<label>" `
       -PreviousLabel "<previous-label>" `
       -Dataset "large" `
@@ -317,7 +317,7 @@ Large policy review:
 
 Large review with organized copy:
 
-    .\scripts\run-low-gap-review.ps1 `
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
       -Label "<label>" `
       -PreviousLabel "<previous-label>" `
       -Dataset "large" `

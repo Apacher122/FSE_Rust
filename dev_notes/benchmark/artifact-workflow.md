@@ -44,7 +44,7 @@ Benchmark reviews can produce many artifacts per run. The flat `benchmark_artifa
 The artifact organization helper is:
 
 ```text
-scripts/organize-benchmark-artifacts.ps1
+scripts/benchmark/artifacts/organize-benchmark-artifacts.ps1
 ```
 
 It groups recognized benchmark artifacts by label into:
@@ -71,13 +71,13 @@ benchmark_artifacts/
 The safest first use is dry-run mode:
 
 ```powershell
-.\scripts\organize-benchmark-artifacts.ps1 -DryRun
+.\scripts\benchmark\artifacts\organize-benchmark-artifacts.ps1 -DryRun
 ```
 
 The recommended normal use is copy mode:
 
 ```powershell
-.\scripts\organize-benchmark-artifacts.ps1 -Copy
+.\scripts\benchmark\artifacts\organize-benchmark-artifacts.ps1 -Copy
 ```
 
 Copy mode creates organized folders while preserving the flat artifact root. This is the safest mode when a label is still being actively inspected or used as a comparison baseline.
@@ -85,13 +85,13 @@ Copy mode creates organized folders while preserving the flat artifact root. Thi
 Use move mode only when old artifacts no longer need to remain in the flat root:
 
 ```powershell
-.\scripts\organize-benchmark-artifacts.ps1
+.\scripts\benchmark\artifacts\organize-benchmark-artifacts.ps1
 ```
 
 Organize a single label with:
 
 ```powershell
-.\scripts\organize-benchmark-artifacts.ps1 `
+.\scripts\benchmark\artifacts\organize-benchmark-artifacts.ps1 `
   -Label "<label>" `
   -Copy
 ```
@@ -99,7 +99,7 @@ Organize a single label with:
 Use `-Force` only when intentionally overwriting already-organized artifacts:
 
 ```powershell
-.\scripts\organize-benchmark-artifacts.ps1 `
+.\scripts\benchmark\artifacts\organize-benchmark-artifacts.ps1 `
   -Copy `
   -Force
 ```
@@ -115,7 +115,7 @@ The review runner can resolve previous-label artifacts from both the flat artifa
 When a review command uses:
 
 ```powershell
-.\scripts\run-low-gap-review.ps1 `
+.\scripts\benchmark\review\run-low-gap-review.ps1 `
   -Label "current-review" `
   -PreviousLabel "previous-review" `
   -Dataset "large" `
@@ -162,7 +162,7 @@ Safe fallback test pattern:
 Example organization command:
 
 ```powershell
-.\scripts\organize-benchmark-artifacts.ps1 `
+.\scripts\benchmark\artifacts\organize-benchmark-artifacts.ps1 `
   -Label "previous-review" `
   -Copy `
   -Force
@@ -171,7 +171,7 @@ Example organization command:
 Example fallback review command:
 
 ```powershell
-.\scripts\run-low-gap-review.ps1 `
+.\scripts\benchmark\review\run-low-gap-review.ps1 `
   -Label "organized-fallback-smoke" `
   -PreviousLabel "previous-review" `
   -Dataset "large" `
@@ -226,7 +226,7 @@ Use this when a run should remain easy to inspect by label while preserving the 
 Default review command:
 
 ```powershell
-.\scripts\run-low-gap-review.ps1 `
+.\scripts\benchmark\review\run-low-gap-review.ps1 `
   -Label "<label>" `
   -Dataset "large" `
   -Trials 5 `
@@ -236,7 +236,7 @@ Default review command:
 Organized-copy review command:
 
 ```powershell
-.\scripts\run-low-gap-review.ps1 `
+.\scripts\benchmark\review\run-low-gap-review.ps1 `
   -Label "<label>" `
   -Dataset "large" `
   -Trials 5 `
@@ -247,7 +247,7 @@ Organized-copy review command:
 If re-running the same label and intentionally overwriting the organized copy, use:
 
 ```powershell
-.\scripts\run-low-gap-review.ps1 `
+.\scripts\benchmark\review\run-low-gap-review.ps1 `
   -Label "<label>" `
   -Dataset "large" `
   -Trials 5 `
@@ -325,7 +325,7 @@ The flat `benchmark_artifacts` directory is useful for active development, but i
 The cleanup helper is:
 
 ```text
-scripts/cleanup-flat-benchmark-artifacts.ps1
+scripts/benchmark/artifacts/cleanup-flat-benchmark-artifacts.ps1
 ```
 
 This script removes flat artifacts only when the same artifact already exists in the organized run folder.
@@ -345,20 +345,20 @@ benchmark_artifacts/runs/my-review/debug-output-my-review.txt
 The cleanup script is safe by default. Without `-Delete`, it only performs a dry run:
 
 ```powershell
-.\scripts\cleanup-flat-benchmark-artifacts.ps1
+.\scripts\benchmark\artifacts\cleanup-flat-benchmark-artifacts.ps1
 ```
 
 Preview cleanup for one label:
 
 ```powershell
-.\scripts\cleanup-flat-benchmark-artifacts.ps1 `
+.\scripts\benchmark\artifacts\cleanup-flat-benchmark-artifacts.ps1 `
   -Label "my-review"
 ```
 
 Delete eligible flat artifacts for one label:
 
 ```powershell
-.\scripts\cleanup-flat-benchmark-artifacts.ps1 `
+.\scripts\benchmark\artifacts\cleanup-flat-benchmark-artifacts.ps1 `
   -Label "my-review" `
   -Delete `
   -Force
@@ -367,7 +367,7 @@ Delete eligible flat artifacts for one label:
 Delete all eligible flat artifacts that already have organized copies:
 
 ```powershell
-.\scripts\cleanup-flat-benchmark-artifacts.ps1 `
+.\scripts\benchmark\artifacts\cleanup-flat-benchmark-artifacts.ps1 `
   -Delete `
   -Force
 ```
@@ -384,11 +384,11 @@ Recommended safe cleanup flow:
 Commands:
 
 ```powershell
-.\scripts\organize-benchmark-artifacts.ps1 -Copy
+.\scripts\benchmark\artifacts\organize-benchmark-artifacts.ps1 -Copy
 
-.\scripts\cleanup-flat-benchmark-artifacts.ps1
+.\scripts\benchmark\artifacts\cleanup-flat-benchmark-artifacts.ps1
 
-.\scripts\cleanup-flat-benchmark-artifacts.ps1 `
+.\scripts\benchmark\artifacts\cleanup-flat-benchmark-artifacts.ps1 `
   -Delete `
   -Force
 ```
@@ -495,7 +495,7 @@ The debug report includes a workload materialization mode summary. The benchmark
 The summary artifact is generated from the debug report:
 
 ```powershell
-.\scripts\summarize-materialization-mode-summary.ps1 `
+.\scripts\benchmark\summarize\summarize-materialization-mode-summary.ps1 `
   -DebugOutputPath "benchmark_artifacts\debug-output-<label>.txt" `
   -OutputCsv "benchmark_artifacts\materialization-mode-summary-<label>.csv" `
   -OutputNotesPath "benchmark_artifacts\materialization-mode-summary-<label>.txt"
@@ -525,7 +525,7 @@ The agreement column must remain `pass` for every workload before using material
 Materialization-mode summaries are extracted from benchmark debug output by:
 
 ```text
-scripts/summarize-materialization-mode-summary.ps1
+scripts/benchmark/summarize/summarize-materialization-mode-summary.ps1
 ```
 
 The normal benchmark script writes:
@@ -549,7 +549,7 @@ It also stores the dataset, effective max depth, matched record count, speedup r
 Use the comparison helper when comparing two materialization summary CSVs:
 
 ```powershell
-.\scripts\compare-materialization-mode-summary.ps1 `
+.\scripts\benchmark\compare\compare-materialization-mode-summary.ps1 `
   -Label "<label>" `
   -PreviousMaterializationSummaryCsv "benchmark_artifacts\materialization-mode-summary-<previous>.csv" `
   -CurrentMaterializationSummaryCsv "benchmark_artifacts\materialization-mode-summary-<current>.csv" `
