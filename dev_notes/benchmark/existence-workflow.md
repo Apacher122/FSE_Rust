@@ -2,7 +2,7 @@
 
 This file documents the exact existence query output contract and its current benchmark evidence scope.
 
-Existence queries reuse the exact FSE execution semantics used by owned-result and count-only queries. The returned value reports whether the exact result set `E(Q, F)` is non-empty.
+Existence queries evaluate whether the exact FSE result set is non-empty. The implementation uses the same staged execution semantics as owned-result, reference-result, and count-only queries.
 
 ## Formal basis
 
@@ -30,9 +30,7 @@ Equivalently:
 query_has_match(Q, F) <=> there exists x in E(Q, F)
 ```
 
-Existence preserves the same exact semantics as owned-result, reference-result, and count-only execution. The implementation may short-circuit after finding the first exact match. Partial retained leaves still require exact predicate evaluation through `σ_Q`.
-
-A covered non-empty subtree may produce `true` without row-level predicate checks because the coverage classification proves containment. A partial retained subtree cannot produce `true` from geometric retention alone.
+The existence path may short-circuit after it establishes the boolean result. Partial retained leaves still require exact predicate evaluation through `σ_Q`. A covered non-empty subtree may produce `true` without row-level predicate checks because coverage proves containment for the subtree.
 
 ## Public API
 
@@ -42,9 +40,21 @@ The public exact existence API is:
 query_has_match
 ```
 
-The API returns whether the exact query result set contains at least one record.
+The reporting API is:
 
-Record identity, exact cardinality, and storage references are provided by the owned-result, count-only, and reference-result APIs.
+```text
+query_has_match_with_stats
+```
+
+The reporting API returns:
+
+```text
+has_match
+inspected_records
+stats
+```
+
+`inspected_records` is the number of candidate rows inspected before the existence result was established. For a positive query, this may be lower than the retained candidate count. For a disjoint query, it may be zero.
 
 ## Relationship to other output contracts
 
@@ -100,6 +110,20 @@ Target workload exact existence timing
 Workload exact existence timing summary
 ```
 
+The target section includes:
+
+```text
+fresh owned average elapsed
+count-only average elapsed
+existence average elapsed
+existence inspected records
+existence speedup vs fresh owned
+existence speedup vs count-only
+existence matches owned presence
+existence matches count-only presence
+all existence results agree
+```
+
 The workload summary includes:
 
 ```text
@@ -107,6 +131,7 @@ workload
 owned has match
 count-only has match
 existence has match
+existence inspected records
 fresh owned
 count-only
 existence
@@ -119,26 +144,28 @@ The current evidence supports existence as a public query API and debug benchmar
 
 ## Current evidence summary
 
-Commit 338 added workload-level debug evidence for small and large datasets.
+Commit 341 added inspected-record evidence for exact existence execution.
 
 Small dataset:
 
 ```text
 all workloads: agreement = pass
-empty_far_range: false/false/false
-full_dataset_range: existence speedup vs owned about 67.86x
-cluster_boundary_range: existence speedup vs owned about 2.61x
-cluster_boundary_range: existence speedup vs count-only about 1.12x
+empty_far_range: false/false/false, inspected records 0
+full_dataset_range: true/true/true, inspected records 1
+cluster_boundary_range: true/true/true, inspected records 4
+cluster_boundary_range: existence speedup vs owned about 2.58x
+cluster_boundary_range: existence speedup vs count-only about 1.05x
 ```
 
 Large dataset:
 
 ```text
 all workloads: agreement = pass
-large_empty_far_range: false/false/false
-large_full_dataset_range: existence speedup vs owned about 11854.48x
-large_cross_cluster_boundary: existence speedup vs owned about 5.42x
-large_cross_cluster_boundary: existence speedup vs count-only about 0.79x
+large_empty_far_range: false/false/false, inspected records 0
+large_full_dataset_range: true/true/true, inspected records 1
+large_cross_cluster_boundary: true/true/true, inspected records 5
+large_cross_cluster_boundary: existence speedup vs owned about 7.34x
+large_cross_cluster_boundary: existence speedup vs count-only about 1.02x
 ```
 
 Interpretation:
@@ -146,14 +173,17 @@ Interpretation:
 ```text
 existence is semantically valid across the current benchmark workloads
 existence avoids owned result materialization
-existence has not shown enough distinct value over count-only to require a separate artifact pipeline
+positive full-range workloads inspect one candidate record before returning true
+empty disjoint workloads inspect zero candidate records
+existence remains close to count-only on the current positive boundary workloads
+existence does not currently require a separate artifact pipeline
 ```
 
 ## Promotion rule
 
 Existence summary CSVs, comparison scripts, and review-manifest entries should be added only when the benchmark evidence requires durable review separate from count-only artifacts.
 
-A future existence artifact pipeline is justified when at least one of these conditions applies:
+A future existence artifact pipeline is justified when at least one condition applies:
 
 ```text
 existence materially outperforms count-only on repeated trials
@@ -192,3 +222,5 @@ For workload-level summaries, every row must have:
 ```text
 agreement = pass
 ```
+
+`inspected_records` must be interpreted as existence-path work, not as total retained candidate cardinality. Positive existence queries may inspect fewer retained candidates than count-only queries because the result can be established after the first exact match.

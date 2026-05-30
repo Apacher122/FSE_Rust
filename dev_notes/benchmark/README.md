@@ -11,7 +11,7 @@ That file now acts as an index into these topic files.
 ## Files
 
 | File | Purpose |
-|---|---|
+| --- | --- |
 | `acceptance-rules.md` | Core benchmark acceptance thresholds, revert rules, and performance decision rules. |
 | `datasets-and-targets.md` | Small and large dataset baselines, max-depth choices, and target workload names. |
 | `diagnostic-conclusions.md` | Boundary fixed-cost conclusions, retained execution conclusions, and result ownership conclusions. |
@@ -28,11 +28,14 @@ The benchmark workflow currently separates:
 
     owned-result query execution
     count-only query execution
+    existence query execution
     debug-only retained execution diagnostics
 
 Owned-result timing answers materialized row-return performance.
 
 Count-only timing answers exact-cardinality performance.
+
+Existence timing answers exact non-empty-result performance and inspected-record behavior.
 
 Debug-only retained diagnostics explain implementation costs but should not be treated as public API benchmark evidence.
 
@@ -50,6 +53,7 @@ The benchmark workflow now has:
 
     owned-result query execution
     count-only query execution
+    existence query execution
     per-workload CSV metrics
     count-only workload summary artifacts
     count-only comparison artifacts
@@ -75,6 +79,10 @@ For why the current performance direction moved toward count-only/output-contrac
 For count-only query mode behavior and count-only artifact interpretation, use:
 
     count-only-workflow.md
+
+For exact existence query behavior, inspected-record evidence, and artifact-scope decisions, use:
+
+    existence-workflow.md
 
 For review commands and generated review artifacts, use:
 
@@ -202,4 +210,5 @@ Current benchmark interpretation:
     small boundary workload is near the fixed-cost floor under owned-result execution
     large target confirms result materialization dominates retained execution
     count-only query mode is a valid separate output contract
+    existence query mode is a valid separate output contract with debug-only benchmark evidence
     future traversal or boundary-specific optimizations need new evidence before being prioritized

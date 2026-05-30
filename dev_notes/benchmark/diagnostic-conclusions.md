@@ -464,36 +464,39 @@ query_has_match(Q, F) = |E(Q, F)| > 0
 
 This is a boolean output contract over the same `Geometry -> Reconstruction -> Logic` execution semantics.
 
-Commit 338 added workload-level debug timing for existence execution.
+Commit 338 added workload-level debug timing for existence execution. Commit 341 added inspected-record reporting for the existence path.
 
 Small dataset result:
 
 ```text
 all workloads: agreement = pass
-empty_far_range: owned/count/existence all false
-full_dataset_range: existence speedup vs owned about 67.86x
-cluster_boundary_range: existence speedup vs owned about 2.61x
-cluster_boundary_range: existence speedup vs count-only about 1.12x
+empty_far_range: owned/count/existence all false, inspected records 0
+full_dataset_range: owned/count/existence all true, inspected records 1
+cluster_boundary_range: owned/count/existence all true, inspected records 4
+cluster_boundary_range: existence speedup vs owned about 2.58x
+cluster_boundary_range: existence speedup vs count-only about 1.05x
 ```
 
 Large dataset result:
 
 ```text
 all workloads: agreement = pass
-large_empty_far_range: owned/count/existence all false
-large_full_dataset_range: existence speedup vs owned about 11854.48x
-large_cross_cluster_boundary: existence speedup vs owned about 5.42x
-large_cross_cluster_boundary: existence speedup vs count-only about 0.79x
+large_empty_far_range: owned/count/existence all false, inspected records 0
+large_full_dataset_range: owned/count/existence all true, inspected records 1
+large_cross_cluster_boundary: owned/count/existence all true, inspected records 5
+large_cross_cluster_boundary: existence speedup vs owned about 7.34x
+large_cross_cluster_boundary: existence speedup vs count-only about 1.02x
 ```
 
 Conclusion:
 
 ```text
 existence is semantically valid across the current benchmark workloads
-existence clearly avoids owned result materialization
-existence does not consistently outperform count-only on positive-match workloads
+existence avoids owned result materialization
+existence can terminate after inspecting fewer records than count-only execution
+existence remains close to count-only on the current positive boundary workloads
 existence should remain debug-only for now
-do not add an existence artifact pipeline unless new repeated-trial evidence justifies it
+existence artifact promotion requires repeated-trial evidence that count-only artifacts cannot explain
 ```
 
 ## Future optimization direction
