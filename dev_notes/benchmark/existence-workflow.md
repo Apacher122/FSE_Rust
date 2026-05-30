@@ -101,7 +101,7 @@ A mismatch between existence and either owned-result presence or count-only pres
 
 ## Current benchmark scope
 
-Existence timing is currently debug-only.
+Existence timing is reported in debug output and extracted into summary artifacts by the benchmark script.
 
 The debug report includes:
 
@@ -140,11 +140,43 @@ existence speedup vs count-only
 agreement
 ```
 
-The current evidence supports existence as a public query API and debug benchmark signal. Durable CSV and review-manifest artifacts are deferred.
+The current evidence supports existence as a public query API and benchmark summary artifact. Review-manifest comparison artifacts are deferred.
+
+## Summary artifacts
+
+The benchmark script extracts workload-level existence timing into:
+
+```text
+existence-timing-summary-<label>.csv
+existence-timing-summary-<label>.txt
+```
+
+The CSV contains:
+
+```text
+dataset
+max_depth
+workload_name
+owned_has_match
+count_only_has_match
+existence_has_match
+count_only_candidate_records
+existence_inspected_records
+existence_skipped_records
+existence_inspection_ratio
+fresh_owned_elapsed
+count_only_elapsed
+existence_elapsed
+existence_speedup_vs_owned
+existence_speedup_vs_count_only
+agreement
+```
+
+The notes file records row count, agreement failures, total count-only candidates, total inspected records, total skipped records, and the aggregate inspection ratio.
 
 ## Current evidence summary
 
-Commit 341 added inspected-record evidence for exact existence execution.
+Commit 341 added inspected-record evidence for exact existence execution. Commit 347 added candidate reduction metrics that compare existence inspection against count-only candidate work.
 
 Small dataset:
 
@@ -176,19 +208,19 @@ existence avoids owned result materialization
 positive full-range workloads inspect one candidate record before returning true
 empty disjoint workloads inspect zero candidate records
 existence remains close to count-only on the current positive boundary workloads
-existence does not currently require a separate artifact pipeline
+existence summary artifacts preserve inspected-record and skipped-record evidence
 ```
 
 ## Promotion rule
 
-Existence summary CSVs, comparison scripts, and review-manifest entries should be added only when the benchmark evidence requires durable review separate from count-only artifacts.
+Existence comparison scripts and review-manifest entries should be added only when the benchmark evidence requires durable review separate from count-only artifacts.
 
 A future existence artifact pipeline is justified when at least one condition applies:
 
 ```text
 existence materially outperforms count-only on repeated trials
 existence becomes part of a user-facing benchmark mode
-existence requires regression tracking separate from count-only
+existence summary artifacts require previous/current regression tracking
 existence drives an implementation decision that count-only evidence cannot support
 ```
 
@@ -197,7 +229,8 @@ Current scope:
 ```text
 public query API
 debug benchmark evidence
-durable artifact review deferred
+existence timing summary artifacts
+review-manifest comparison artifacts deferred
 ```
 
 ## Acceptance rule

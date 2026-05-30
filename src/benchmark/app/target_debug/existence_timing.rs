@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use super::super::context::BenchmarkApplicationContext;
 use super::super::renderer::BenchmarkApplicationRenderer;
-use super::formatting::format_speedup_ratio;
+use super::formatting::{format_percent_ratio, format_speedup_ratio};
 use super::target::{
     append_debug_duration_line, append_debug_line, append_target_workload_debug_section,
 };
@@ -32,7 +32,10 @@ struct ExistenceTimingEvidence {
     fresh_owned_has_match: bool,
     count_only_has_match: bool,
     existence_has_match: bool,
+    count_only_candidate_records: usize,
     existence_inspected_records: usize,
+    existence_skipped_candidate_records: usize,
+    existence_inspection_ratio: f64,
     existence_matches_owned_presence: bool,
     existence_matches_count_only_presence: bool,
     all_existence_results_agree: bool,
@@ -79,19 +82,22 @@ impl BenchmarkApplicationRenderer {
         output.push_str("Workload exact existence timing summary\n");
         output.push_str("---------------------------------------\n");
         output.push_str(
-            "workload | owned has match | count-only has match | existence has match | existence inspected records | fresh owned | count-only | existence | existence speedup vs owned | existence speedup vs count-only | agreement\n",
+            "workload | owned has match | count-only has match | existence has match | count-only candidate records | existence inspected records | existence skipped records | existence inspection ratio | fresh owned | count-only | existence | existence speedup vs owned | existence speedup vs count-only | agreement\n",
         );
 
         for workload in &context.workloads {
             let evidence = collect_existence_timing_evidence(context, workload);
 
             output.push_str(&format!(
-                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {}\n",
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {}\n",
                 workload.name,
                 evidence.fresh_owned_has_match,
                 evidence.count_only_has_match,
                 evidence.existence_has_match,
+                evidence.count_only_candidate_records,
                 evidence.existence_inspected_records,
+                evidence.existence_skipped_candidate_records,
+                format_percent_ratio(evidence.existence_inspection_ratio),
                 format_duration_ascii(evidence.fresh_owned_elapsed),
                 format_duration_ascii(evidence.count_only_elapsed),
                 format_duration_ascii(evidence.existence_elapsed),
@@ -163,8 +169,23 @@ fn append_target_existence_timing_evidence(
     append_debug_line(output, "existence has match", evidence.existence_has_match);
     append_debug_line(
         output,
+        "count-only candidate records",
+        evidence.count_only_candidate_records,
+    );
+    append_debug_line(
+        output,
         "existence inspected records",
         evidence.existence_inspected_records,
+    );
+    append_debug_line(
+        output,
+        "existence skipped candidate records",
+        evidence.existence_skipped_candidate_records,
+    );
+    append_debug_line(
+        output,
+        "existence inspection ratio",
+        format_percent_ratio(evidence.existence_inspection_ratio),
     );
     append_debug_line(
         output,
@@ -227,6 +248,7 @@ fn collect_existence_timing_evidence(
         fresh_owned_has_match,
         count_only_has_match,
         existence_report.has_match,
+        count_only_report.stats.reconstructed_records,
         existence_report.inspected_records,
     );
 
@@ -242,8 +264,17 @@ fn existence_timing_evidence(
     fresh_owned_has_match: bool,
     count_only_has_match: bool,
     existence_has_match: bool,
+    count_only_candidate_records: usize,
     existence_inspected_records: usize,
 ) -> ExistenceTimingEvidence {
+    let existence_skipped_candidate_records =
+        count_only_candidate_records.saturating_sub(existence_inspected_records);
+    let existence_inspection_ratio = if count_only_candidate_records == 0 {
+        0.0
+    } else {
+        existence_inspected_records as f64 / count_only_candidate_records as f64
+    };
+
     ExistenceTimingEvidence {
         fresh_owned_elapsed,
         count_only_elapsed,
@@ -255,7 +286,10 @@ fn existence_timing_evidence(
         fresh_owned_has_match,
         count_only_has_match,
         existence_has_match,
+        count_only_candidate_records,
         existence_inspected_records,
+        existence_skipped_candidate_records,
+        existence_inspection_ratio,
         existence_matches_owned_presence: existence_has_match == fresh_owned_has_match,
         existence_matches_count_only_presence: existence_has_match == count_only_has_match,
         all_existence_results_agree: existence_has_match == fresh_owned_has_match

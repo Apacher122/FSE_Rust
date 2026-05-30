@@ -24,6 +24,10 @@ benchmark_artifacts/
       workloads-<label>.csv
       count-only-workload-summary-<label>.csv
       count-only-workload-summary-<label>.txt
+      materialization-mode-summary-<label>.csv
+      materialization-mode-summary-<label>.txt
+      existence-timing-summary-<label>.csv
+      existence-timing-summary-<label>.txt
       low-gap-review-notes-<label>.txt
       low-gap-review-manifest-<label>.txt
       low-gap-trials-<label>/
@@ -100,7 +104,7 @@ Use `-Force` only when intentionally overwriting already-organized artifacts:
   -Force
 ```
 
-The organization script recognizes normal benchmark artifacts, low-gap artifacts, target workload artifacts, count-only artifacts, materialization-mode artifacts, review manifests, review notes, and repeated-trial folders.
+The organization script recognizes normal benchmark artifacts, low-gap artifacts, target workload artifacts, count-only artifacts, materialization-mode artifacts, existence timing artifacts, review manifests, review notes, and repeated-trial folders.
 
 Unrecognized files are left in place. This prevents accidental movement of manually-created notes, temporary files, or unrelated data.
 
@@ -264,6 +268,10 @@ benchmark_artifacts/
       workloads-<label>.csv
       count-only-workload-summary-<label>.csv
       count-only-workload-summary-<label>.txt
+      materialization-mode-summary-<label>.csv
+      materialization-mode-summary-<label>.txt
+      existence-timing-summary-<label>.csv
+      existence-timing-summary-<label>.txt
       low-gap-review-notes-<label>.txt
       low-gap-review-manifest-<label>.txt
       low-gap-trials-<label>/
@@ -573,6 +581,48 @@ materialization-mode-summary-comparison-<label>.txt
 The summary CSV records workload-level timing for fresh owned, reusable owned, reference-result, and count-only query output modes. The comparison CSV compares those output-contract costs across review runs.
 
 Every materialization summary row should report `agreement = pass`; otherwise the output modes are not preserving the same exact query semantics.
+
+## Existence timing artifacts
+
+Existence timing artifacts are extracted from the debug report workload summary.
+
+Artifacts:
+
+```text
+existence-timing-summary-<label>.csv
+existence-timing-summary-<label>.txt
+```
+
+The CSV preserves the workload-level relationship between owned-result presence, count-only presence, and exact existence. It also records count-only candidate records, existence inspected records, skipped candidate records, and the existence inspection ratio.
+
+Required CSV fields include:
+
+```text
+dataset
+max_depth
+workload_name
+owned_has_match
+count_only_has_match
+existence_has_match
+count_only_candidate_records
+existence_inspected_records
+existence_skipped_records
+existence_inspection_ratio
+fresh_owned_elapsed
+count_only_elapsed
+existence_elapsed
+existence_speedup_vs_owned
+existence_speedup_vs_count_only
+agreement
+```
+
+Every row should have:
+
+```text
+agreement = pass
+```
+
+The notes file records row count, agreement failures, aggregate candidate count, aggregate inspected count, aggregate skipped count, and aggregate inspection ratio.
 
 ## Target workload artifacts
 

@@ -250,7 +250,10 @@ fn debug_report_renders_target_workload_existence_timing() {
     assert!(output.contains("fresh owned has match: true"));
     assert!(output.contains("count-only has match: true"));
     assert!(output.contains("existence has match: true"));
+    assert!(output.contains("count-only candidate records:"));
     assert!(output.contains("existence inspected records:"));
+    assert!(output.contains("existence skipped candidate records:"));
+    assert!(output.contains("existence inspection ratio:"));
     assert!(output.contains("existence matches owned presence: true"));
     assert!(output.contains("existence matches count-only presence: true"));
     assert!(output.contains("all existence results agree: true"));
@@ -283,7 +286,7 @@ fn debug_report_renders_workload_existence_timing_summary() {
 
     assert!(output.contains("Workload exact existence timing summary"));
     assert!(output.contains(
-        "workload | owned has match | count-only has match | existence has match | existence inspected records | fresh owned | count-only | existence | existence speedup vs owned | existence speedup vs count-only | agreement"
+        "workload | owned has match | count-only has match | existence has match | count-only candidate records | existence inspected records | existence skipped records | existence inspection ratio | fresh owned | count-only | existence | existence speedup vs owned | existence speedup vs count-only | agreement"
     ));
     assert!(output.contains("cluster_range_000 | true | true | true |"));
     assert!(output.contains("empty_far_range | false | false | false |"));
@@ -357,6 +360,8 @@ fn compact_report_does_not_render_debug_structure_metrics() {
     assert!(!output.contains("estimated owned above count-only:"));
     assert!(!output.contains("count-only speedup:"));
     assert!(!output.contains("existence average elapsed:"));
+    assert!(!output.contains("existence skipped candidate records:"));
+    assert!(!output.contains("existence inspection ratio:"));
     assert!(!output.contains("all existence results agree:"));
 }
 

@@ -5,6 +5,7 @@ $BenchmarkArtifactReservedDirectoryNames = @(
 
 $BenchmarkArtifactFilePrefixes = @(
   "materialization-mode-summary-comparison-",
+  "existence-timing-summary-",
   "materialization-mode-summary-",
   "count-only-workload-summary-comparison-",
   "count-only-workload-summary-",
