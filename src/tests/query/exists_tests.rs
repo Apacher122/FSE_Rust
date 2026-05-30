@@ -6,7 +6,9 @@ use crate::benchmark::{
 };
 use crate::build::{BuildConfig, FSEBuilder};
 use crate::math::{BoundingBox, ResidualBlock, Vector};
-use crate::query::{QueryRegion, count_query_matches, execute_query, query_has_match};
+use crate::query::{
+    QueryRegion, count_query_matches, execute_query, query_has_match, query_has_match_with_stats,
+};
 use crate::storage::{FSEIndex, PartitionNode};
 
 #[test]
@@ -78,6 +80,78 @@ fn query_has_match_filters_false_positive_leaf_retention() {
 
     assert!(!query_has_match(&index, &query));
     assert_eq!(count_query_matches(&index, &query), 0);
+}
+
+#[test]
+fn query_has_match_with_stats_reports_root_disjoint_work() {
+    let points = vec![Vector::new(vec![0.0, 0.0]), Vector::new(vec![1.0, 1.0])];
+
+    let root = PartitionNode::from_points(0, &points);
+    let index = FSEIndex::from_root(root);
+    let query = QueryRegion::new(vec![10.0, 10.0], vec![20.0, 20.0]);
+
+    let report = query_has_match_with_stats(&index, &query);
+
+    assert!(!report.has_match);
+    assert_eq!(report.inspected_records, 0);
+    assert_eq!(report.stats.reconstructed_records, 0);
+    assert_eq!(report.stats.matched_records, 0);
+}
+
+#[test]
+fn query_has_match_with_stats_reports_root_covered_short_circuit_work() {
+    let points = vec![
+        Vector::new(vec![0.0, 0.0]),
+        Vector::new(vec![1.0, 1.0]),
+        Vector::new(vec![2.0, 2.0]),
+    ];
+
+    let root = PartitionNode::from_points(0, &points);
+    let index = FSEIndex::from_root(root);
+    let query = QueryRegion::new(vec![-1.0, -1.0], vec![3.0, 3.0]);
+
+    let report = query_has_match_with_stats(&index, &query);
+
+    assert!(report.has_match);
+    assert_eq!(report.inspected_records, 1);
+    assert_eq!(report.stats.reconstructed_records, 1);
+    assert_eq!(report.stats.matched_records, 1);
+}
+
+#[test]
+fn query_has_match_with_stats_reports_partial_leaf_hit_position() {
+    let points = vec![
+        Vector::new(vec![0.0, 0.0]),
+        Vector::new(vec![5.0, 5.0]),
+        Vector::new(vec![10.0, 10.0]),
+    ];
+
+    let root = PartitionNode::from_points(0, &points);
+    let index = FSEIndex::from_root(root);
+    let query = QueryRegion::new(vec![4.0, 4.0], vec![6.0, 6.0]);
+
+    let report = query_has_match_with_stats(&index, &query);
+
+    assert!(report.has_match);
+    assert_eq!(report.inspected_records, 2);
+    assert_eq!(report.stats.reconstructed_records, 2);
+    assert_eq!(report.stats.matched_records, 1);
+}
+
+#[test]
+fn query_has_match_with_stats_reports_all_inspected_for_partial_leaf_miss() {
+    let points = vec![Vector::new(vec![0.0, 0.0]), Vector::new(vec![10.0, 10.0])];
+
+    let root = PartitionNode::from_points(0, &points);
+    let index = FSEIndex::from_root(root);
+    let query = QueryRegion::new(vec![4.0, 4.0], vec![6.0, 6.0]);
+
+    let report = query_has_match_with_stats(&index, &query);
+
+    assert!(!report.has_match);
+    assert_eq!(report.inspected_records, 2);
+    assert_eq!(report.stats.reconstructed_records, 2);
+    assert_eq!(report.stats.matched_records, 0);
 }
 
 fn assert_exists_matches_count_only_for_benchmark_workloads(
