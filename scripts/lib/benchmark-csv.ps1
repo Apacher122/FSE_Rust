@@ -28,11 +28,47 @@ function Convert-ToInvariantDouble {
     return $null
   }
 
-  if ([string]::IsNullOrWhiteSpace($Value.ToString())) {
+  $TextValue = $Value.ToString().Trim()
+
+  if ([string]::IsNullOrWhiteSpace($TextValue)) {
     return $null
   }
 
-  return [System.Convert]::ToDouble($Value, $BenchmarkInvariantCulture)
+  $LowerTextValue = $TextValue.ToLowerInvariant()
+
+  if ($LowerTextValue -eq "unavailable" -or $LowerTextValue -eq "not available" -or $LowerTextValue -eq "not_provided" -or $LowerTextValue -eq "not provided" -or $LowerTextValue -eq "n/a" -or $LowerTextValue -eq "na" -or $LowerTextValue -eq "none" -or $LowerTextValue -eq "null") {
+    return $null
+  }
+
+  if ($LowerTextValue.EndsWith("x")) {
+    $TextValue = $TextValue.Substring(0, $TextValue.Length - 1).Trim()
+
+    if ([string]::IsNullOrWhiteSpace($TextValue)) {
+      return $null
+    }
+
+    $LowerTextValue = $TextValue.ToLowerInvariant()
+  }
+
+  if ($LowerTextValue -eq "inf" -or $LowerTextValue -eq "+inf" -or $LowerTextValue -eq "infinity" -or $LowerTextValue -eq "+infinity") {
+    return [double]::PositiveInfinity
+  }
+
+  if ($LowerTextValue -eq "-inf" -or $LowerTextValue -eq "-infinity") {
+    return [double]::NegativeInfinity
+  }
+
+  if ($LowerTextValue -eq "nan") {
+    return [double]::NaN
+  }
+
+  [double]$ParsedValue = 0.0
+
+  if ([double]::TryParse($TextValue, [System.Globalization.NumberStyles]::Float, $BenchmarkInvariantCulture, [ref]$ParsedValue)) {
+    return $ParsedValue
+  }
+
+  return $null
 }
 
 function Convert-ToInvariantDoubleOrZero {
@@ -75,7 +111,24 @@ function Format-InvariantDouble {
   }
 
   try {
-    $DoubleValue = [System.Convert]::ToDouble($Value, $BenchmarkInvariantCulture)
+    $DoubleValue = Convert-ToInvariantDouble -Value $Value
+
+    if ($null -eq $DoubleValue) {
+      return "unavailable"
+    }
+
+    if ([double]::IsPositiveInfinity($DoubleValue)) {
+      return "inf"
+    }
+
+    if ([double]::IsNegativeInfinity($DoubleValue)) {
+      return "-inf"
+    }
+
+    if ([double]::IsNaN($DoubleValue)) {
+      return "nan"
+    }
+
     return $DoubleValue.ToString("0.000000", $BenchmarkInvariantCulture)
   }
   catch {
