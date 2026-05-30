@@ -5,7 +5,8 @@ $BenchmarkReviewLibraryFiles = @(
   "manifest.ps1",
   "steps.ps1",
   "notes.ps1",
-  "validation.ps1"
+  "validation.ps1",
+  "emission.ps1"
 )
 
 foreach ($BenchmarkReviewLibraryFile in $BenchmarkReviewLibraryFiles) {

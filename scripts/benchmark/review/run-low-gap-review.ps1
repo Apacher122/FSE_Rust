@@ -109,253 +109,6 @@ function Add-ReviewLine {
 
 
 
-function Get-AggregateComparisonSkipReason {
-  return Get-BenchmarkReviewComparisonSkipReason `
-    -PreviousPath $PreviousTrialSummaryCsv `
-    -CurrentPath $CurrentTrialSummaryCsv `
-    -PreviousDescription "previous aggregate trial summary" `
-    -CurrentDescription "current aggregate trial summary"
-}
-
-function Get-WorkloadComparisonSkipReason {
-  return Get-BenchmarkReviewComparisonSkipReason `
-    -PreviousPath $PreviousWorkloadSummaryCsv `
-    -CurrentPath $CurrentWorkloadSummaryCsv `
-    -PreviousDescription "previous workload trial summary" `
-    -CurrentDescription "current workload trial summary"
-}
-
-function Get-CountOnlyComparisonSkipReason {
-  return Get-BenchmarkReviewComparisonSkipReason `
-    -PreviousPath $PreviousCountOnlySummaryCsv `
-    -CurrentPath $CurrentCountOnlyWorkloadSummaryCsv `
-    -PreviousDescription "previous count-only workload summary" `
-    -CurrentDescription "current count-only workload summary"
-}
-
-function Get-MaterializationComparisonSkipReason {
-  return Get-BenchmarkReviewComparisonSkipReason `
-    -PreviousPath $PreviousMaterializationSummaryCsv `
-    -CurrentPath $CurrentMaterializationSummaryCsv `
-    -PreviousDescription "previous materialization mode summary" `
-    -CurrentDescription "current materialization mode summary"
-}
-
-function Get-TargetComparisonSkipReason {
-  return Get-BenchmarkReviewComparisonSkipReason `
-    -PreviousPath $PreviousTargetSummaryCsv `
-    -CurrentPath $CurrentTargetSummaryCsv `
-    -PreviousDescription "previous target workload summary" `
-    -CurrentDescription "current target workload summary" `
-    -Disabled ([bool]$SkipTargetWorkloadReview) `
-    -DisabledReason "target workload review was disabled"
-}
-
-function Write-ReviewManifest {
-  $AggregateComparisonSkipReason = Get-AggregateComparisonSkipReason
-  $WorkloadComparisonSkipReason = Get-WorkloadComparisonSkipReason
-  $CountOnlyComparisonSkipReason = Get-CountOnlyComparisonSkipReason
-  $MaterializationComparisonSkipReason = Get-MaterializationComparisonSkipReason
-  $TargetComparisonSkipReason = Get-TargetComparisonSkipReason
-
-  $AggregateComparisonSkipped = ![string]::IsNullOrWhiteSpace($AggregateComparisonSkipReason)
-  $WorkloadComparisonSkipped = ![string]::IsNullOrWhiteSpace($WorkloadComparisonSkipReason)
-  $CountOnlyComparisonSkipped = ![string]::IsNullOrWhiteSpace($CountOnlyComparisonSkipReason)
-  $MaterializationComparisonSkipped = ![string]::IsNullOrWhiteSpace($MaterializationComparisonSkipReason)
-  $TargetSummarySkipped = [bool]$SkipTargetWorkloadReview
-  $TargetComparisonSkipped = ![string]::IsNullOrWhiteSpace($TargetComparisonSkipReason)
-
-  Write-BenchmarkReviewManifestHeader `
-    -ManifestPath $ReviewManifestPath `
-    -Label $Label `
-    -PreviousLabel $PreviousLabel `
-    -Dataset $Dataset `
-    -OrganizedRunRoot $OrganizedRunRoot `
-    -PreviousOrganizedRunDirectory $PreviousOrganizedRunDirectory `
-    -MaxDepth $EffectiveMaxDepth `
-    -Trials $Trials `
-    -Iterations $Iterations `
-    -TargetWorkloadName $TargetWorkloadName `
-    -CopyArtifactsToRunFolder $CopyArtifactsToRunFolder `
-    -ForceOrganizedArtifacts $ForceOrganizedArtifacts `
-    -ValidateArtifacts $ValidateArtifacts `
-    -RequireValidatedComparisons $RequireValidatedComparisons `
-    -CleanupFlatArtifacts $CleanupFlatArtifacts `
-    -NoiseThresholdText (Format-InvariantDouble -Value $NoiseThreshold)
-
-  $TargetSummarySkipReason = if ($TargetSummarySkipped) { "target workload review was disabled" } else { "" }
-
-  $ManifestArtifacts = @(
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.BenchmarkOutput `
-      -Path (Join-Path $OutputDir "benchmark-output-$Label.txt") `
-      -Skipped $false
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.DebugOutput `
-      -Path (Join-Path $OutputDir "debug-output-$Label.txt") `
-      -Skipped $false
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.SummaryCsv `
-      -Path (Join-Path $OutputDir "summary-$Label.csv") `
-      -Skipped $false
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.WorkloadsCsv `
-      -Path (Join-Path $OutputDir "workloads-$Label.csv") `
-      -Skipped $false
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.CountOnlyWorkloadSummary `
-      -Path (Join-Path $OutputDir "count-only-workload-summary-$Label.csv") `
-      -Skipped $false
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.CountOnlyWorkloadNotes `
-      -Path (Join-Path $OutputDir "count-only-workload-summary-$Label.txt") `
-      -Skipped $false
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.CountOnlyWorkloadComparisonCsv `
-      -Path (Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.csv") `
-      -Skipped $CountOnlyComparisonSkipped `
-      -Note $CountOnlyComparisonSkipReason
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.CountOnlyWorkloadComparisonNotes `
-      -Path (Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.txt") `
-      -Skipped $CountOnlyComparisonSkipped `
-      -Note $CountOnlyComparisonSkipReason
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.MaterializationModeSummary `
-      -Path $CurrentMaterializationSummaryCsv `
-      -Skipped $false
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.MaterializationModeNotes `
-      -Path $CurrentMaterializationSummaryNotes `
-      -Skipped $false
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.MaterializationModeComparisonCsv `
-      -Path $CurrentMaterializationComparisonCsv `
-      -Skipped $MaterializationComparisonSkipped `
-      -Note $MaterializationComparisonSkipReason
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.MaterializationModeComparisonNotes `
-      -Path $CurrentMaterializationComparisonNotes `
-      -Skipped $MaterializationComparisonSkipped `
-      -Note $MaterializationComparisonSkipReason
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.LowSelectivityGapCsv `
-      -Path (Join-Path $OutputDir "low-selectivity-gap-$Label.csv") `
-      -Skipped $false
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.LowGapRegressionNotes `
-      -Path (Join-Path $OutputDir "low-gap-regression-notes-$Label.txt") `
-      -Skipped $false
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.LowGapTrialDetails `
-      -Path (Join-Path $OutputDir "low-gap-trial-details-$Label.csv") `
-      -Skipped $false
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.LowGapTrialSummary `
-      -Path (Join-Path $OutputDir "low-gap-trial-summary-$Label.csv") `
-      -Skipped $false
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.LowGapTrialNotes `
-      -Path (Join-Path $OutputDir "low-gap-trial-notes-$Label.txt") `
-      -Skipped $false
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.LowGapWorkloadTrialDetails `
-      -Path (Join-Path $OutputDir "low-gap-workload-trial-details-$Label.csv") `
-      -Skipped $false
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.LowGapWorkloadTrialSummary `
-      -Path (Join-Path $OutputDir "low-gap-workload-trial-summary-$Label.csv") `
-      -Skipped $false
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.AggregateTrialComparisonCsv `
-      -Path (Join-Path $OutputDir "low-gap-trial-comparison-$Label.csv") `
-      -Skipped $AggregateComparisonSkipped `
-      -Note $AggregateComparisonSkipReason
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.AggregateTrialComparisonNotes `
-      -Path (Join-Path $OutputDir "low-gap-trial-comparison-$Label.txt") `
-      -Skipped $AggregateComparisonSkipped `
-      -Note $AggregateComparisonSkipReason
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.WorkloadTrialComparisonCsv `
-      -Path (Join-Path $OutputDir "low-gap-workload-trial-comparison-$Label.csv") `
-      -Skipped $WorkloadComparisonSkipped `
-      -Note $WorkloadComparisonSkipReason
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.WorkloadTrialComparisonNotes `
-      -Path (Join-Path $OutputDir "low-gap-workload-trial-comparison-$Label.txt") `
-      -Skipped $WorkloadComparisonSkipped `
-      -Note $WorkloadComparisonSkipReason
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.TargetWorkloadTrialDetails `
-      -Path (Join-Path $OutputDir "target-workload-trial-details-$Label.csv") `
-      -Skipped $TargetSummarySkipped `
-      -Note $TargetSummarySkipReason
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.TargetWorkloadTrialSummary `
-      -Path (Join-Path $OutputDir "target-workload-trial-summary-$Label.csv") `
-      -Skipped $TargetSummarySkipped `
-      -Note $TargetSummarySkipReason
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.TargetWorkloadTrialNotes `
-      -Path (Join-Path $OutputDir "target-workload-trial-notes-$Label.txt") `
-      -Skipped $TargetSummarySkipped `
-      -Note $TargetSummarySkipReason
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.TargetWorkloadTrialComparisonCsv `
-      -Path (Join-Path $OutputDir "target-workload-trial-comparison-$Label.csv") `
-      -Skipped $TargetComparisonSkipped `
-      -Note $TargetComparisonSkipReason
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.TargetWorkloadTrialComparisonNotes `
-      -Path (Join-Path $OutputDir "target-workload-trial-comparison-$Label.txt") `
-      -Skipped $TargetComparisonSkipped `
-      -Note $TargetComparisonSkipReason
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.LowGapReviewNotes `
-      -Path $ReviewNotesPath `
-      -Skipped $false
-
-    New-BenchmarkReviewManifestArtifact `
-      -Name $BenchmarkReviewArtifactNames.LowGapReviewManifest `
-      -Path $ReviewManifestPath `
-      -Skipped $false
-  )
-
-  Add-BenchmarkReviewManifestArtifacts `
-    -ManifestPath $ReviewManifestPath `
-    -Artifacts $ManifestArtifacts
-
-  Add-BenchmarkReviewManifestInterpretation -ManifestPath $ReviewManifestPath
-}
 
 $RequiredReviewScripts = Get-BenchmarkReviewRequiredScripts `
   -PathSet $ReviewPaths `
@@ -713,7 +466,42 @@ Add-BenchmarkReviewArtifactSummary `
   -ReviewManifestPath $ReviewManifestPath `
   -TargetWorkloadName $TargetWorkloadName
 
-Write-ReviewManifest
+$ReviewManifestContext = [PSCustomObject]@{
+  ReviewManifestPath                    = $ReviewManifestPath
+  ReviewNotesPath                       = $ReviewNotesPath
+  Label                                 = $Label
+  PreviousLabel                         = $PreviousLabel
+  Dataset                               = $Dataset
+  OutputDir                             = $OutputDir
+  OrganizedRunRoot                      = $OrganizedRunRoot
+  PreviousOrganizedRunDirectory         = $PreviousOrganizedRunDirectory
+  EffectiveMaxDepth                     = $EffectiveMaxDepth
+  Trials                                = $Trials
+  Iterations                            = $Iterations
+  TargetWorkloadName                    = $TargetWorkloadName
+  CopyArtifactsToRunFolder              = [bool]$CopyArtifactsToRunFolder
+  ForceOrganizedArtifacts               = [bool]$ForceOrganizedArtifacts
+  ValidateArtifacts                     = [bool]$ValidateArtifacts
+  RequireValidatedComparisons           = [bool]$RequireValidatedComparisons
+  CleanupFlatArtifacts                  = [bool]$CleanupFlatArtifacts
+  SkipTargetWorkloadReview              = [bool]$SkipTargetWorkloadReview
+  NoiseThreshold                        = $NoiseThreshold
+  PreviousTrialSummaryCsv               = $PreviousTrialSummaryCsv
+  CurrentTrialSummaryCsv                = $CurrentTrialSummaryCsv
+  PreviousWorkloadSummaryCsv            = $PreviousWorkloadSummaryCsv
+  CurrentWorkloadSummaryCsv             = $CurrentWorkloadSummaryCsv
+  PreviousCountOnlySummaryCsv           = $PreviousCountOnlySummaryCsv
+  CurrentCountOnlyWorkloadSummaryCsv    = $CurrentCountOnlyWorkloadSummaryCsv
+  PreviousMaterializationSummaryCsv     = $PreviousMaterializationSummaryCsv
+  CurrentMaterializationSummaryCsv      = $CurrentMaterializationSummaryCsv
+  CurrentMaterializationSummaryNotes    = $CurrentMaterializationSummaryNotes
+  CurrentMaterializationComparisonCsv   = $CurrentMaterializationComparisonCsv
+  CurrentMaterializationComparisonNotes = $CurrentMaterializationComparisonNotes
+  PreviousTargetSummaryCsv              = $PreviousTargetSummaryCsv
+  CurrentTargetSummaryCsv               = $CurrentTargetSummaryCsv
+}
+
+Write-BenchmarkReviewRunManifest -Context $ReviewManifestContext
 
 if ($CopyArtifactsToRunFolder) {
   Invoke-BenchmarkReviewOrganizedArtifactCopy `
