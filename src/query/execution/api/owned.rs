@@ -26,9 +26,13 @@ use super::super::stats::{apply_batch_report_to_stats, root_disjoint_stats, stat
 ///
 /// # Formal Reference
 ///
-/// This realizes the staged FSE execution model where `Pi(Q, P_k)` is evaluated
-/// before invoking `Phi_k(Delta)`, and `q(x)` is evaluated only for retained
-/// candidate partitions.
+/// This realizes the staged FSE execution model:
+///
+/// `E(Q, F) = σ_Q(Φ(R_T(Q)))`
+///
+/// Stage I evaluates `Π(Q, P_k)` to form `R_T(Q)`. Stage II reconstructs
+/// retained candidates through `Φ`. Stage III applies `σ_Q` in coordinate
+/// space and returns owned `Vector` values for exact matches.
 ///
 /// # Panics
 ///
@@ -68,6 +72,9 @@ pub fn execute_query_with_options(
 /// This preserves the required execution order:
 ///
 /// `Geometry -> Reconstruction -> Logic`.
+///
+/// The returned `QueryExecutionReport` materializes the exact result set
+/// `E(Q, F)` as owned `Vector` values.
 ///
 /// # Panics
 ///
@@ -147,7 +154,7 @@ pub fn execute_query_with_stats_and_options(
 ///
 /// # Formal Reference
 ///
-/// This is the root-level form of `Pi(Q, P_k) = 0`.
+/// This is the root-level form of `Π(Q, P_k) = 0`.
 fn execute_root_disjoint_query(index: &FSEIndex) -> QueryExecutionReport {
     QueryExecutionReport {
         results: Vec::new(),

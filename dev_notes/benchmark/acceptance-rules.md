@@ -16,7 +16,7 @@ kd_tree
 r_tree
 ```
 
-The benchmark workflow now tracks two separate FSE output contracts:
+The benchmark workflow currently distinguishes three FSE output contracts:
 
 ```text
 owned-result query execution:
@@ -29,7 +29,7 @@ existence query execution:
   returns whether the exact result set is non-empty
 ```
 
-Owned-result, count-only, and existence benchmark conclusions must remain separate.
+Owned-result, count-only, and existence conclusions are interpreted separately because each output contract measures a different returned value over the same exact query semantics.
 
 ## General acceptance requirements
 
@@ -261,7 +261,7 @@ missing current rows is 0
 previous_all_stats_match_owned is true
 current_all_stats_match_owned is true
 low-selectivity rows are reviewed separately from full-selectivity rows
-count-only conclusions remain separate from owned-result conclusions
+count-only conclusions remain separate from owned-result and existence conclusions
 ```
 
 Interpretation rules:
@@ -461,7 +461,7 @@ index validation passed
 leaf cardinality validation passed
 expected artifacts were generated
 review manifest is accurate
-owned-result conclusions are separate from count-only conclusions
+owned-result, count-only, and existence conclusions are interpreted separately
 single-run timing is not overinterpreted
 repeated-trial evidence is used for performance claims
 ```

@@ -23,10 +23,12 @@ use super::matching::count_retained_matches_without_results;
 ///
 /// This preserves the staged execution model:
 ///
-/// `Geometry -> Reconstruction -> Logic`
+/// `Geometry -> Reconstruction -> Logic`.
 ///
-/// The difference from owned-result execution is that accepted rows increment a
-/// counter instead of being converted into returned `Vector` values.
+/// Count-only execution computes `|E(Q, F)|`. It applies the same retained
+/// partition selection `R_T(Q)`, reconstruction `Φ`, and exact predicate filter
+/// `σ_Q` as owned-result execution, but accepted rows increment a counter
+/// instead of being returned as owned `Vector` values.
 ///
 /// # Panics
 ///
@@ -39,8 +41,8 @@ pub fn count_query_matches(index: &FSEIndex, query: &QueryRegion) -> usize {
 ///
 /// # Runtime Role
 ///
-/// This function exposes the same structural work counters used by owned-result
-/// query execution while avoiding final result allocation. `matched_records` is
+/// This function exposes the structural work counters used by exact query
+/// execution while avoiding final result allocation. `matched_records` is
 /// duplicated at the top level for convenience and inside `stats` for
 /// consistency with the existing execution report shape.
 ///

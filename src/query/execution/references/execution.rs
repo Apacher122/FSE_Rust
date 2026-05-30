@@ -27,8 +27,8 @@ use super::matching::{append_fully_covered_index_references, append_retained_ref
 /// `Geometry -> Reconstruction -> Logic`.
 ///
 /// The reconstruction step is still used for exact predicate evaluation on
-/// partially covered leaves. The difference is that accepted rows are returned
-/// as references to indexed residual storage.
+/// partially covered leaves. The returned references identify members of
+/// `E(Q, F)` without materializing owned `Vector` values.
 ///
 /// # Panics
 ///
@@ -44,12 +44,16 @@ pub fn execute_query_references(
 ///
 /// # Runtime Role
 ///
-/// `QueryReferenceReport` gives the benchmark layer a third output contract
-/// between owned-result execution and count-only execution:
+/// `QueryReferenceReport` exposes a lower-allocation representation of the
+/// exact result set `E(Q, F)`.
 ///
-/// - owned-result execution materializes owned vectors.
+/// The public query APIs use distinct output contracts over the same execution
+/// semantics:
+///
+/// - owned-result execution materializes owned `Vector` values.
 /// - reference-result execution materializes row references.
-/// - count-only execution materializes only exact cardinality.
+/// - count-only execution returns exact cardinality.
+/// - existence execution returns whether the exact result set is non-empty.
 ///
 /// # Panics
 ///

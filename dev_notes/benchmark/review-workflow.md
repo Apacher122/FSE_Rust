@@ -17,6 +17,7 @@ It should answer:
     did validation pass
     did owned-result FSE timing improve or regress
     did count-only timing improve or regress
+    did existence timing or inspected-record behavior change
     did target workload behavior change
     did structural counters change
     did artifact generation succeed
@@ -37,7 +38,7 @@ The core FSE implementation is already benchmarked against:
     kd_tree
     r_tree
 
-The review workflow tracks two separate output contracts:
+The review workflow currently distinguishes these output contracts:
 
     owned-result query execution:
       returns materialized Vec<Vector> results
@@ -45,7 +46,10 @@ The review workflow tracks two separate output contracts:
     count-only query execution:
       returns exact cardinality without owned Vector materialization
 
-Owned-result conclusions and count-only conclusions must remain separate.
+    existence query execution:
+      returns whether the exact result set is non-empty
+
+Owned-result, count-only, and existence conclusions are interpreted separately.
 
 ## Primary review command
 
@@ -525,8 +529,9 @@ The guidance should remind the reviewer to use:
     workload comparison artifacts for weakest-workload movement
     target workload artifacts for target-specific movement
     count-only workload comparison artifacts for count-only query mode movement
+    debug-only existence timing output for exact non-empty-result behavior
 
-Decision guidance should keep owned-result and count-only conclusions separate.
+Decision guidance should separate owned-result, count-only, and existence conclusions.
 
 ## Reporting-only commit review
 

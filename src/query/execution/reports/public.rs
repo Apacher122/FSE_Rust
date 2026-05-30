@@ -12,8 +12,8 @@ use crate::math::{Scalar, Vector};
 /// # Formal Reference
 ///
 /// These values correspond to the runtime terms in the staged execution model:
-/// metadata traversal, retained candidate partitions, deferred reconstruction,
-/// and exact point-level evaluation.
+/// retained partition selection `R_T(Q)`, deferred reconstruction `Φ`, and exact
+/// predicate evaluation `σ_Q`.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct QueryExecutionStats {
     /// Number of hierarchy nodes whose metadata was visited.
@@ -64,8 +64,9 @@ pub struct QueryExecutionReport {
 /// # Runtime Role
 ///
 /// `QueryCountReport` exposes exact query cardinality without materializing
-/// owned result vectors. This keeps the same structural accounting as
-/// `QueryExecutionReport` while avoiding result ownership costs.
+/// owned result vectors. It reports `|E(Q, F)|` while preserving the same
+/// retained partition selection, reconstruction, and exact predicate semantics
+/// used by owned-result execution.
 #[derive(Clone, Debug, PartialEq)]
 pub struct QueryCountReport {
     /// Number of exact records matched by the query.
@@ -80,9 +81,9 @@ pub struct QueryCountReport {
 /// # Runtime Role
 ///
 /// `QueryExistenceReport` exposes whether the exact result set is non-empty.
-/// The associated statistics describe the work performed by the short-circuit
-/// existence path. `inspected_records` counts the candidate rows evaluated
-/// before the result was established.
+/// It reports whether `|E(Q, F)| > 0`. The associated statistics describe the
+/// work performed by the short-circuit existence path. `inspected_records`
+/// counts the candidate rows evaluated before the result was established.
 #[derive(Clone, Debug, PartialEq)]
 pub struct QueryExistenceReport {
     /// Whether the exact query result set is non-empty.
@@ -106,8 +107,8 @@ pub struct QueryExistenceReport {
 ///
 /// # Formal Reference
 ///
-/// The referenced row has already passed the same staged execution semantics as
-/// owned-result queries:
+/// The referenced row is a member of the exact result set `E(Q, F)` produced by
+/// the same staged execution semantics as owned-result queries:
 ///
 /// `Geometry -> Reconstruction -> Logic`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -124,8 +125,8 @@ pub struct QueryResultReference {
 /// # Runtime Role
 ///
 /// `QueryReferenceReport` exposes exact matching row references while preserving
-/// the same structural accounting used by owned-result and count-only query
-/// execution.
+/// the same retained partition selection, reconstruction, and exact predicate
+/// semantics used by owned-result and count-only query execution.
 #[derive(Clone, Debug, PartialEq)]
 pub struct QueryReferenceReport {
     /// Exact matching row references.

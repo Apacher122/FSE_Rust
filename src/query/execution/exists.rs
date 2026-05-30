@@ -1,8 +1,8 @@
 //! Exact existence query execution.
 //!
 //! Existence queries return whether the exact result set `E(Q, F)` is non-empty.
-//! The execution path preserves the paper's ordered semantics and may stop
-//! candidate evaluation after the first exact match.
+//! The execution path preserves `Geometry -> Reconstruction -> Logic` and may
+//! stop candidate evaluation after the first exact match.
 
 use crate::query::region::QueryBoundsClassification;
 use crate::query::{QueryRegion, RetainedLeaf, RetainedLeafCoverage};
@@ -32,15 +32,15 @@ impl ExistenceSearchReport {
 /// # Runtime Role
 ///
 /// This output contract is useful when callers need exact existence rather than
-/// materialized rows, row references, or exact cardinality. It preserves the
-/// same query semantics as owned-result and count-only execution, but it may
-/// stop candidate evaluation once one exact match is found.
+/// materialized rows, row references, or exact cardinality. It evaluates the
+/// same exact result set `E(Q, F)` as the other query output contracts and
+/// returns whether that set is non-empty.
 ///
 /// # Formal Reference
 ///
-/// This preserves the paper's staged execution model:
+/// This preserves the staged execution model:
 ///
-/// `Geometry -> Reconstruction -> Logic`
+/// `Geometry -> Reconstruction -> Logic`.
 ///
 /// Let `E(Q, F)` denote the exact FSE execution result:
 ///
@@ -76,7 +76,8 @@ pub fn query_has_match(index: &FSEIndex, query: &QueryRegion) -> bool {
 ///
 /// `query_has_match(Q, F) = |E(Q, F)| > 0`
 ///
-/// Partial geometric retention still requires exact evaluation through `σ_Q`.
+/// Partial geometric retention still requires exact evaluation through `σ_Q`
+/// before the existence result can be established.
 ///
 /// # Panics
 ///
