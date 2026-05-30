@@ -11,10 +11,15 @@ $ErrorActionPreference = "Stop"
 $ScriptsRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 $BenchmarkCsvLibrary = Join-Path (Join-Path $ScriptsRoot "lib") "benchmark-csv.ps1"
+$BenchmarkComparisonLibrary = Join-Path (Join-Path $ScriptsRoot "lib") "benchmark-comparison.ps1"
 $BenchmarkCountOnlyLibrary = Join-Path (Join-Path $ScriptsRoot "lib") "benchmark-count-only.ps1"
 
 if (!(Test-Path -LiteralPath $BenchmarkCsvLibrary)) {
   throw "benchmark CSV helper library was not found: $BenchmarkCsvLibrary"
+}
+
+if (!(Test-Path -LiteralPath $BenchmarkComparisonLibrary)) {
+  throw "benchmark comparison helper library was not found: $BenchmarkComparisonLibrary"
 }
 
 if (!(Test-Path -LiteralPath $BenchmarkCountOnlyLibrary)) {
@@ -22,28 +27,25 @@ if (!(Test-Path -LiteralPath $BenchmarkCountOnlyLibrary)) {
 }
 
 . $BenchmarkCsvLibrary
+. $BenchmarkComparisonLibrary
 . $BenchmarkCountOnlyLibrary
 
-if ([string]::IsNullOrWhiteSpace($PreviousCountOnlySummaryCsv)) {
-  throw "`-PreviousCountOnlySummaryCsv` is required"
-}
+$ComparisonInputs = Import-BenchmarkComparisonCsvPair `
+  -PreviousPath $PreviousCountOnlySummaryCsv `
+  -CurrentPath $CurrentCountOnlySummaryCsv `
+  -PreviousParameterName "PreviousCountOnlySummaryCsv" `
+  -CurrentParameterName "CurrentCountOnlySummaryCsv" `
+  -PreviousDescription "previous count-only summary" `
+  -CurrentDescription "current count-only summary"
 
-if ([string]::IsNullOrWhiteSpace($CurrentCountOnlySummaryCsv)) {
-  throw "`-CurrentCountOnlySummaryCsv` is required"
-}
+$ComparisonPaths = New-BenchmarkComparisonOutputPathSet `
+  -OutputDir $OutputDir `
+  -Label $Label `
+  -CsvFileName "count-only-workload-summary-comparison-$Label.csv" `
+  -NotesFileName "count-only-workload-summary-comparison-$Label.txt"
 
-if (!(Test-Path -LiteralPath $PreviousCountOnlySummaryCsv)) {
-  throw "previous count-only summary CSV was not found: $PreviousCountOnlySummaryCsv"
-}
-
-if (!(Test-Path -LiteralPath $CurrentCountOnlySummaryCsv)) {
-  throw "current count-only summary CSV was not found: $CurrentCountOnlySummaryCsv"
-}
-
-New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
-
-$ComparisonCsvPath = Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.csv"
-$ComparisonNotesPath = Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.txt"
+$ComparisonCsvPath = $ComparisonPaths.CsvPath
+$ComparisonNotesPath = $ComparisonPaths.NotesPath
 
 
 function New-ComparisonRow {
@@ -97,8 +99,8 @@ function New-ComparisonRow {
   }
 }
 
-$PreviousRows = @(Import-Csv -LiteralPath $PreviousCountOnlySummaryCsv)
-$CurrentRows = @(Import-Csv -LiteralPath $CurrentCountOnlySummaryCsv)
+$PreviousRows = @($ComparisonInputs.PreviousRows)
+$CurrentRows = @($ComparisonInputs.CurrentRows)
 
 if ($PreviousRows.Count -eq 0) {
   throw "previous count-only summary CSV has no rows: $PreviousCountOnlySummaryCsv"

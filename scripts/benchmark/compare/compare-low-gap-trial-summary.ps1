@@ -24,26 +24,22 @@ if (!(Test-Path -LiteralPath $BenchmarkComparisonLibrary)) {
 . $BenchmarkCsvLibrary
 . $BenchmarkComparisonLibrary
 
-if ([string]::IsNullOrWhiteSpace($PreviousTrialSummaryCsv)) {
-  throw "`-PreviousTrialSummaryCsv` is required"
-}
+$ComparisonInputs = Import-BenchmarkComparisonCsvPair `
+  -PreviousPath $PreviousTrialSummaryCsv `
+  -CurrentPath $CurrentTrialSummaryCsv `
+  -PreviousParameterName "PreviousTrialSummaryCsv" `
+  -CurrentParameterName "CurrentTrialSummaryCsv" `
+  -PreviousDescription "previous low-gap trial summary" `
+  -CurrentDescription "current low-gap trial summary"
 
-if ([string]::IsNullOrWhiteSpace($CurrentTrialSummaryCsv)) {
-  throw "`-CurrentTrialSummaryCsv` is required"
-}
+$ComparisonPaths = New-BenchmarkComparisonOutputPathSet `
+  -OutputDir $OutputDir `
+  -Label $Label `
+  -CsvFileName "low-gap-trial-comparison-$Label.csv" `
+  -NotesFileName "low-gap-trial-comparison-$Label.txt"
 
-if (!(Test-Path -LiteralPath $PreviousTrialSummaryCsv)) {
-  throw "previous low-gap trial summary CSV was not found: $PreviousTrialSummaryCsv"
-}
-
-if (!(Test-Path -LiteralPath $CurrentTrialSummaryCsv)) {
-  throw "current low-gap trial summary CSV was not found: $CurrentTrialSummaryCsv"
-}
-
-New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
-
-$ComparisonCsvPath = Join-Path $OutputDir "low-gap-trial-comparison-$Label.csv"
-$ComparisonNotesPath = Join-Path $OutputDir "low-gap-trial-comparison-$Label.txt"
+$ComparisonCsvPath = $ComparisonPaths.CsvPath
+$ComparisonNotesPath = $ComparisonPaths.NotesPath
 
 $TreeBaselines = Get-BenchmarkTreeBaselineNames
 
@@ -120,11 +116,11 @@ function New-ComparisonRow {
   }
 }
 
-$PreviousResolvedPath = (Resolve-Path -LiteralPath $PreviousTrialSummaryCsv).Path
-$CurrentResolvedPath = (Resolve-Path -LiteralPath $CurrentTrialSummaryCsv).Path
+$PreviousResolvedPath = $ComparisonInputs.PreviousResolvedPath
+$CurrentResolvedPath = $ComparisonInputs.CurrentResolvedPath
 
-$PreviousRows = @(Import-Csv -LiteralPath $PreviousResolvedPath)
-$CurrentRows = @(Import-Csv -LiteralPath $CurrentResolvedPath)
+$PreviousRows = @($ComparisonInputs.PreviousRows)
+$CurrentRows = @($ComparisonInputs.CurrentRows)
 
 $ComparisonObjects = @(New-BenchmarkBaselineComparisonObjects `
     -PreviousRows $PreviousRows `

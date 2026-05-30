@@ -11,33 +11,35 @@ $ErrorActionPreference = "Stop"
 $ScriptsRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 $BenchmarkCsvLibrary = Join-Path (Join-Path $ScriptsRoot "lib") "benchmark-csv.ps1"
+$BenchmarkComparisonLibrary = Join-Path (Join-Path $ScriptsRoot "lib") "benchmark-comparison.ps1"
 
 if (!(Test-Path -LiteralPath $BenchmarkCsvLibrary)) {
   throw "benchmark CSV helper library was not found: $BenchmarkCsvLibrary"
 }
 
+if (!(Test-Path -LiteralPath $BenchmarkComparisonLibrary)) {
+  throw "benchmark comparison helper library was not found: $BenchmarkComparisonLibrary"
+}
+
 . $BenchmarkCsvLibrary
+. $BenchmarkComparisonLibrary
 
-if ([string]::IsNullOrWhiteSpace($PreviousMaterializationSummaryCsv)) {
-  throw "`-PreviousMaterializationSummaryCsv` is required"
-}
+$ComparisonInputs = Import-BenchmarkComparisonCsvPair `
+  -PreviousPath $PreviousMaterializationSummaryCsv `
+  -CurrentPath $CurrentMaterializationSummaryCsv `
+  -PreviousParameterName "PreviousMaterializationSummaryCsv" `
+  -CurrentParameterName "CurrentMaterializationSummaryCsv" `
+  -PreviousDescription "previous materialization summary" `
+  -CurrentDescription "current materialization summary"
 
-if ([string]::IsNullOrWhiteSpace($CurrentMaterializationSummaryCsv)) {
-  throw "`-CurrentMaterializationSummaryCsv` is required"
-}
+$ComparisonPaths = New-BenchmarkComparisonOutputPathSet `
+  -OutputDir $OutputDir `
+  -Label $Label `
+  -CsvFileName "materialization-mode-summary-comparison-$Label.csv" `
+  -NotesFileName "materialization-mode-summary-comparison-$Label.txt"
 
-if (!(Test-Path -LiteralPath $PreviousMaterializationSummaryCsv)) {
-  throw "previous materialization summary CSV was not found: $PreviousMaterializationSummaryCsv"
-}
-
-if (!(Test-Path -LiteralPath $CurrentMaterializationSummaryCsv)) {
-  throw "current materialization summary CSV was not found: $CurrentMaterializationSummaryCsv"
-}
-
-New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
-
-$ComparisonCsvPath = Join-Path $OutputDir "materialization-mode-summary-comparison-$Label.csv"
-$ComparisonNotesPath = Join-Path $OutputDir "materialization-mode-summary-comparison-$Label.txt"
+$ComparisonCsvPath = $ComparisonPaths.CsvPath
+$ComparisonNotesPath = $ComparisonPaths.NotesPath
 
 
 function Require-MaterializationCsvField {
@@ -77,7 +79,12 @@ function Convert-MaterializationDurationToNanoseconds {
     throw "unsupported duration value in materialization summary: $Value"
   }
 
-  $Magnitude = [System.Convert]::ToDouble($Match.Groups[1].Value, $BenchmarkInvariantCulture)
+  $Magnitude = Convert-ToInvariantDouble -Value $Match.Groups[1].Value
+
+  if ($null -eq $Magnitude) {
+    return $null
+  }
+
   $Unit = $Match.Groups[2].Value
 
   switch ($Unit) {
@@ -105,11 +112,7 @@ function Convert-MaterializationSpeedupToRatio {
     return $null
   }
 
-  if ($Text.EndsWith("x")) {
-    $Text = $Text.Substring(0, $Text.Length - 1)
-  }
-
-  return [System.Convert]::ToDouble($Text, $BenchmarkInvariantCulture)
+  return Convert-ToInvariantDouble -Value $Text
 }
 
 function Get-RelativeDeltaClassification {
@@ -316,8 +319,8 @@ function New-ComparisonRow {
   }
 }
 
-$PreviousRows = @(Import-Csv -LiteralPath $PreviousMaterializationSummaryCsv)
-$CurrentRows = @(Import-Csv -LiteralPath $CurrentMaterializationSummaryCsv)
+$PreviousRows = @($ComparisonInputs.PreviousRows)
+$CurrentRows = @($ComparisonInputs.CurrentRows)
 
 if ($PreviousRows.Count -eq 0) {
   throw "previous materialization summary CSV has no rows: $PreviousMaterializationSummaryCsv"

@@ -17,7 +17,6 @@ scripts/
 
 Root scripts such as `scripts/run-low-gap-review.ps1` forward to the canonical script paths. This keeps old commands stable while making the benchmark workflow easier to navigate.
 
-
 ## Canonical benchmark entry points
 
 Use the canonical benchmark paths for new commands and documentation:

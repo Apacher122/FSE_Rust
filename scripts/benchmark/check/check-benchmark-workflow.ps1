@@ -14,9 +14,11 @@ function Invoke-WorkflowStep {
   Write-Host $Name
   Write-Host ("=" * $Name.Length)
 
+  $global:LASTEXITCODE = 0
+
   & $Command
 
-  if ($LASTEXITCODE -ne 0) {
+  if ($global:LASTEXITCODE -ne 0) {
     throw "workflow step failed: $Name"
   }
 }
