@@ -499,6 +499,93 @@ existence should remain debug-only for now
 existence artifact promotion requires repeated-trial evidence that count-only artifacts cannot explain
 ```
 
+## Reference visitor materialization conclusion
+
+The reference visitor API was introduced to measure exact row-reference delivery without constructing a `Vec<QueryResultReference>`.
+
+The first small-dataset materialization review used:
+
+```text
+label: c160-reference-visitor-materialization-small
+dataset: small
+trials: 5
+iterations: 1000
+```
+
+The materialization summary reported `agreement = pass` for every workload.
+
+Reference visitor timing was lower than reference-result timing on 5 of 6 workloads:
+
+```text
+cluster_range_000: 105ns reference-result, 79ns reference-visitor
+cluster_range_001: 119ns reference-result, 90ns reference-visitor
+cluster_range_002: 112ns reference-result, 92ns reference-visitor
+full_dataset_range: 72ns reference-result, 65ns reference-visitor
+cluster_boundary_range: 133ns reference-result, 108ns reference-visitor
+```
+
+The only slower row was `empty_far_range`:
+
+```text
+reference-result: 22ns
+reference-visitor: 23ns
+```
+
+That 1ns difference is noise-level.
+
+For the target workload `cluster_boundary_range`, debug output reported:
+
+```text
+reference-result average elapsed: 146ns
+reference-visitor average elapsed: 105ns
+count-only average elapsed: 104ns
+reference visitor stats match reference: true
+all matched records agree: true
+```
+
+Conclusion:
+
+```text
+reference visitor reduces reference-result output overhead on the current small materialization summary
+reference visitor is close to count-only on the small selective target workload
+count-only remains the correct resultless contract when only cardinality is needed
+large-dataset visitor evidence now shows the same direction on most materialization rows
+large_full_dataset_range is the strongest current visitor result because it avoids collecting 10000 references into a Vec
+```
+
+## Large reference visitor materialization conclusion
+
+The large reference visitor review `c161-reference-visitor-materialization-large` reported `agreement = pass` for all materialization rows.
+
+Materialization summary result:
+
+```text
+visitor faster than reference-result: 10 of 13 workloads
+visitor slower than reference-result: 3 of 13 workloads
+large_full_dataset_range reference-result: 11.586us
+large_full_dataset_range reference-visitor: 4.082us
+large_full_dataset_range visitor advantage: 7.504us
+```
+
+The slower visitor rows were small absolute differences:
+
+```text
+large_cluster_range_001: 18ns slower
+large_cluster_range_003: 21ns slower
+large_empty_far_range: 9ns slower
+```
+
+Conclusion:
+
+```text
+reference visitor reduces reference-result output overhead when references must be delivered
+large output cardinality makes the visitor advantage easier to observe
+small selective rows can remain noise-level or mixed
+count-only remains the resultless floor when only cardinality is needed
+```
+
+This evidence should not be interpreted as a pruning improvement. It is result-delivery evidence over exact matches after the normal FSE execution pipeline has already selected and evaluated candidates.
+
 ## Future optimization direction
 
 The next meaningful optimization direction is a result representation or query API decision.
@@ -540,6 +627,7 @@ FSE pruning is doing its job on the target workloads
 small boundary workload is near the fixed-cost floor under owned-result execution
 large target confirms result materialization dominates retained execution
 count-only query mode is a valid separate output contract
+reference visitor is a valid separate exact reference-delivery output contract
 future traversal or boundary-specific optimizations need new evidence before being prioritized
 ```
 
@@ -560,5 +648,6 @@ owned-result low-gap repeated trials
 target workload repeated trials
 count-only workload summary
 count-only workload comparison
+reference visitor materialization summary
 debug diagnostics for explanation only
 ```

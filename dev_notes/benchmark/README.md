@@ -17,6 +17,7 @@ That file now acts as an index into these topic files.
 | `diagnostic-conclusions.md` | Boundary fixed-cost conclusions, retained execution conclusions, and result ownership conclusions. |
 | `count-only-workflow.md` | Count-only API timing, count-only summary artifacts, and count-only comparison artifacts. |
 | `existence-workflow.md` | Exact existence API timing, debug evidence scope, and artifact promotion rules. |
+| `reference-visitor-workflow.md` | Reference visitor output contract, materialization evidence, and interpretation limits. |
 | `review-workflow.md` | Low-gap review runner, target workload review, trial comparison commands, and expected review flow. |
 | `validation-coverage.md` | Review validator artifact contracts, equivalence gates, comparison scope, and failure conditions. |
 | `artifact-workflow.md` | Artifact organization, organized run folders, organized previous-label lookup, organized copy, and cleanup. |
@@ -54,6 +55,7 @@ The benchmark workflow now has:
     owned-result query execution
     count-only query execution
     existence query execution
+    reference visitor materialization evidence for small and large datasets
     per-workload CSV metrics
     count-only workload summary artifacts
     count-only comparison artifacts
@@ -83,6 +85,10 @@ For count-only query mode behavior and count-only artifact interpretation, use:
 For exact existence query behavior, inspected-record evidence, and artifact-scope decisions, use:
 
     existence-workflow.md
+
+For reference visitor materialization evidence and interpretation limits, use:
+
+    reference-visitor-workflow.md
 
 For review commands and generated review artifacts, use:
 
@@ -211,4 +217,5 @@ Current benchmark interpretation:
     large target confirms result materialization dominates retained execution
     count-only query mode is a valid separate output contract
     existence query mode is a valid separate output contract with debug-only benchmark evidence
+    reference visitor is a valid exact reference-delivery output contract with small-dataset materialization evidence
     future traversal or boundary-specific optimizations need new evidence before being prioritized

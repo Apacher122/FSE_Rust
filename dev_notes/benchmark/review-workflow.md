@@ -712,6 +712,40 @@ The review rule is:
 
 Use this artifact to identify whether owned result materialization, reusable output buffers, reference-result construction, reference-visitor dispatch, or count-only execution is the current output-contract cost driver. Do not use it as a standalone performance claim without repeated-trial evidence.
 
+## Reference visitor materialization result
+
+The first repeated small-dataset materialization review for the reference visitor used:
+
+    ```text
+    label: c160-reference-visitor-materialization-small
+    dataset: small
+    trials: 5
+    iterations: 1000
+    ```
+
+The materialization summary reported `agreement = pass` for every workload.
+
+The reference visitor was faster than the reference-result path on 5 of 6 workloads. The only slower workload was `empty_far_range`, where the visitor was 1ns slower and should be treated as noise-equivalent.
+
+Target workload result for `cluster_boundary_range`:
+
+    ```text
+    fresh owned average elapsed: 243ns
+    reusable owned average elapsed: 134ns
+    reference-result average elapsed: 146ns
+    reference-visitor average elapsed: 105ns
+    count-only average elapsed: 104ns
+    ```
+
+Review interpretation:
+
+    ```text
+    reference visitor reduces reference-result output overhead on the current small dataset
+    reference visitor is not a replacement for count-only resultless execution
+    this is output-contract evidence, not geometric pruning evidence
+    large dataset evidence remains future work
+    ```
+
 ## Materialization summary comparison
 
 Materialization summary comparison is a single-run artifact review helper. It compares the extracted materialization-mode summary CSV from one run against another run.
