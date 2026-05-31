@@ -12,6 +12,7 @@ mod reconstruction;
 pub use execution::{execute_query_references, execute_query_references_with_stats};
 
 pub use reconstruction::{
-    reconstruct_query_result_reference, reconstruct_query_result_reference_into,
-    reconstruct_query_result_references, reconstruct_query_result_references_into,
+    QueryResultRowView, query_result_row_view, reconstruct_query_result_reference,
+    reconstruct_query_result_reference_into, reconstruct_query_result_references,
+    reconstruct_query_result_references_into,
 };

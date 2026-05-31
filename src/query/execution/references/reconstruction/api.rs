@@ -1,11 +1,106 @@
 //! Public reference-result reconstruction API.
 
 use crate::math::{Scalar, Vector};
-use crate::query::reconstruction::{reconstruct_point, reconstruct_row_into};
-use crate::storage::FSEIndex;
+use crate::query::reconstruction::{
+    reconstruct_point, reconstruct_row_into, validate_partition_reconstruction_shape,
+};
+use crate::storage::{FSEIndex, PartitionNode};
 
 use super::super::super::reports::QueryResultReference;
 use super::validation::reference_leaf_node;
+
+/// Borrowed view over an exact query result row.
+///
+/// # Runtime Role
+///
+/// `QueryResultRowView` lets callers inspect a matched row without allocating an
+/// owned [`Vector`]. The view borrows the leaf partition that stores the
+/// residual row and reconstructs coordinates on demand.
+///
+/// # Formal Reference
+///
+/// Each coordinate access applies the deferred reconstruction operator
+/// $\Phi_k(\Delta) = \mu_k + \Delta$ for the referenced residual row. The view
+/// does not rerun geometric pruning or exact predicate evaluation.
+#[derive(Clone, Copy, Debug)]
+pub struct QueryResultRowView<'a> {
+    reference: QueryResultReference,
+    node: &'a PartitionNode,
+}
+
+impl<'a> QueryResultRowView<'a> {
+    /// Returns the exact row reference represented by this view.
+    pub fn reference(&self) -> QueryResultReference {
+        self.reference
+    }
+
+    /// Returns the dimensionality of the referenced row.
+    pub fn dimensions(&self) -> usize {
+        self.node.residuals.dimensions()
+    }
+
+    /// Reconstructs one coordinate from the referenced row.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `dimension` is outside the row dimensionality.
+    pub fn coordinate(&self, dimension: usize) -> Scalar {
+        let dimensions = self.dimensions();
+
+        assert!(
+            dimension < dimensions,
+            "query result row view dimension {dimension} must be inside dimensionality {dimensions}"
+        );
+
+        self.node.centroid[dimension]
+            + self.node.residuals.dimensions[dimension][self.reference.row_index]
+    }
+
+    /// Reconstructs the referenced row into a caller-owned coordinate buffer.
+    ///
+    /// # Runtime Role
+    ///
+    /// This is the allocation-conscious materialization path for a row view.
+    /// The caller owns `output` and may reuse it across many viewed rows.
+    pub fn write_into(&self, output: &mut Vec<Scalar>) {
+        reconstruct_row_into(self.node, self.reference.row_index, output);
+    }
+
+    /// Reconstructs the referenced row as an owned vector.
+    ///
+    /// # Runtime Role
+    ///
+    /// This preserves an explicit materialization boundary for callers that
+    /// inspect rows through views but eventually need owned coordinates.
+    pub fn to_vector(&self) -> Vector {
+        reconstruct_point(self.node, self.reference.row_index)
+    }
+}
+
+/// Returns a borrowed view over an exact query result reference.
+///
+/// # Runtime Role
+///
+/// This function is the borrowed counterpart to
+/// [`reconstruct_query_result_reference`]. It validates the supplied reference
+/// and then returns a lightweight view that reconstructs coordinates on demand.
+///
+/// # Formal Reference
+///
+/// The returned view represents one member of `E(Q, F)` and exposes deferred
+/// reconstruction through $\Phi_k(\Delta) = \mu_k + \Delta$.
+///
+/// # Panics
+///
+/// Panics when the reference is invalid.
+pub fn query_result_row_view(
+    index: &FSEIndex,
+    reference: QueryResultReference,
+) -> QueryResultRowView<'_> {
+    let node = validated_reference_leaf_node(index, reference);
+
+    QueryResultRowView { reference, node }
+}
 
 /// Reconstructs an owned row from an exact query result reference.
 ///
@@ -142,4 +237,19 @@ fn reconstruct_reference_into_result_slot(
     } else {
         results.push(reconstruct_point(node, reference.row_index));
     }
+}
+
+fn validated_reference_leaf_node(
+    index: &FSEIndex,
+    reference: QueryResultReference,
+) -> &PartitionNode {
+    let node = reference_leaf_node(index, reference);
+    let shape = validate_partition_reconstruction_shape(node);
+
+    assert!(
+        reference.row_index < shape.cardinality,
+        "residual row index must be inside the partition cardinality"
+    );
+
+    node
 }

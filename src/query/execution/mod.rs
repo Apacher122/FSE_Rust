@@ -31,12 +31,13 @@ pub use count::{count_query_matches, count_query_matches_with_stats};
 
 pub use exists::{query_has_match, query_has_match_with_stats};
 
-pub use visit::visit_query_references;
+pub use visit::{visit_query_references, visit_query_row_views};
 
 pub use references::{
-    execute_query_references, execute_query_references_with_stats,
-    reconstruct_query_result_reference, reconstruct_query_result_reference_into,
-    reconstruct_query_result_references, reconstruct_query_result_references_into,
+    QueryResultRowView, execute_query_references, execute_query_references_with_stats,
+    query_result_row_view, reconstruct_query_result_reference,
+    reconstruct_query_result_reference_into, reconstruct_query_result_references,
+    reconstruct_query_result_references_into,
 };
 
 pub(crate) use api::execute_retained_leaf_batch_for_diagnostics;

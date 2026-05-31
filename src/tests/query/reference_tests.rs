@@ -8,8 +8,9 @@ use crate::build::{BuildConfig, FSEBuilder};
 use crate::math::Vector;
 use crate::query::{
     QueryResultReference, count_query_matches_with_stats, execute_query_references_with_stats,
-    reconstruct_query_result_reference, reconstruct_query_result_reference_into,
-    reconstruct_query_result_references, reconstruct_query_result_references_into,
+    query_result_row_view, reconstruct_query_result_reference,
+    reconstruct_query_result_reference_into, reconstruct_query_result_references,
+    reconstruct_query_result_references_into,
 };
 use crate::storage::FSEIndex;
 use crate::tests::support::sort_points;
@@ -100,6 +101,62 @@ fn reconstruct_query_result_reference_into_reuses_output_buffer() {
     assert!(
         output.capacity() >= original_capacity,
         "reference reconstruction should preserve reusable output capacity"
+    );
+}
+
+#[test]
+fn query_result_row_view_exposes_reference_and_coordinates() {
+    let points = clustered_points_2d();
+    let builder = FSEBuilder::new(BuildConfig::new(8, 8).with_target_leaf_size(8));
+    let index = builder.build(&points);
+    let workload = clustered_workload_cases()
+        .into_iter()
+        .find(|workload| workload.name == "cluster_boundary_range")
+        .expect("small benchmark workloads should include cluster_boundary_range");
+
+    let reference = execute_query_references_with_stats(&index, &workload.query)
+        .matches
+        .into_iter()
+        .next()
+        .expect("cluster_boundary_range should return at least one reference");
+
+    let view = query_result_row_view(&index, reference);
+    let reconstructed = reconstruct_query_result_reference(&index, reference);
+    let viewed_values = (0..view.dimensions())
+        .map(|dimension| view.coordinate(dimension))
+        .collect::<Vec<_>>();
+
+    assert_eq!(view.reference(), reference);
+    assert_eq!(view.dimensions(), reconstructed.dimensions());
+    assert_eq!(viewed_values, reconstructed.values);
+}
+
+#[test]
+fn query_result_row_view_writes_into_reusable_buffer() {
+    let points = clustered_points_2d();
+    let builder = FSEBuilder::new(BuildConfig::new(8, 8).with_target_leaf_size(8));
+    let index = builder.build(&points);
+    let workload = clustered_workload_cases()
+        .into_iter()
+        .find(|workload| workload.name == "cluster_boundary_range")
+        .expect("small benchmark workloads should include cluster_boundary_range");
+
+    let reference = execute_query_references_with_stats(&index, &workload.query)
+        .matches
+        .into_iter()
+        .next()
+        .expect("cluster_boundary_range should return at least one reference");
+
+    let view = query_result_row_view(&index, reference);
+    let mut output = Vec::with_capacity(16);
+    let original_capacity = output.capacity();
+
+    view.write_into(&mut output);
+
+    assert_eq!(output, view.to_vector().values);
+    assert!(
+        output.capacity() >= original_capacity,
+        "row view reconstruction should preserve reusable output capacity"
     );
 }
 
@@ -256,6 +313,27 @@ fn reconstruct_query_result_reference_rejects_out_of_range_row() {
     let shape = index.leaf_reconstruction_shape(leaf_node_id);
 
     reconstruct_query_result_reference(
+        &index,
+        QueryResultReference {
+            node_id: leaf_node_id,
+            row_index: shape.cardinality,
+        },
+    );
+}
+
+#[test]
+#[should_panic(expected = "residual row index must be inside")]
+fn query_result_row_view_rejects_out_of_range_row() {
+    let points = clustered_points_2d();
+    let builder = FSEBuilder::new(BuildConfig::new(8, 8).with_target_leaf_size(8));
+    let index = builder.build(&points);
+    let leaf_node_id = *index
+        .leaf_node_ids()
+        .first()
+        .expect("test setup should include at least one leaf");
+    let shape = index.leaf_reconstruction_shape(leaf_node_id);
+
+    query_result_row_view(
         &index,
         QueryResultReference {
             node_id: leaf_node_id,

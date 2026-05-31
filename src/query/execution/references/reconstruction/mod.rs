@@ -7,6 +7,7 @@ mod api;
 mod validation;
 
 pub use api::{
-    reconstruct_query_result_reference, reconstruct_query_result_reference_into,
-    reconstruct_query_result_references, reconstruct_query_result_references_into,
+    QueryResultRowView, query_result_row_view, reconstruct_query_result_reference,
+    reconstruct_query_result_reference_into, reconstruct_query_result_references,
+    reconstruct_query_result_references_into,
 };
