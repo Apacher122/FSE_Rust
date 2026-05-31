@@ -33,14 +33,14 @@ pub struct QueryExecutionStats {
 
     /// Number of records reconstructed or inspected after pruning.
     ///
-    /// Full-result, reference-result, and count-only execution report the full
+    /// Full-result, reference-result, reference-visitor, and count-only execution report the full
     /// retained candidate count. Short-circuit output contracts report the
     /// number of candidate records needed to establish their result.
     pub reconstructed_records: usize,
 
     /// Number of records accepted by exact predicate evaluation for this report.
     ///
-    /// Full-result, reference-result, and count-only execution report exact
+    /// Full-result, reference-result, reference-visitor, and count-only execution report exact
     /// cardinality. Short-circuit output contracts may report the accepted
     /// record count required to establish their result.
     pub matched_records: usize,

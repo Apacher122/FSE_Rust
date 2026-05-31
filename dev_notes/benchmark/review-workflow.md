@@ -43,13 +43,19 @@ The review workflow currently distinguishes these output contracts:
     owned-result query execution:
       returns materialized Vec<Vector> results
 
+    reference-result query execution:
+      returns exact row references in a Vec<QueryResultReference>
+
+    reference-visitor query execution:
+      visits exact row references without constructing the reference Vec
+
     count-only query execution:
       returns exact cardinality without owned Vector materialization
 
     existence query execution:
       returns whether the exact result set is non-empty
 
-Owned-result, count-only, and existence conclusions are interpreted separately.
+Owned-result, reference-result, reference-visitor, count-only, and existence conclusions are interpreted separately.
 
 ## Primary review command
 
@@ -688,12 +694,13 @@ Use owned-result artifacts for:
 
 The review workflow now preserves the debug report's workload materialization mode summary as a CSV artifact.
 
-This artifact is separate from the count-only workload summary. Count-only summaries answer whether exact cardinality avoids owned-result materialization. Materialization mode summaries compare four output contracts for every workload:
+This artifact is separate from the count-only workload summary. Count-only summaries answer whether exact cardinality avoids owned-result materialization. Materialization mode summaries compare five output contracts for every workload:
 
     ```text
     fresh owned result
     reusable owned result
     reference-result
+    reference-visitor
     count-only
     ```
 
@@ -703,7 +710,7 @@ The review rule is:
     Every materialization mode summary row must have agreement = pass.
     ```
 
-Use this artifact to identify whether owned result materialization, reusable output buffers, reference-result construction, or count-only execution is the current output-contract cost driver. Do not use it as a standalone performance claim without repeated-trial evidence.
+Use this artifact to identify whether owned result materialization, reusable output buffers, reference-result construction, reference-visitor dispatch, or count-only execution is the current output-contract cost driver. Do not use it as a standalone performance claim without repeated-trial evidence.
 
 ## Materialization summary comparison
 
@@ -761,7 +768,7 @@ The review validator requires:
 
 The comparison artifact is validated whenever it is present. It does not require the full comparison set unless `-RequireValidatedComparisons` is explicitly used.
 
-A timing improvement is not review-grade evidence if owned, reusable-owned, reference-result, and count-only output contracts disagree.
+A timing improvement is not review-grade evidence if owned, reusable-owned, reference-result, reference-visitor, and count-only output contracts disagree.
 
 ## Validation coverage reference
 

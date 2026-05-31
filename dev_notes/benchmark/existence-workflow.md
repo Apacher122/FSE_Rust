@@ -2,7 +2,7 @@
 
 This file documents the exact existence query output contract and its current benchmark evidence scope.
 
-Existence queries evaluate whether the exact FSE result set is non-empty. The implementation uses the same staged execution semantics as owned-result, reference-result, and count-only queries.
+Existence queries evaluate whether the exact FSE result set is non-empty. The implementation uses the same staged execution semantics as owned-result, reference-result, reference-visitor, and count-only queries.
 
 ## Formal basis
 
@@ -82,7 +82,7 @@ Existence execution returns:
 bool
 ```
 
-All four output contracts preserve the same query semantics.
+All non-existence output contracts preserve the same query semantics.
 
 Valid existence evidence:
 

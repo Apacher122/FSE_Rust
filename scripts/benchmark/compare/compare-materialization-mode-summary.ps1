@@ -58,6 +58,23 @@ function Require-MaterializationCsvField {
   }
 }
 
+function Get-OptionalMaterializationCsvField {
+  param(
+    [object]$Row,
+    [string]$FieldName
+  )
+
+  if ($null -eq $Row) {
+    return $null
+  }
+
+  if ($null -eq $Row.PSObject.Properties[$FieldName]) {
+    return $null
+  }
+
+  return $Row.$FieldName
+}
+
 function Convert-MaterializationDurationToNanoseconds {
   param(
     [object]$Value
@@ -215,6 +232,12 @@ function New-ComparisonRow {
   $CurrentReferenceNs = Convert-MaterializationDurationToNanoseconds -Value $CurrentRow.reference_elapsed
   $ReferenceDeltaNs = Get-Delta -CurrentValue $CurrentReferenceNs -PreviousValue $PreviousReferenceNs
 
+  $PreviousVisitorNs = Convert-MaterializationDurationToNanoseconds `
+    -Value (Get-OptionalMaterializationCsvField -Row $PreviousRow -FieldName "visitor_elapsed")
+  $CurrentVisitorNs = Convert-MaterializationDurationToNanoseconds `
+    -Value (Get-OptionalMaterializationCsvField -Row $CurrentRow -FieldName "visitor_elapsed")
+  $VisitorDeltaNs = Get-Delta -CurrentValue $CurrentVisitorNs -PreviousValue $PreviousVisitorNs
+
   $PreviousCountOnlyNs = Convert-MaterializationDurationToNanoseconds -Value $PreviousRow.count_only_elapsed
   $CurrentCountOnlyNs = Convert-MaterializationDurationToNanoseconds -Value $CurrentRow.count_only_elapsed
   $CountOnlyDeltaNs = Get-Delta -CurrentValue $CurrentCountOnlyNs -PreviousValue $PreviousCountOnlyNs
@@ -226,6 +249,12 @@ function New-ComparisonRow {
   $PreviousReferenceSpeedup = Convert-MaterializationSpeedupToRatio -Value $PreviousRow.reference_speedup
   $CurrentReferenceSpeedup = Convert-MaterializationSpeedupToRatio -Value $CurrentRow.reference_speedup
   $ReferenceSpeedupDelta = Get-Delta -CurrentValue $CurrentReferenceSpeedup -PreviousValue $PreviousReferenceSpeedup
+
+  $PreviousVisitorSpeedup = Convert-MaterializationSpeedupToRatio `
+    -Value (Get-OptionalMaterializationCsvField -Row $PreviousRow -FieldName "visitor_speedup")
+  $CurrentVisitorSpeedup = Convert-MaterializationSpeedupToRatio `
+    -Value (Get-OptionalMaterializationCsvField -Row $CurrentRow -FieldName "visitor_speedup")
+  $VisitorSpeedupDelta = Get-Delta -CurrentValue $CurrentVisitorSpeedup -PreviousValue $PreviousVisitorSpeedup
 
   $PreviousReusableSpeedup = Convert-MaterializationSpeedupToRatio -Value $PreviousRow.reusable_speedup
   $CurrentReusableSpeedup = Convert-MaterializationSpeedupToRatio -Value $CurrentRow.reusable_speedup
@@ -277,6 +306,15 @@ function New-ComparisonRow {
       -NoiseThreshold $NoiseThreshold `
       -HigherIsBetter $false
 
+    PreviousVisitorElapsedNs           = $PreviousVisitorNs
+    CurrentVisitorElapsedNs            = $CurrentVisitorNs
+    VisitorElapsedDeltaNs              = $VisitorDeltaNs
+    VisitorElapsedClassification       = Get-RelativeDeltaClassification `
+      -Delta $VisitorDeltaNs `
+      -ReferenceValue $PreviousVisitorNs `
+      -NoiseThreshold $NoiseThreshold `
+      -HigherIsBetter $false
+
     PreviousCountOnlyElapsedNs         = $PreviousCountOnlyNs
     CurrentCountOnlyElapsedNs          = $CurrentCountOnlyNs
     CountOnlyElapsedDeltaNs            = $CountOnlyDeltaNs
@@ -301,6 +339,15 @@ function New-ComparisonRow {
     ReferenceSpeedupClassification     = Get-RelativeDeltaClassification `
       -Delta $ReferenceSpeedupDelta `
       -ReferenceValue $PreviousReferenceSpeedup `
+      -NoiseThreshold $NoiseThreshold `
+      -HigherIsBetter $true
+
+    PreviousVisitorSpeedup             = $PreviousVisitorSpeedup
+    CurrentVisitorSpeedup              = $CurrentVisitorSpeedup
+    VisitorSpeedupDelta                = $VisitorSpeedupDelta
+    VisitorSpeedupClassification       = Get-RelativeDeltaClassification `
+      -Delta $VisitorSpeedupDelta `
+      -ReferenceValue $PreviousVisitorSpeedup `
       -NoiseThreshold $NoiseThreshold `
       -HigherIsBetter $true
 
@@ -404,6 +451,10 @@ $Header = @(
   "current_reference_elapsed_ns",
   "reference_elapsed_delta_ns",
   "reference_elapsed_classification",
+  "previous_visitor_elapsed_ns",
+  "current_visitor_elapsed_ns",
+  "visitor_elapsed_delta_ns",
+  "visitor_elapsed_classification",
   "previous_count_only_elapsed_ns",
   "current_count_only_elapsed_ns",
   "count_only_elapsed_delta_ns",
@@ -416,6 +467,10 @@ $Header = @(
   "current_reference_speedup",
   "reference_speedup_delta",
   "reference_speedup_classification",
+  "previous_visitor_speedup",
+  "current_visitor_speedup",
+  "visitor_speedup_delta",
+  "visitor_speedup_classification",
   "previous_reusable_speedup",
   "current_reusable_speedup",
   "reusable_speedup_delta",
@@ -447,6 +502,10 @@ foreach ($Row in $ComparisonRows) {
       (Format-InvariantDouble -Value $Row.CurrentReferenceElapsedNs),
       (Format-InvariantDouble -Value $Row.ReferenceElapsedDeltaNs),
       $Row.ReferenceElapsedClassification,
+      (Format-InvariantDouble -Value $Row.PreviousVisitorElapsedNs),
+      (Format-InvariantDouble -Value $Row.CurrentVisitorElapsedNs),
+      (Format-InvariantDouble -Value $Row.VisitorElapsedDeltaNs),
+      $Row.VisitorElapsedClassification,
       (Format-InvariantDouble -Value $Row.PreviousCountOnlyElapsedNs),
       (Format-InvariantDouble -Value $Row.CurrentCountOnlyElapsedNs),
       (Format-InvariantDouble -Value $Row.CountOnlyElapsedDeltaNs),
@@ -459,6 +518,10 @@ foreach ($Row in $ComparisonRows) {
       (Format-InvariantDouble -Value $Row.CurrentReferenceSpeedup),
       (Format-InvariantDouble -Value $Row.ReferenceSpeedupDelta),
       $Row.ReferenceSpeedupClassification,
+      (Format-InvariantDouble -Value $Row.PreviousVisitorSpeedup),
+      (Format-InvariantDouble -Value $Row.CurrentVisitorSpeedup),
+      (Format-InvariantDouble -Value $Row.VisitorSpeedupDelta),
+      $Row.VisitorSpeedupClassification,
       (Format-InvariantDouble -Value $Row.PreviousReusableSpeedup),
       (Format-InvariantDouble -Value $Row.CurrentReusableSpeedup),
       (Format-InvariantDouble -Value $Row.ReusableSpeedupDelta),
@@ -485,6 +548,10 @@ $ReusableRegressed = @($ComparisonRows | Where-Object { $_.ReusableOwnedElapsedC
 $ReferenceImproved = @($ComparisonRows | Where-Object { $_.ReferenceElapsedClassification -eq "improved" })
 $ReferenceStable = @($ComparisonRows | Where-Object { $_.ReferenceElapsedClassification -eq "stable/noise" })
 $ReferenceRegressed = @($ComparisonRows | Where-Object { $_.ReferenceElapsedClassification -eq "regressed" })
+
+$VisitorImproved = @($ComparisonRows | Where-Object { $_.VisitorElapsedClassification -eq "improved" })
+$VisitorStable = @($ComparisonRows | Where-Object { $_.VisitorElapsedClassification -eq "stable/noise" })
+$VisitorRegressed = @($ComparisonRows | Where-Object { $_.VisitorElapsedClassification -eq "regressed" })
 
 $CountOnlyImproved = @($ComparisonRows | Where-Object { $_.CountOnlyElapsedClassification -eq "improved" })
 $CountOnlyStable = @($ComparisonRows | Where-Object { $_.CountOnlyElapsedClassification -eq "stable/noise" })
@@ -515,6 +582,7 @@ Add-Utf8Text -Path $ComparisonNotesPath -Text "----------------`r`n"
 Add-Utf8Text -Path $ComparisonNotesPath -Text "fresh owned improved/stable/regressed: $($FreshImproved.Count)/$($FreshStable.Count)/$($FreshRegressed.Count)`r`n"
 Add-Utf8Text -Path $ComparisonNotesPath -Text "reusable owned improved/stable/regressed: $($ReusableImproved.Count)/$($ReusableStable.Count)/$($ReusableRegressed.Count)`r`n"
 Add-Utf8Text -Path $ComparisonNotesPath -Text "reference-result improved/stable/regressed: $($ReferenceImproved.Count)/$($ReferenceStable.Count)/$($ReferenceRegressed.Count)`r`n"
+Add-Utf8Text -Path $ComparisonNotesPath -Text "reference-visitor improved/stable/regressed: $($VisitorImproved.Count)/$($VisitorStable.Count)/$($VisitorRegressed.Count)`r`n"
 Add-Utf8Text -Path $ComparisonNotesPath -Text "count-only improved/stable/regressed: $($CountOnlyImproved.Count)/$($CountOnlyStable.Count)/$($CountOnlyRegressed.Count)`r`n"
 
 if ($MissingPreviousKeys.Count -gt 0) {

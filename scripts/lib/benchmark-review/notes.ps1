@@ -184,7 +184,7 @@ function Add-BenchmarkReviewArtifactSummary {
   Add-Utf8Text -Path $ReviewNotesPath -Text "Use aggregate comparison artifacts for low-selectivity bucket movement.`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Use workload comparison artifacts for weakest-workload movement.`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Use count-only workload comparison artifacts for count-only query mode movement.`r`n"
-  Add-Utf8Text -Path $ReviewNotesPath -Text "Use materialization mode comparison artifacts for output-contract movement across fresh owned, reusable owned, reference-result, and count-only paths.`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Use materialization mode comparison artifacts for output-contract movement across fresh owned, reusable owned, reference-result, reference-visitor, and count-only paths.`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Use target-workload comparison artifacts for $TargetWorkloadName movement.`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Do not accept a performance commit based on one noisy single-run result.`r`n"
 }

@@ -1,7 +1,7 @@
 //! Shared query execution stats construction.
 //!
 //! This module centralizes execution statistics that are shared by owned-result,
-//! reusable-buffer, reference-result, and count-only query paths.
+//! reusable-buffer, reference-result, reference-visitor, and count-only query paths.
 
 use crate::query::traversal::QueryTraversalReport;
 use crate::storage::FSEIndex;
@@ -49,7 +49,7 @@ pub(crate) fn root_covered_stats(
 ///
 /// # Runtime Role
 ///
-/// Count-only and reference-result paths can already know the root-covered
+/// Count-only, reference-result, and reference-visitor paths can already know the root-covered
 /// reconstruction and match counts without using a retained-leaf batch report.
 pub(crate) fn root_covered_stats_with_counts(
     index: &FSEIndex,
