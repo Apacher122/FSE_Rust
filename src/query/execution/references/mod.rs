@@ -6,7 +6,7 @@
 //! are split by responsibility.
 
 mod execution;
-mod matching;
+pub(in crate::query::execution) mod matching;
 mod reconstruction;
 
 pub use execution::{execute_query_references, execute_query_references_with_stats};

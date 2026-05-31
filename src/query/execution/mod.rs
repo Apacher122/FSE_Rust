@@ -20,6 +20,7 @@ mod root;
 mod root_coverage;
 mod serial;
 mod stats;
+mod visit;
 
 pub use api::{
     execute_query, execute_query_into, execute_query_into_with_options, execute_query_with_options,
@@ -29,6 +30,8 @@ pub use api::{
 pub use count::{count_query_matches, count_query_matches_with_stats};
 
 pub use exists::{query_has_match, query_has_match_with_stats};
+
+pub use visit::visit_query_references;
 
 pub use references::{
     execute_query_references, execute_query_references_with_stats,

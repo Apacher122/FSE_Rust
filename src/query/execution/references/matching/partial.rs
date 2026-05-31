@@ -22,6 +22,32 @@ pub(super) fn append_partial_leaf_reference_matches(
     query: &QueryRegion,
     matches: &mut Vec<QueryResultReference>,
 ) {
+    let available_capacity = matches.capacity().saturating_sub(matches.len());
+
+    if shape.cardinality > available_capacity {
+        matches.reserve_exact(shape.cardinality - available_capacity);
+    }
+
+    for_each_partial_leaf_reference_match(node, shape, query, &mut |reference| {
+        matches.push(reference);
+    });
+}
+
+/// Visits exact row references from a partially covered retained leaf.
+///
+/// # Runtime Role
+///
+/// Partial leaves still run exact predicate evaluation in coordinate space. The
+/// visitor receives each matching row reference as soon as the exact predicate
+/// accepts the reconstructed candidate.
+pub(super) fn for_each_partial_leaf_reference_match<F>(
+    node: &PartitionNode,
+    shape: LeafReconstructionShape,
+    query: &QueryRegion,
+    visit: &mut F,
+) where
+    F: FnMut(QueryResultReference),
+{
     #[cfg(any(test, debug_assertions))]
     {
         debug_assert_leaf_reconstruction_shape(node, shape);
@@ -29,19 +55,21 @@ pub(super) fn append_partial_leaf_reference_matches(
     }
 
     match shape.dimensions {
-        1 => append_partial_leaf_reference_matches_1d(node, shape, query, matches),
-        2 => append_partial_leaf_reference_matches_2d(node, shape, query, matches),
-        _ => append_partial_leaf_reference_matches_generic(node, shape, query, matches),
+        1 => for_each_partial_leaf_reference_match_1d(node, shape, query, visit),
+        2 => for_each_partial_leaf_reference_match_2d(node, shape, query, visit),
+        _ => for_each_partial_leaf_reference_match_generic(node, shape, query, visit),
     }
 }
 
 #[inline]
-fn append_partial_leaf_reference_matches_1d(
+fn for_each_partial_leaf_reference_match_1d<F>(
     node: &PartitionNode,
     shape: LeafReconstructionShape,
     query: &QueryRegion,
-    matches: &mut Vec<QueryResultReference>,
-) {
+    visit: &mut F,
+) where
+    F: FnMut(QueryResultReference),
+{
     let centroid_0 = node.centroid[0];
     let residual_0 = &node.residuals.dimensions[0];
 
@@ -52,7 +80,7 @@ fn append_partial_leaf_reference_matches_1d(
         let value_0 = centroid_0 + residual_0[row_index];
 
         if value_0 >= query_min_0 && value_0 <= query_max_0 {
-            matches.push(QueryResultReference {
+            visit(QueryResultReference {
                 node_id: shape.node_id,
                 row_index,
             });
@@ -61,12 +89,14 @@ fn append_partial_leaf_reference_matches_1d(
 }
 
 #[inline]
-fn append_partial_leaf_reference_matches_2d(
+fn for_each_partial_leaf_reference_match_2d<F>(
     node: &PartitionNode,
     shape: LeafReconstructionShape,
     query: &QueryRegion,
-    matches: &mut Vec<QueryResultReference>,
-) {
+    visit: &mut F,
+) where
+    F: FnMut(QueryResultReference),
+{
     let centroid_0 = node.centroid[0];
     let centroid_1 = node.centroid[1];
 
@@ -88,7 +118,7 @@ fn append_partial_leaf_reference_matches_2d(
         let value_1 = centroid_1 + residual_1[row_index];
 
         if value_1 >= query_min_1 && value_1 <= query_max_1 {
-            matches.push(QueryResultReference {
+            visit(QueryResultReference {
                 node_id: shape.node_id,
                 row_index,
             });
@@ -97,12 +127,14 @@ fn append_partial_leaf_reference_matches_2d(
 }
 
 #[inline]
-fn append_partial_leaf_reference_matches_generic(
+fn for_each_partial_leaf_reference_match_generic<F>(
     node: &PartitionNode,
     shape: LeafReconstructionShape,
     query: &QueryRegion,
-    matches: &mut Vec<QueryResultReference>,
-) {
+    visit: &mut F,
+) where
+    F: FnMut(QueryResultReference),
+{
     let mut values = vec![0.0; shape.dimensions];
 
     // still exact predicate evaluation just no owned row result
@@ -113,7 +145,7 @@ fn append_partial_leaf_reference_matches_generic(
         }
 
         if query.contains_values_prevalidated(&values, shape.dimensions) {
-            matches.push(QueryResultReference {
+            visit(QueryResultReference {
                 node_id: shape.node_id,
                 row_index,
             });

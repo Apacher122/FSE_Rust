@@ -18,7 +18,7 @@ pub use execution::{
     execute_query_with_options, execute_query_with_stats, execute_query_with_stats_and_options,
     query_has_match, query_has_match_with_stats, reconstruct_query_result_reference,
     reconstruct_query_result_reference_into, reconstruct_query_result_references,
-    reconstruct_query_result_references_into,
+    reconstruct_query_result_references_into, visit_query_references,
 };
 
 pub(crate) use execution::{
