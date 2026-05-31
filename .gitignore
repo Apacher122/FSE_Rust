@@ -9,6 +9,7 @@ c[0-9]*-*.txt
 *.zip
 /temp
 *.txt
+TODO
 
 # VS Code
 .vscode/*
