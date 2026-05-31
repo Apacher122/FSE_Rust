@@ -495,8 +495,9 @@ existence is semantically valid across the current benchmark workloads
 existence avoids owned result materialization
 existence can terminate after inspecting fewer records than count-only execution
 existence remains close to count-only on the current positive boundary workloads
-existence should remain debug-only for now
-existence artifact promotion requires repeated-trial evidence that count-only artifacts cannot explain
+existence is a valid public output contract
+existence timing evidence remains summary/debug evidence rather than a durable comparison track
+existence comparison promotion requires repeated-trial evidence that count-only artifacts cannot explain
 ```
 
 ## Reference visitor materialization conclusion
@@ -589,17 +590,21 @@ This evidence should not be interpreted as a pruning improvement. It is result-d
 
 The next meaningful optimization direction is a result representation or query API decision.
 
-Potential future directions:
+Completed output-contract directions:
 
 ```text
 count-only query API
 exists-any query API
 visitor/callback-based query API
-borrowed row-view result API
-separate benchmark mode for materialized results versus count-only results
 ```
 
-Count-only query API has already been introduced.
+Open result-representation directions:
+
+```text
+borrowed row-view result API
+materialization-specific repeated trial workflow
+durable existence comparison track, if evidence requires it
+```
 
 Future result-representation work should be treated as an intentional API or output-contract change, not incidental hot-path cleanup.
 
@@ -626,6 +631,7 @@ FSE pruning is doing its job on the target workloads
 small boundary workload is near the fixed-cost floor under owned-result execution
 large target confirms result materialization dominates retained execution
 count-only query mode is a valid separate output contract
+existence query mode is a valid separate exact non-empty-result output contract
 reference visitor is a valid separate exact reference-delivery output contract
 future traversal or boundary-specific optimizations need new evidence before being prioritized
 ```
@@ -647,6 +653,7 @@ owned-result low-gap repeated trials
 target workload repeated trials
 count-only workload summary
 count-only workload comparison
+existence timing summary
 reference visitor materialization summary
 debug diagnostics for explanation only
 ```

@@ -636,9 +636,9 @@ The guidance should remind the reviewer to use:
     workload comparison artifacts for weakest-workload movement
     target workload artifacts for target-specific movement
     count-only workload comparison artifacts for count-only query mode movement
-    debug-only existence timing output for exact non-empty-result behavior
+    existence timing summaries and debug output for exact non-empty-result behavior
 
-Decision guidance should separate owned-result, count-only, and existence conclusions.
+Decision guidance should separate owned-result, reference-result, reference-visitor, count-only, and existence conclusions.
 
 ## Reporting-only commit review
 
@@ -838,13 +838,33 @@ Target workload result for `cluster_boundary_range`:
     count-only average elapsed: 104ns
     ```
 
+The paired large-dataset materialization review used:
+
+    ```text
+    label: run001-r01-reference-visitor-materialization-large
+    dataset: large
+    trials: 5
+    iterations: 1000
+    ```
+
+Large materialization result:
+
+    ```text
+    visitor faster than reference-result: 11 of 13 workloads
+    visitor equal to reference-result: 1 of 13 workloads
+    visitor slower than reference-result: 1 of 13 workloads
+    large_full_dataset_range reference-result: 11.656us
+    large_full_dataset_range reference-visitor: 5.625us
+    large_full_dataset_range visitor advantage: 6.031us
+    ```
+
 Review interpretation:
 
     ```text
-    reference visitor reduces reference-result output overhead on the current small dataset
+    reference visitor reduces reference-result output overhead on the current small and large materialization summaries
     reference visitor is not a replacement for count-only resultless execution
     this is output-contract evidence, not geometric pruning evidence
-    large dataset evidence remains future work
+    large_full_dataset_range is the strongest current visitor result because it avoids collecting 10000 references into a Vec
     ```
 
 ## Materialization summary comparison

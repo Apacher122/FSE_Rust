@@ -16,11 +16,17 @@ kd_tree
 r_tree
 ```
 
-The benchmark workflow currently distinguishes three FSE output contracts:
+The benchmark workflow currently distinguishes these FSE output contracts:
 
 ```text
 owned-result query execution:
   returns materialized Vec<Vector> results
+
+reference-result query execution:
+  returns exact row references in a Vec<QueryResultReference>
+
+reference-visitor query execution:
+  visits exact row references without constructing the reference Vec
 
 count-only query execution:
   returns exact cardinality without owned Vector materialization
@@ -29,7 +35,7 @@ existence query execution:
   returns whether the exact result set is non-empty
 ```
 
-Owned-result, count-only, and existence conclusions are interpreted separately because each output contract measures a different returned value over the same exact query semantics.
+Owned-result, reference-result, reference-visitor, count-only, and existence conclusions are interpreted separately because each output contract measures a different returned value over the same exact query semantics.
 
 ## General acceptance requirements
 
@@ -130,7 +136,8 @@ target workload trial summary
 target workload comparison
 count-only workload summary
 count-only workload comparison
-debug-only existence timing summary
+existence timing summary
+materialization mode summary
 ```
 
 A performance commit should explain:
@@ -478,7 +485,7 @@ is |E(Q, F)| greater than zero
 
 Existence timing should not be treated as count-only timing.
 
-Current existence evidence is debug-only. It should remain debug-only until repeated-trial evidence shows that the boolean output contract needs durable CSV/review tracking separate from count-only.
+The existence API is public. Its benchmark evidence currently stays in existence timing summary artifacts and debug review output. Durable previous/current comparison tracking is deferred until repeated-trial evidence shows that the boolean output contract needs review tracking separate from count-only.
 
 Acceptance requirements for existence evidence:
 

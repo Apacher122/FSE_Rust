@@ -28,11 +28,17 @@ That file now acts as an index into these topic files.
 The benchmark workflow currently separates:
 
     owned-result query execution
+    reference-result query execution
+    reference-visitor query execution
     count-only query execution
     existence query execution
     debug-only retained execution diagnostics
 
 Owned-result timing answers materialized row-return performance.
+
+Reference-result timing answers exact row-reference collection performance.
+
+Reference visitor timing answers exact row-reference delivery without building the reference result Vec.
 
 Count-only timing answers exact-cardinality performance.
 
@@ -216,6 +222,6 @@ Current benchmark interpretation:
     small boundary workload is near the fixed-cost floor under owned-result execution
     large target confirms result materialization dominates retained execution
     count-only query mode is a valid separate output contract
-    existence query mode is a valid separate output contract with debug-only benchmark evidence
-    reference visitor is a valid exact reference-delivery output contract with small-dataset materialization evidence
+    existence query mode is a valid separate output contract with timing-summary benchmark evidence
+    reference visitor is a valid exact reference-delivery output contract with small and large materialization evidence
     future traversal or boundary-specific optimizations need new evidence before being prioritized
