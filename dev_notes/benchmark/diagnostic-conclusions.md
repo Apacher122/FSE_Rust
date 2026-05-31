@@ -506,7 +506,6 @@ The reference visitor API was introduced to measure exact row-reference delivery
 The first small-dataset materialization review used:
 
 ```text
-label: c160-reference-visitor-materialization-small
 dataset: small
 trials: 5
 iterations: 1000
@@ -555,24 +554,24 @@ large_full_dataset_range is the strongest current visitor result because it avoi
 
 ## Large reference visitor materialization conclusion
 
-The large reference visitor review `c161-reference-visitor-materialization-large` reported `agreement = pass` for all materialization rows.
+The large reference visitor review used 5 trials with 1000 iterations and reported `agreement = pass` for all materialization rows.
 
 Materialization summary result:
 
 ```text
-visitor faster than reference-result: 10 of 13 workloads
-visitor slower than reference-result: 3 of 13 workloads
-large_full_dataset_range reference-result: 11.586us
-large_full_dataset_range reference-visitor: 4.082us
-large_full_dataset_range visitor advantage: 7.504us
+visitor faster than reference-result: 11 of 13 workloads
+visitor equal to reference-result: 1 of 13 workloads
+visitor slower than reference-result: 1 of 13 workloads
+large_full_dataset_range reference-result: 11.656us
+large_full_dataset_range reference-visitor: 5.625us
+large_full_dataset_range visitor advantage: 6.031us
 ```
 
-The slower visitor rows were small absolute differences:
+The equal and slower rows were small absolute differences:
 
 ```text
-large_cluster_range_001: 18ns slower
-large_cluster_range_003: 21ns slower
-large_empty_far_range: 9ns slower
+large_empty_far_range: equal at 22ns
+large_cluster_range_008: 20ns slower
 ```
 
 Conclusion:

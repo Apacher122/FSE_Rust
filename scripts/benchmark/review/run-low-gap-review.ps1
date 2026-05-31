@@ -1,5 +1,10 @@
 param(
-  [string]$Label = "local",
+  [string]$Label = "",
+  [ValidateRange(0, 2147483647)]
+  [int]$RunNumber = 0,
+  [ValidateRange(1, 2147483647)]
+  [int]$RunIndex = 1,
+  [string]$RunTopic = "",
   [string]$PreviousLabel = "",
   [ValidateSet("small", "large")]
   [string]$Dataset = "small",
@@ -21,6 +26,8 @@ param(
   [switch]$ValidateArtifacts,
   [switch]$RequireValidatedComparisons,
   [switch]$CleanupFlatArtifacts,
+  [switch]$UpdateHistory,
+  [string]$HistoryDir = "",
   [double]$NoiseThreshold = 0.03
 )
 
@@ -42,6 +49,23 @@ if (!(Test-Path -LiteralPath $BenchmarkReviewManifestLibrary)) {
 . $BenchmarkCsvLibrary
 . $BenchmarkReviewManifestLibrary
 
+$Label = Resolve-BenchmarkReviewLabel `
+  -Label $Label `
+  -RunNumber $RunNumber `
+  -RunIndex $RunIndex `
+  -RunTopic $RunTopic `
+  -Dataset $Dataset
+
+$RunId = ""
+$AttemptId = ""
+$NormalizedRunTopic = ""
+
+if ($RunNumber -gt 0) {
+  $RunId = Format-BenchmarkReviewRunId -RunNumber $RunNumber
+  $AttemptId = Format-BenchmarkReviewAttemptId -RunIndex $RunIndex
+  $NormalizedRunTopic = Normalize-BenchmarkReviewRunTopic -RunTopic $RunTopic
+}
+
 $TargetWorkloadName = Resolve-BenchmarkReviewTargetWorkloadName `
   -TargetWorkloadName $TargetWorkloadName `
   -Dataset $Dataset
@@ -55,9 +79,17 @@ Assert-BenchmarkReviewPreflight `
   -Trials $Trials `
   -TargetWorkloadName $TargetWorkloadName `
   -CleanupFlatArtifacts ([bool]$CleanupFlatArtifacts) `
-  -CopyArtifactsToRunFolder ([bool]$CopyArtifactsToRunFolder)
+  -CopyArtifactsToRunFolder ([bool]$CopyArtifactsToRunFolder) `
+  -UpdateHistory ([bool]$UpdateHistory) `
+  -ValidateArtifacts ([bool]$ValidateArtifacts) `
+  -RunNumber $RunNumber `
+  -RunTopic $RunTopic
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+
+if ([string]::IsNullOrWhiteSpace($HistoryDir)) {
+  $HistoryDir = Join-Path $OutputDir "history"
+}
 
 $ReviewScriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BenchmarkScriptRoot = Split-Path -Parent $ReviewScriptDirectory
@@ -165,6 +197,9 @@ $PreviousTargetSummaryInput = Get-BenchmarkReviewInputStatus -Path $PreviousTarg
 Initialize-BenchmarkReviewNotes `
   -ReviewNotesPath $ReviewNotesPath `
   -Label $Label `
+  -RunId $RunId `
+  -AttemptId $AttemptId `
+  -RunTopic $NormalizedRunTopic `
   -PreviousLabel $PreviousLabel `
   -Dataset $Dataset `
   -MaxDepth $EffectiveMaxDepth `
@@ -181,6 +216,8 @@ Initialize-BenchmarkReviewNotes `
   -ValidateArtifacts ([bool]$ValidateArtifacts) `
   -RequireValidatedComparisons ([bool]$RequireValidatedComparisons) `
   -CleanupFlatArtifacts ([bool]$CleanupFlatArtifacts) `
+  -UpdateHistory ([bool]$UpdateHistory) `
+  -HistoryDir $HistoryDir `
   -PreviousLowSelectivityGapCsv $PreviousLowSelectivityGapCsv `
   -PreviousTrialSummaryCsv $PreviousTrialSummaryCsv `
   -PreviousWorkloadSummaryCsv $PreviousWorkloadSummaryCsv `
@@ -470,10 +507,14 @@ $ReviewManifestContext = [PSCustomObject]@{
   ReviewManifestPath                    = $ReviewManifestPath
   ReviewNotesPath                       = $ReviewNotesPath
   Label                                 = $Label
+  RunId                                 = $RunId
+  AttemptId                             = $AttemptId
+  RunTopic                              = $NormalizedRunTopic
   PreviousLabel                         = $PreviousLabel
   Dataset                               = $Dataset
   OutputDir                             = $OutputDir
   OrganizedRunRoot                      = $OrganizedRunRoot
+  OrganizedRunDirectory                 = $OrganizedRunDirectory
   PreviousOrganizedRunDirectory         = $PreviousOrganizedRunDirectory
   EffectiveMaxDepth                     = $EffectiveMaxDepth
   Trials                                = $Trials
@@ -484,6 +525,8 @@ $ReviewManifestContext = [PSCustomObject]@{
   ValidateArtifacts                     = [bool]$ValidateArtifacts
   RequireValidatedComparisons           = [bool]$RequireValidatedComparisons
   CleanupFlatArtifacts                  = [bool]$CleanupFlatArtifacts
+  UpdateHistory                         = [bool]$UpdateHistory
+  HistoryDir                            = $HistoryDir
   SkipTargetWorkloadReview              = [bool]$SkipTargetWorkloadReview
   NoiseThreshold                        = $NoiseThreshold
   PreviousTrialSummaryCsv               = $PreviousTrialSummaryCsv
@@ -524,6 +567,24 @@ if ($ValidateArtifacts) {
     -ArtifactValidatorScript $ArtifactValidatorScript
 }
 
+if ($UpdateHistory) {
+  Add-ReviewLine ""
+  Add-ReviewLine "Benchmark history update"
+  Add-ReviewLine "------------------------"
+  Add-ReviewLine "status: running"
+  Add-ReviewLine "history directory: $HistoryDir"
+
+  Update-BenchmarkReviewHistory -Context $ReviewManifestContext
+
+  Add-ReviewLine "status: completed"
+  Add-ReviewLine "run history: $(Join-Path $HistoryDir "benchmark-run-history.csv")"
+  Add-ReviewLine "low-selectivity performance history: $(Join-Path $HistoryDir "low-selectivity-performance-history.csv")"
+  Add-ReviewLine "weakest workload history: $(Join-Path $HistoryDir "weakest-workload-history.csv")"
+  Add-ReviewLine "count-only workload history: $(Join-Path $HistoryDir "count-only-workload-history.csv")"
+  Add-ReviewLine "materialization mode history: $(Join-Path $HistoryDir "materialization-mode-history.csv")"
+  Add-ReviewLine "target workload history: $(Join-Path $HistoryDir "target-workload-history.csv")"
+}
+
 Copy-BenchmarkReviewNotesToOrganizedRun `
   -ReviewNotesPath $ReviewNotesPath `
   -OrganizedRunDirectory $OrganizedRunDirectory `
@@ -562,4 +623,6 @@ Write-BenchmarkReviewCompletionOutput `
   -ReviewManifestPath $ReviewManifestPath `
   -OrganizedRunDirectory $OrganizedRunDirectory `
   -CopyArtifactsToRunFolder ([bool]$CopyArtifactsToRunFolder) `
-  -CleanupFlatArtifacts ([bool]$CleanupFlatArtifacts)
+  -CleanupFlatArtifacts ([bool]$CleanupFlatArtifacts) `
+  -UpdateHistory ([bool]$UpdateHistory) `
+  -HistoryDir $HistoryDir

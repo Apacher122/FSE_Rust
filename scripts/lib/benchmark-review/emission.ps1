@@ -259,6 +259,9 @@ function Write-BenchmarkReviewRunManifest {
   Write-BenchmarkReviewManifestHeader `
     -ManifestPath $Context.ReviewManifestPath `
     -Label $Context.Label `
+    -RunId $Context.RunId `
+    -AttemptId $Context.AttemptId `
+    -RunTopic $Context.RunTopic `
     -PreviousLabel $Context.PreviousLabel `
     -Dataset $Context.Dataset `
     -OrganizedRunRoot $Context.OrganizedRunRoot `
@@ -272,6 +275,8 @@ function Write-BenchmarkReviewRunManifest {
     -ValidateArtifacts ([bool]$Context.ValidateArtifacts) `
     -RequireValidatedComparisons ([bool]$Context.RequireValidatedComparisons) `
     -CleanupFlatArtifacts ([bool]$Context.CleanupFlatArtifacts) `
+    -UpdateHistory ([bool]$Context.UpdateHistory) `
+    -HistoryDir $Context.HistoryDir `
     -NoiseThresholdText (Format-InvariantDouble -Value $Context.NoiseThreshold)
 
   $ManifestArtifacts = New-BenchmarkReviewRunManifestArtifacts `

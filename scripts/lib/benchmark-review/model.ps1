@@ -70,13 +70,88 @@ function Resolve-BenchmarkReviewEffectiveMaxDepth {
   return 8
 }
 
+function Format-BenchmarkReviewRunId {
+  param(
+    [int]$RunNumber
+  )
+
+  return "run{0:d3}" -f $RunNumber
+}
+
+function Format-BenchmarkReviewAttemptId {
+  param(
+    [int]$RunIndex
+  )
+
+  return "r{0:d2}" -f $RunIndex
+}
+
+function Normalize-BenchmarkReviewRunTopic {
+  param(
+    [string]$RunTopic
+  )
+
+  $Normalized = $RunTopic.Trim().ToLowerInvariant()
+  $Normalized = $Normalized -replace "[^a-z0-9]+", "-"
+  $Normalized = $Normalized -replace "^-+", ""
+  $Normalized = $Normalized -replace "-+$", ""
+  $Normalized = $Normalized -replace "-+", "-"
+
+  return $Normalized
+}
+
+function Resolve-BenchmarkReviewLabel {
+  param(
+    [string]$Label,
+    [int]$RunNumber,
+    [int]$RunIndex,
+    [string]$RunTopic,
+    [string]$Dataset
+  )
+
+  if (![string]::IsNullOrWhiteSpace($Label)) {
+    return $Label
+  }
+
+  if ($RunNumber -eq 0 -and [string]::IsNullOrWhiteSpace($RunTopic)) {
+    return "local"
+  }
+
+  if ($RunNumber -lt 1) {
+    throw "`-RunNumber` must be at least 1 when deriving a benchmark label"
+  }
+
+  if ($RunIndex -lt 1) {
+    throw "`-RunIndex` must be at least 1 when deriving a benchmark label"
+  }
+
+  if ([string]::IsNullOrWhiteSpace($RunTopic)) {
+    throw "`-RunTopic` cannot be empty when deriving a benchmark label"
+  }
+
+  $NormalizedTopic = Normalize-BenchmarkReviewRunTopic -RunTopic $RunTopic
+
+  if ([string]::IsNullOrWhiteSpace($NormalizedTopic)) {
+    throw "`-RunTopic` must contain at least one alphanumeric character"
+  }
+
+  $RunId = Format-BenchmarkReviewRunId -RunNumber $RunNumber
+  $AttemptId = Format-BenchmarkReviewAttemptId -RunIndex $RunIndex
+
+  return "$RunId-$AttemptId-$NormalizedTopic-$Dataset"
+}
+
 function Assert-BenchmarkReviewPreflight {
   param(
     [string]$Label,
     [int]$Trials,
     [string]$TargetWorkloadName,
     [bool]$CleanupFlatArtifacts,
-    [bool]$CopyArtifactsToRunFolder
+    [bool]$CopyArtifactsToRunFolder,
+    [bool]$UpdateHistory,
+    [bool]$ValidateArtifacts,
+    [int]$RunNumber,
+    [string]$RunTopic
   )
 
   if ([string]::IsNullOrWhiteSpace($Label)) {
@@ -93,6 +168,22 @@ function Assert-BenchmarkReviewPreflight {
 
   if ($CleanupFlatArtifacts -and !$CopyArtifactsToRunFolder) {
     throw "-CleanupFlatArtifacts requires -CopyArtifactsToRunFolder so flat artifacts are not removed before an organized run copy exists"
+  }
+
+  if ($UpdateHistory -and !$CopyArtifactsToRunFolder) {
+    throw "-UpdateHistory requires -CopyArtifactsToRunFolder so history rows point at preserved raw artifacts"
+  }
+
+  if ($UpdateHistory -and !$ValidateArtifacts) {
+    throw "-UpdateHistory requires -ValidateArtifacts so only validated review runs enter history"
+  }
+
+  if ($UpdateHistory -and $RunNumber -lt 1) {
+    throw "-UpdateHistory requires -RunNumber so history rows use run-number nomenclature"
+  }
+
+  if ($UpdateHistory -and [string]::IsNullOrWhiteSpace($RunTopic)) {
+    throw "-UpdateHistory requires -RunTopic so history rows describe the benchmark topic"
   }
 }
 

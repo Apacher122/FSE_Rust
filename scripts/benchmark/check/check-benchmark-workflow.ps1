@@ -62,6 +62,31 @@ function Test-BenchmarkRootWrapperTarget {
   }
 }
 
+function Test-BenchmarkReviewRunnerContract {
+  param(
+    [string]$ScriptsRoot
+  )
+
+  $ReviewRunnerPath = Join-Path $ScriptsRoot "benchmark\review\run-low-gap-review.ps1"
+  $UnexpectedRunPath = Join-Path $ScriptsRoot "benchmark\run\run-low-gap-review.ps1"
+
+  if (!(Test-Path -LiteralPath $ReviewRunnerPath)) {
+    throw "canonical benchmark review runner was not found: $ReviewRunnerPath"
+  }
+
+  if (Test-Path -LiteralPath $UnexpectedRunPath) {
+    throw "unexpected benchmark review runner copy found under benchmark\\run: $UnexpectedRunPath"
+  }
+
+  $ReviewRunnerText = Get-Content -Raw -LiteralPath $ReviewRunnerPath
+
+  foreach ($ExpectedParameter in @("RunNumber", "RunIndex", "RunTopic", "UpdateHistory", "HistoryDir")) {
+    if ($ReviewRunnerText -notmatch ([regex]::Escape($ExpectedParameter))) {
+      throw "canonical benchmark review runner is missing expected parameter or option: $ExpectedParameter"
+    }
+  }
+}
+
 function Test-BenchmarkScriptLayout {
   $BenchmarkRoot = Split-Path -Parent $PSScriptRoot
   $ScriptsRoot = Split-Path -Parent $BenchmarkRoot
@@ -81,6 +106,7 @@ function Test-BenchmarkScriptLayout {
     "benchmark\run\run-leaf-policy-trials.ps1",
     "benchmark\run\run-low-gap-trials.ps1",
     "benchmark\run\run-small-benchmark.ps1",
+    "lib\benchmark-review\history.ps1",
     "benchmark\summarize\summarize-count-only-workload-summary.ps1",
     "benchmark\summarize\summarize-existence-timing-summary.ps1",
     "benchmark\summarize\summarize-materialization-mode-summary.ps1",
@@ -120,6 +146,8 @@ function Test-BenchmarkScriptLayout {
       -WrapperName $WrapperName `
       -ExpectedRelativeTarget $ExpectedRootWrappers[$WrapperName]
   }
+
+  Test-BenchmarkReviewRunnerContract -ScriptsRoot $ScriptsRoot
 
   Write-Host "Benchmark script layout validation passed."
 }

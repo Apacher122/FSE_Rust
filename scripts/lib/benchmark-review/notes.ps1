@@ -2,6 +2,9 @@ function Initialize-BenchmarkReviewNotes {
   param(
     [string]$ReviewNotesPath,
     [string]$Label,
+    [string]$RunId,
+    [string]$AttemptId,
+    [string]$RunTopic,
     [string]$PreviousLabel,
     [string]$Dataset,
     [int]$MaxDepth,
@@ -18,6 +21,8 @@ function Initialize-BenchmarkReviewNotes {
     [bool]$ValidateArtifacts,
     [bool]$RequireValidatedComparisons,
     [bool]$CleanupFlatArtifacts,
+    [bool]$UpdateHistory,
+    [string]$HistoryDir,
     [string]$PreviousLowSelectivityGapCsv,
     [string]$PreviousTrialSummaryCsv,
     [string]$PreviousWorkloadSummaryCsv,
@@ -36,6 +41,9 @@ function Initialize-BenchmarkReviewNotes {
   Add-Utf8Text -Path $ReviewNotesPath -Text "========================`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Label: $Label`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Run ID: $RunId`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Attempt ID: $AttemptId`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Run topic: $RunTopic`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Previous label: $PreviousLabel`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Dataset: $Dataset`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Max depth: $MaxDepth`r`n"
@@ -52,6 +60,8 @@ function Initialize-BenchmarkReviewNotes {
   Add-Utf8Text -Path $ReviewNotesPath -Text "Validate artifacts: $ValidateArtifacts`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Require validated comparisons: $RequireValidatedComparisons`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Cleanup flat artifacts: $CleanupFlatArtifacts`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "Update history: $UpdateHistory`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "History directory: $HistoryDir`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Previous low-selectivity gap CSV: $PreviousLowSelectivityGapCsv`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Previous aggregate trial summary CSV: $PreviousTrialSummaryCsv`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "Previous workload trial summary CSV: $PreviousWorkloadSummaryCsv`r`n"
@@ -86,6 +96,9 @@ function Write-BenchmarkReviewManifestHeader {
   param(
     [string]$ManifestPath,
     [string]$Label,
+    [string]$RunId,
+    [string]$AttemptId,
+    [string]$RunTopic,
     [string]$PreviousLabel,
     [string]$Dataset,
     [string]$OrganizedRunRoot,
@@ -99,6 +112,8 @@ function Write-BenchmarkReviewManifestHeader {
     [bool]$ValidateArtifacts,
     [bool]$RequireValidatedComparisons,
     [bool]$CleanupFlatArtifacts,
+    [bool]$UpdateHistory,
+    [string]$HistoryDir,
     [string]$NoiseThresholdText
   )
 
@@ -106,6 +121,9 @@ function Write-BenchmarkReviewManifestHeader {
   Add-Utf8Text -Path $ManifestPath -Text "================================`r`n"
   Add-Utf8Text -Path $ManifestPath -Text "`r`n"
   Add-Utf8Text -Path $ManifestPath -Text "Label: $Label`r`n"
+  Add-Utf8Text -Path $ManifestPath -Text "Run ID: $RunId`r`n"
+  Add-Utf8Text -Path $ManifestPath -Text "Attempt ID: $AttemptId`r`n"
+  Add-Utf8Text -Path $ManifestPath -Text "Run topic: $RunTopic`r`n"
   Add-Utf8Text -Path $ManifestPath -Text "Previous label: $PreviousLabel`r`n"
   Add-Utf8Text -Path $ManifestPath -Text "Dataset: $Dataset`r`n"
   Add-Utf8Text -Path $ManifestPath -Text "Organized run root: $OrganizedRunRoot`r`n"
@@ -120,6 +138,8 @@ function Write-BenchmarkReviewManifestHeader {
   Add-Utf8Text -Path $ManifestPath -Text "Validate artifacts: $ValidateArtifacts`r`n"
   Add-Utf8Text -Path $ManifestPath -Text "Require validated comparisons: $RequireValidatedComparisons`r`n"
   Add-Utf8Text -Path $ManifestPath -Text "Cleanup flat artifacts: $CleanupFlatArtifacts`r`n"
+  Add-Utf8Text -Path $ManifestPath -Text "Update history: $UpdateHistory`r`n"
+  Add-Utf8Text -Path $ManifestPath -Text "History directory: $HistoryDir`r`n"
   Add-Utf8Text -Path $ManifestPath -Text "Noise threshold: +/- $NoiseThresholdText`r`n"
   Add-Utf8Text -Path $ManifestPath -Text "`r`n"
   Add-Utf8Text -Path $ManifestPath -Text "state | artifact | path | note`r`n"
@@ -301,7 +321,9 @@ function Write-BenchmarkReviewCompletionOutput {
     [string]$ReviewManifestPath,
     [string]$OrganizedRunDirectory,
     [bool]$CopyArtifactsToRunFolder,
-    [bool]$CleanupFlatArtifacts
+    [bool]$CleanupFlatArtifacts,
+    [bool]$UpdateHistory,
+    [string]$HistoryDir
   )
 
   Write-Host ""
@@ -319,5 +341,9 @@ function Write-BenchmarkReviewCompletionOutput {
     if ($CopyArtifactsToRunFolder) {
       Write-Host "  organized run folder: $OrganizedRunDirectory"
     }
+  }
+
+  if ($UpdateHistory) {
+    Write-Host "  history folder: $HistoryDir"
   }
 }

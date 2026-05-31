@@ -59,10 +59,29 @@ Owned-result, reference-result, reference-visitor, count-only, and existence con
 
 ## Primary review command
 
+New benchmark evidence should use run-number labels unless a legacy artifact name must be reproduced.
+
+The review runner derives the label when `-RunNumber`, `-RunIndex`, and `-RunTopic` are provided without `-Label`:
+
+    ```text
+    run001-r01-reference-visitor-materialization-large
+    ```
+
+Label parts:
+
+    ```text
+    run001 = benchmark evidence iteration
+    r01 = rerun index for the same evidence purpose
+    reference-visitor-materialization = normalized topic
+    large = dataset
+    ```
+
 Small dataset review:
 
     .\scripts\benchmark\review\run-low-gap-review.ps1 `
-      -Label "<label>" `
+      -RunNumber 1 `
+      -RunIndex 1 `
+      -RunTopic "<topic>" `
       -PreviousLabel "<previous-label>" `
       -Dataset "small" `
       -Trials 5 `
@@ -71,7 +90,9 @@ Small dataset review:
 Large dataset review:
 
     .\scripts\benchmark\review\run-low-gap-review.ps1 `
-      -Label "<label>" `
+      -RunNumber 1 `
+      -RunIndex 1 `
+      -RunTopic "<topic>" `
       -PreviousLabel "<previous-label>" `
       -Dataset "large" `
       -Trials 5 `
@@ -80,23 +101,43 @@ Large dataset review:
 Large dataset review with organized artifact copy:
 
     .\scripts\benchmark\review\run-low-gap-review.ps1 `
-      -Label "<label>" `
+      -RunNumber 1 `
+      -RunIndex 1 `
+      -RunTopic "<topic>" `
       -PreviousLabel "<previous-label>" `
       -Dataset "large" `
       -Trials 5 `
       -Iterations 10000 `
       -CopyArtifactsToRunFolder
 
+Validated review with history update:
+
+    .\scripts\benchmark\review\run-low-gap-review.ps1 `
+      -RunNumber 1 `
+      -RunIndex 1 `
+      -RunTopic "<topic>" `
+      -PreviousLabel "<previous-label>" `
+      -Dataset "large" `
+      -Trials 5 `
+      -Iterations 10000 `
+      -CopyArtifactsToRunFolder `
+      -ValidateArtifacts `
+      -UpdateHistory
+
 If re-running the same label and intentionally replacing the organized copy:
 
     .\scripts\benchmark\review\run-low-gap-review.ps1 `
-      -Label "<label>" `
+      -RunNumber 1 `
+      -RunIndex 1 `
+      -RunTopic "<topic>" `
       -PreviousLabel "<previous-label>" `
       -Dataset "large" `
       -Trials 5 `
       -Iterations 10000 `
       -CopyArtifactsToRunFolder `
       -ForceOrganizedArtifacts
+
+`-Label` is still supported for legacy artifacts and explicit comparison work. New benchmark reviews should prefer the run-number parameters so the label is durable without chat context.
 
 ## Full comparison validation path
 
@@ -106,26 +147,32 @@ A previous run should first be generated and copied to the organized run folder:
 
     ```powershell
     .\scripts\benchmark\review\run-low-gap-review.ps1 `
-    -Label "<previous-label>" `
+    -RunNumber 1 `
+    -RunIndex 1 `
+    -RunTopic "<previous-topic>" `
     -Dataset "small" `
     -Trials 5 `
     -Iterations 10000 `
     -CopyArtifactsToRunFolder `
-    -ValidateArtifacts
+    -ValidateArtifacts `
+    -UpdateHistory
     ```
 
 A current run can then validate the full previous/current comparison set by using `-PreviousLabel` and `-RequireValidatedComparisons`:
 
     ```powershell
     .\scripts\benchmark\review\run-low-gap-review.ps1 `
-    -Label "<current-label>" `
+    -RunNumber 2 `
+    -RunIndex 1 `
+    -RunTopic "<current-topic>" `
     -PreviousLabel "<previous-label>" `
     -Dataset "small" `
     -Trials 5 `
     -Iterations 10000 `
     -CopyArtifactsToRunFolder `
     -ValidateArtifacts `
-    -RequireValidatedComparisons
+    -RequireValidatedComparisons `
+    -UpdateHistory
     ```
 
 `-RequireValidatedComparisons` is for the full comparison set:
@@ -465,6 +512,9 @@ This is the main human-readable review artifact.
 It should include:
 
     label
+    run id
+    attempt id
+    run topic
     previous label
     dataset
     max depth
@@ -478,6 +528,7 @@ It should include:
     benchmark status
     comparison statuses
     generated artifact paths
+    history update status when requested
     decision guidance
 
 Use review notes as the first file to inspect after a run.
@@ -505,6 +556,56 @@ Examples:
     found | count-only workload summary | benchmark_artifacts\count-only-workload-summary-<label>.csv
 
 Use the manifest to quickly verify artifact completeness.
+
+## History ledgers
+
+The review runner can append validated review results into long-lived history CSVs.
+
+History updates are optional and use:
+
+    ```powershell
+    -CopyArtifactsToRunFolder `
+    -ValidateArtifacts `
+    -UpdateHistory
+    ```
+
+`-UpdateHistory` requires both organized raw artifacts and validation. This prevents failed or temporary smoke runs from entering the history ledgers.
+
+The default history directory is:
+
+    ```text
+    benchmark_artifacts/history/
+    ```
+
+History CSVs:
+
+    ```text
+    benchmark-run-history.csv
+    low-selectivity-performance-history.csv
+    weakest-workload-history.csv
+    count-only-workload-history.csv
+    materialization-mode-history.csv
+    target-workload-history.csv
+    ```
+
+The per-run artifacts remain the raw evidence. History CSVs are append-only ledgers for inspection across runs. A history row is not a replacement for the raw artifact named in its `source_csv` column.
+
+Every summary history row includes:
+
+    ```text
+    run_id
+    attempt_id
+    run_label
+    run_topic
+    run_dataset
+    run_max_depth
+    run_trials
+    run_iterations
+    run_target_workload
+    source_csv
+    ```
+
+Then it preserves the source artifact columns from the corresponding summary CSV.
 
 ## Comparison availability summary
 
@@ -717,7 +818,7 @@ Use this artifact to identify whether owned result materialization, reusable out
 The first repeated small-dataset materialization review for the reference visitor used:
 
     ```text
-    label: c160-reference-visitor-materialization-small
+    label: run001-r01-reference-visitor-materialization-small
     dataset: small
     trials: 5
     iterations: 1000
