@@ -126,6 +126,7 @@ fresh_owned_elapsed
 reusable_owned_elapsed
 reference_elapsed
 visitor_elapsed
+row_view_elapsed
 count_only_elapsed
 agreement
 ```
@@ -136,7 +137,7 @@ Every row must have:
 agreement = pass
 ```
 
-This protects the review from accepting materialization timing when owned, reusable-owned, reference-result, reference-visitor, and count-only output contracts disagree.
+This protects the review from accepting materialization timing when owned, reusable-owned, reference-result, reference-visitor, row-view, and count-only output contracts disagree.
 
 ## Target workload validation
 
@@ -226,6 +227,7 @@ fresh_owned_elapsed_classification
 reusable_owned_elapsed_classification
 reference_elapsed_classification
 visitor_elapsed_classification
+row_view_elapsed_classification
 count_only_elapsed_classification
 agreement_status
 ```

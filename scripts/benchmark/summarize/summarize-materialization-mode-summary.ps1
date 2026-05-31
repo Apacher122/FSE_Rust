@@ -75,7 +75,7 @@ $HeaderIndex = -1
 for ($Index = $SectionIndex + 1; $Index -lt $Lines.Count; $Index++) {
   $Trimmed = $Lines[$Index].Trim()
 
-  if ($Trimmed.StartsWith("workload | matched | fresh owned | reusable owned | reference | visitor | count-only")) {
+  if ($Trimmed.StartsWith("workload | matched | fresh owned | reusable owned | reference | visitor | row view | count-only")) {
     $HeaderIndex = $Index
     break
   }
@@ -101,7 +101,7 @@ for ($Index = $HeaderIndex + 1; $Index -lt $Lines.Count; $Index++) {
 
   $Columns = @($Trimmed.Split("|") | ForEach-Object { $_.Trim() })
 
-  if ($Columns.Count -ne 12) {
+  if ($Columns.Count -ne 14) {
     throw "unexpected materialization summary column count at line $($Index + 1): $($Columns.Count)"
   }
 
@@ -119,7 +119,9 @@ for ($Index = $HeaderIndex + 1; $Index -lt $Lines.Count; $Index++) {
       $Columns[8],
       $Columns[9],
       $Columns[10],
-      $Columns[11]
+      $Columns[11],
+      $Columns[12],
+      $Columns[13]
     )) | Out-Null
 }
 
@@ -136,10 +138,12 @@ $Header = @(
   "reusable_owned_elapsed",
   "reference_elapsed",
   "visitor_elapsed",
+  "row_view_elapsed",
   "count_only_elapsed",
   "count_speedup",
   "reference_speedup",
   "visitor_speedup",
+  "row_view_speedup",
   "reusable_speedup",
   "agreement"
 )
@@ -149,7 +153,7 @@ Write-CsvDocument `
   -Header $Header `
   -Rows $Rows
 
-$FailedRows = @($Rows | Where-Object { $_[13] -ne "pass" })
+$FailedRows = @($Rows | Where-Object { $_[15] -ne "pass" })
 
 Set-Utf8Text -Path $OutputNotesPath -Text "Materialization mode summary notes`r`n"
 Add-Utf8Text -Path $OutputNotesPath -Text "==================================`r`n`r`n"
@@ -165,7 +169,7 @@ if ($FailedRows.Count -gt 0) {
   Add-Utf8Text -Path $OutputNotesPath -Text "--------------------`r`n"
 
   foreach ($FailedRow in $FailedRows) {
-    Add-Utf8Text -Path $OutputNotesPath -Text "$($FailedRow[2]): $($FailedRow[13])`r`n"
+    Add-Utf8Text -Path $OutputNotesPath -Text "$($FailedRow[2]): $($FailedRow[15])`r`n"
   }
 }
 

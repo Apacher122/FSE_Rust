@@ -603,7 +603,7 @@ Keep artifact-management changes separate from query-performance changes.
 
 ## Materialization mode summary artifact
 
-The debug report includes a workload materialization mode summary. The benchmark artifact workflow should keep a machine-readable copy of that section so owned-result, reusable-owned, reference-result, reference-visitor, and count-only timings can be reviewed without manually scraping terminal output.
+The debug report includes a workload materialization mode summary. The benchmark artifact workflow should keep a machine-readable copy of that section so owned-result, reusable-owned, reference-result, reference-visitor, row-view, and count-only timings can be reviewed without manually scraping terminal output.
 
 The summary artifact is generated from the debug report:
 
@@ -625,10 +625,12 @@ fresh_owned_elapsed
 reusable_owned_elapsed
 reference_elapsed
 visitor_elapsed
+row_view_elapsed
 count_only_elapsed
 count_speedup
 reference_speedup
 visitor_speedup
+row_view_speedup
 reusable_speedup
 agreement
 ```
@@ -657,6 +659,7 @@ fresh owned
 reusable owned
 reference-result
 reference-visitor
+row-view
 count-only
 ```
 
@@ -694,7 +697,7 @@ materialization-mode-summary-comparison-<label>.csv
 materialization-mode-summary-comparison-<label>.txt
 ```
 
-The summary CSV records workload-level timing for fresh owned, reusable owned, reference-result, reference-visitor, and count-only query output modes. The comparison CSV compares those output-contract costs across review runs.
+The summary CSV records workload-level timing for fresh owned, reusable owned, reference-result, reference-visitor, row-view, and count-only query output modes. The comparison CSV compares those output-contract costs across review runs.
 
 Every materialization summary row should report `agreement = pass`; otherwise the output modes are not preserving the same exact query semantics.
 

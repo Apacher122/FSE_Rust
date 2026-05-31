@@ -213,24 +213,30 @@ fn debug_report_renders_target_workload_materialization_mode_comparison() {
     assert!(output.contains("reusable owned average elapsed:"));
     assert!(output.contains("reference-result average elapsed:"));
     assert!(output.contains("reference-visitor average elapsed:"));
+    assert!(output.contains("row-view average elapsed:"));
     assert!(output.contains("count-only average elapsed:"));
     assert!(output.contains("estimated owned above count-only:"));
     assert!(output.contains("estimated owned above reference-result:"));
     assert!(output.contains("estimated owned above reference-visitor:"));
+    assert!(output.contains("estimated owned above row-view:"));
     assert!(output.contains("estimated reference-result above reference-visitor:"));
+    assert!(output.contains("estimated row-view above reference-visitor:"));
     assert!(output.contains("estimated fresh above reusable owned:"));
     assert!(output.contains("count-only speedup:"));
     assert!(output.contains("reference-result speedup:"));
     assert!(output.contains("reference-visitor speedup:"));
+    assert!(output.contains("row-view speedup:"));
     assert!(output.contains("reusable owned speedup:"));
     assert!(output.contains("fresh owned matched records:"));
     assert!(output.contains("reusable owned matched records:"));
     assert!(output.contains("reference-result matched records:"));
     assert!(output.contains("reference-visitor matched records:"));
+    assert!(output.contains("row-view matched records:"));
     assert!(output.contains("count-only matched records:"));
     assert!(output.contains("count-only stats match owned: true"));
     assert!(output.contains("reference stats match count-only: true"));
     assert!(output.contains("reference visitor stats match reference: true"));
+    assert!(output.contains("row-view stats match reference: true"));
     assert!(output.contains("reusable owned stats match owned: true"));
     assert!(output.contains("all matched records agree: true"));
 }
@@ -275,7 +281,7 @@ fn debug_report_renders_workload_materialization_mode_summary() {
 
     assert!(output.contains("Workload materialization mode summary"));
     assert!(output.contains(
-        "workload | matched | fresh owned | reusable owned | reference | visitor | count-only | count speedup | reference speedup | visitor speedup | reusable speedup | agreement"
+        "workload | matched | fresh owned | reusable owned | reference | visitor | row view | count-only | count speedup | reference speedup | visitor speedup | row-view speedup | reusable speedup | agreement"
     ));
     assert!(output.contains("cluster_range_000 |"));
     assert!(output.contains("cluster_boundary_range |"));

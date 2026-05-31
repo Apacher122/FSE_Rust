@@ -25,6 +25,60 @@ function Get-BenchmarkHistoryRowValue {
   return $Property.Value
 }
 
+function Split-BenchmarkHistoryHeader {
+  param(
+    [string]$HeaderLine
+  )
+
+  if ([string]::IsNullOrWhiteSpace($HeaderLine)) {
+    return @()
+  }
+
+  return @($HeaderLine.Split(","))
+}
+
+function Test-BenchmarkHistoryHeaderCanExpand {
+  param(
+    [string[]]$ExistingHeader,
+    [string[]]$ExpectedHeader
+  )
+
+  $ExpectedColumns = @{}
+
+  foreach ($Column in $ExpectedHeader) {
+    $ExpectedColumns[$Column] = $true
+  }
+
+  foreach ($Column in $ExistingHeader) {
+    if (!$ExpectedColumns.ContainsKey($Column)) {
+      return $false
+    }
+  }
+
+  return $true
+}
+
+function Update-BenchmarkHistoryHeader {
+  param(
+    [string]$Path,
+    [string[]]$Header
+  )
+
+  $ExistingRows = @(Import-Csv -LiteralPath $Path)
+
+  Set-Utf8Text -Path $Path -Text "$(Join-CsvFields -Fields $Header)`r`n"
+
+  foreach ($Row in $ExistingRows) {
+    $Values = @(
+      foreach ($Column in $Header) {
+        Get-BenchmarkHistoryRowValue -Row $Row -ColumnName $Column
+      }
+    )
+
+    Add-Utf8Text -Path $Path -Text "$(Join-CsvFields -Fields $Values)`r`n"
+  }
+}
+
 function Assert-BenchmarkHistoryHeader {
   param(
     [string]$Path,
@@ -55,6 +109,13 @@ function Assert-BenchmarkHistoryHeader {
   $ExistingHeader = $ExistingLines[0]
 
   if ($ExistingHeader -ne $ExpectedHeader) {
+    $ExistingHeaderFields = Split-BenchmarkHistoryHeader -HeaderLine $ExistingHeader
+
+    if (Test-BenchmarkHistoryHeaderCanExpand -ExistingHeader $ExistingHeaderFields -ExpectedHeader $Header) {
+      Update-BenchmarkHistoryHeader -Path $Path -Header $Header
+      return
+    }
+
     throw "benchmark history header mismatch for $Path"
   }
 }

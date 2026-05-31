@@ -14,7 +14,7 @@ use crate::benchmark::workloads::QueryWorkloadCase;
 use crate::query::{
     QueryExecutionStats, count_query_matches_with_stats, execute_query_into_with_options,
     execute_query_references_with_stats, execute_query_with_stats_and_options,
-    visit_query_references,
+    visit_query_references, visit_query_row_views,
 };
 
 #[derive(Clone, Debug)]
@@ -23,24 +23,30 @@ struct MaterializationModeEvidence {
     reusable_owned_elapsed: Duration,
     reference_elapsed: Duration,
     visitor_elapsed: Duration,
+    row_view_elapsed: Duration,
     count_only_elapsed: Duration,
     owned_above_count_only: Duration,
     owned_above_reference: Duration,
     owned_above_visitor: Duration,
+    owned_above_row_view: Duration,
     reference_above_visitor: Duration,
+    row_view_above_visitor: Duration,
     fresh_above_reusable_owned: Duration,
     count_only_speedup: f64,
     reference_speedup: f64,
     visitor_speedup: f64,
+    row_view_speedup: f64,
     reusable_owned_speedup: f64,
     fresh_owned_matched_records: usize,
     reusable_owned_matched_records: usize,
     reference_matched_records: usize,
     visitor_matched_records: usize,
+    row_view_matched_records: usize,
     count_only_matched_records: usize,
     count_only_stats_match_owned: bool,
     reference_stats_match_count_only: bool,
     visitor_stats_match_reference: bool,
+    row_view_stats_match_reference: bool,
     reusable_owned_stats_match_owned: bool,
     all_matched_records_agree: bool,
 }
@@ -51,6 +57,7 @@ impl MaterializationModeEvidence {
             && self.count_only_stats_match_owned
             && self.reference_stats_match_count_only
             && self.visitor_stats_match_reference
+            && self.row_view_stats_match_reference
             && self.reusable_owned_stats_match_owned
         {
             "pass"
@@ -88,24 +95,26 @@ impl BenchmarkApplicationRenderer {
         output.push_str("Workload materialization mode summary\n");
         output.push_str("-------------------------------------\n");
         output.push_str(
-            "workload | matched | fresh owned | reusable owned | reference | visitor | count-only | count speedup | reference speedup | visitor speedup | reusable speedup | agreement\n",
+            "workload | matched | fresh owned | reusable owned | reference | visitor | row view | count-only | count speedup | reference speedup | visitor speedup | row-view speedup | reusable speedup | agreement\n",
         );
 
         for workload in &context.workloads {
             let evidence = collect_materialization_mode_evidence(context, workload);
 
             output.push_str(&format!(
-                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {}\n",
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {}\n",
                 workload.name,
                 evidence.fresh_owned_matched_records,
                 format_duration_ascii(evidence.fresh_owned_elapsed),
                 format_duration_ascii(evidence.reusable_owned_elapsed),
                 format_duration_ascii(evidence.reference_elapsed),
                 format_duration_ascii(evidence.visitor_elapsed),
+                format_duration_ascii(evidence.row_view_elapsed),
                 format_duration_ascii(evidence.count_only_elapsed),
                 format_speedup_ratio(evidence.count_only_speedup),
                 format_speedup_ratio(evidence.reference_speedup),
                 format_speedup_ratio(evidence.visitor_speedup),
+                format_speedup_ratio(evidence.row_view_speedup),
                 format_speedup_ratio(evidence.reusable_owned_speedup),
                 evidence.agreement_label(),
             ));
@@ -147,6 +156,11 @@ fn append_target_materialization_mode_evidence(
     );
     append_debug_duration_line(
         output,
+        "row-view average elapsed",
+        evidence.row_view_elapsed,
+    );
+    append_debug_duration_line(
+        output,
         "count-only average elapsed",
         evidence.count_only_elapsed,
     );
@@ -167,8 +181,18 @@ fn append_target_materialization_mode_evidence(
     );
     append_debug_duration_line(
         output,
+        "estimated owned above row-view",
+        evidence.owned_above_row_view,
+    );
+    append_debug_duration_line(
+        output,
         "estimated reference-result above reference-visitor",
         evidence.reference_above_visitor,
+    );
+    append_debug_duration_line(
+        output,
+        "estimated row-view above reference-visitor",
+        evidence.row_view_above_visitor,
     );
     append_debug_duration_line(
         output,
@@ -189,6 +213,11 @@ fn append_target_materialization_mode_evidence(
         output,
         "reference-visitor speedup",
         format_speedup_ratio(evidence.visitor_speedup),
+    );
+    append_debug_line(
+        output,
+        "row-view speedup",
+        format_speedup_ratio(evidence.row_view_speedup),
     );
     append_debug_line(
         output,
@@ -217,6 +246,11 @@ fn append_target_materialization_mode_evidence(
     );
     append_debug_line(
         output,
+        "row-view matched records",
+        evidence.row_view_matched_records,
+    );
+    append_debug_line(
+        output,
         "count-only matched records",
         evidence.count_only_matched_records,
     );
@@ -234,6 +268,11 @@ fn append_target_materialization_mode_evidence(
         output,
         "reference visitor stats match reference",
         evidence.visitor_stats_match_reference,
+    );
+    append_debug_line(
+        output,
+        "row-view stats match reference",
+        evidence.row_view_stats_match_reference,
     );
     append_debug_line(
         output,
@@ -294,6 +333,18 @@ fn collect_materialization_mode_evidence(
         std::hint::black_box(visited_records);
     });
 
+    let row_view_timing = measure_repeated(timing_config, || {
+        let mut visited_records = 0usize;
+        let stats = visit_query_row_views(&context.index, &workload.query, |row_view| {
+            visited_records += 1;
+            std::hint::black_box(row_view.reference());
+            std::hint::black_box(row_view.dimensions());
+        });
+
+        std::hint::black_box(stats.matched_records);
+        std::hint::black_box(visited_records);
+    });
+
     let count_only_timing = measure_repeated(timing_config, || {
         let report = count_query_matches_with_stats(&context.index, &workload.query);
 
@@ -315,6 +366,12 @@ fn collect_materialization_mode_evidence(
         visitor_matched_records += 1;
         std::hint::black_box(reference);
     });
+    let mut row_view_matched_records = 0usize;
+    let row_view_stats = visit_query_row_views(&context.index, &workload.query, |row_view| {
+        row_view_matched_records += 1;
+        std::hint::black_box(row_view.reference());
+        std::hint::black_box(row_view.dimensions());
+    });
     let count_report = count_query_matches_with_stats(&context.index, &workload.query);
 
     let evidence = materialization_mode_evidence(
@@ -322,6 +379,7 @@ fn collect_materialization_mode_evidence(
         reusable_owned_timing.average_elapsed,
         reference_timing.average_elapsed,
         visitor_timing.average_elapsed,
+        row_view_timing.average_elapsed,
         count_only_timing.average_elapsed,
         fresh_owned_report.stats,
         reusable_owned_stats,
@@ -329,6 +387,8 @@ fn collect_materialization_mode_evidence(
         reference_report.matches.len(),
         visitor_stats,
         visitor_matched_records,
+        row_view_stats,
+        row_view_matched_records,
         count_report.stats,
         count_report.matched_records,
     );
@@ -343,6 +403,7 @@ fn materialization_mode_evidence(
     reusable_owned_elapsed: Duration,
     reference_elapsed: Duration,
     visitor_elapsed: Duration,
+    row_view_elapsed: Duration,
     count_only_elapsed: Duration,
     fresh_owned_stats: QueryExecutionStats,
     reusable_owned_stats: QueryExecutionStats,
@@ -350,28 +411,35 @@ fn materialization_mode_evidence(
     reference_matched_records: usize,
     visitor_stats: QueryExecutionStats,
     visitor_matched_records: usize,
+    row_view_stats: QueryExecutionStats,
+    row_view_matched_records: usize,
     count_only_stats: QueryExecutionStats,
     count_only_matched_records: usize,
 ) -> MaterializationModeEvidence {
     let owned_above_count_only = fresh_owned_elapsed.saturating_sub(count_only_elapsed);
     let owned_above_reference = fresh_owned_elapsed.saturating_sub(reference_elapsed);
     let owned_above_visitor = fresh_owned_elapsed.saturating_sub(visitor_elapsed);
+    let owned_above_row_view = fresh_owned_elapsed.saturating_sub(row_view_elapsed);
     let reference_above_visitor = reference_elapsed.saturating_sub(visitor_elapsed);
+    let row_view_above_visitor = row_view_elapsed.saturating_sub(visitor_elapsed);
     let fresh_above_reusable_owned = fresh_owned_elapsed.saturating_sub(reusable_owned_elapsed);
 
     let count_only_speedup = duration_ratio(fresh_owned_elapsed, count_only_elapsed);
     let reference_speedup = duration_ratio(fresh_owned_elapsed, reference_elapsed);
     let visitor_speedup = duration_ratio(fresh_owned_elapsed, visitor_elapsed);
+    let row_view_speedup = duration_ratio(fresh_owned_elapsed, row_view_elapsed);
     let reusable_owned_speedup = duration_ratio(fresh_owned_elapsed, reusable_owned_elapsed);
 
     let count_only_stats_match_owned = count_only_stats == fresh_owned_stats;
     let reference_stats_match_count_only = reference_stats == count_only_stats;
     let visitor_stats_match_reference = visitor_stats == reference_stats;
+    let row_view_stats_match_reference = row_view_stats == reference_stats;
     let reusable_owned_stats_match_owned = reusable_owned_stats == fresh_owned_stats;
     let all_matched_records_agree = fresh_owned_stats.matched_records
         == reusable_owned_stats.matched_records
         && fresh_owned_stats.matched_records == reference_matched_records
         && fresh_owned_stats.matched_records == visitor_matched_records
+        && fresh_owned_stats.matched_records == row_view_matched_records
         && fresh_owned_stats.matched_records == count_only_matched_records;
 
     MaterializationModeEvidence {
@@ -379,24 +447,30 @@ fn materialization_mode_evidence(
         reusable_owned_elapsed,
         reference_elapsed,
         visitor_elapsed,
+        row_view_elapsed,
         count_only_elapsed,
         owned_above_count_only,
         owned_above_reference,
         owned_above_visitor,
+        owned_above_row_view,
         reference_above_visitor,
+        row_view_above_visitor,
         fresh_above_reusable_owned,
         count_only_speedup,
         reference_speedup,
         visitor_speedup,
+        row_view_speedup,
         reusable_owned_speedup,
         fresh_owned_matched_records: fresh_owned_stats.matched_records,
         reusable_owned_matched_records: reusable_owned_stats.matched_records,
         reference_matched_records,
         visitor_matched_records,
+        row_view_matched_records,
         count_only_matched_records,
         count_only_stats_match_owned,
         reference_stats_match_count_only,
         visitor_stats_match_reference,
+        row_view_stats_match_reference,
         reusable_owned_stats_match_owned,
         all_matched_records_agree,
     }
@@ -418,6 +492,10 @@ fn assert_materialization_mode_equivalence(evidence: &MaterializationModeEvidenc
     assert!(
         evidence.visitor_stats_match_reference,
         "target workload reference visitor stats must match reference-result stats"
+    );
+    assert!(
+        evidence.row_view_stats_match_reference,
+        "target workload row-view stats must match reference-result stats"
     );
     assert!(
         evidence.reusable_owned_stats_match_owned,

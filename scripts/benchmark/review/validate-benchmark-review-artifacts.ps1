@@ -220,6 +220,7 @@ $MaterializationSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv `
   "reusable_owned_elapsed",
   "reference_elapsed",
   "visitor_elapsed",
+  "row_view_elapsed",
   "count_only_elapsed",
   "agreement"
 ) `
@@ -342,6 +343,7 @@ if ($null -ne $MaterializationComparisonEntry -and $MaterializationComparisonEnt
     "reusable_owned_elapsed_classification",
     "reference_elapsed_classification",
     "visitor_elapsed_classification",
+    "row_view_elapsed_classification",
     "count_only_elapsed_classification",
     "agreement_status"
   ) `

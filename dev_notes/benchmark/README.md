@@ -30,6 +30,7 @@ The benchmark workflow currently separates:
     owned-result query execution
     reference-result query execution
     reference-visitor query execution
+    row-view query execution
     count-only query execution
     existence query execution
     debug-only retained execution diagnostics
@@ -39,6 +40,8 @@ Owned-result timing answers materialized row-return performance.
 Reference-result timing answers exact row-reference collection performance.
 
 Reference visitor timing answers exact row-reference delivery without building the reference result Vec.
+
+Row-view timing answers borrowed exact row-view delivery without building owned row vectors.
 
 Count-only timing answers exact-cardinality performance.
 
@@ -62,6 +65,7 @@ The benchmark workflow now has:
     count-only query execution
     existence query execution
     reference visitor materialization evidence for small and large datasets
+    row-view materialization summary evidence
     per-workload CSV metrics
     count-only workload summary artifacts
     count-only comparison artifacts
@@ -224,4 +228,5 @@ Current benchmark interpretation:
     count-only query mode is a valid separate output contract
     existence query mode is a valid separate output contract with timing-summary benchmark evidence
     reference visitor is a valid exact reference-delivery output contract with small and large materialization evidence
+    row-view query mode is a valid borrowed row-delivery output contract with materialization summary evidence
     future traversal or boundary-specific optimizations need new evidence before being prioritized

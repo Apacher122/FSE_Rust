@@ -28,6 +28,9 @@ reference-result query execution:
 reference-visitor query execution:
   visits exact row references without constructing the reference Vec
 
+row-view query execution:
+  visits borrowed exact row views without constructing owned Vector results
+
 count-only query execution:
   returns exact cardinality without owned Vector materialization
 
@@ -35,7 +38,7 @@ existence query execution:
   returns whether the exact result set is non-empty
 ```
 
-Owned-result, reference-result, reference-visitor, count-only, and existence conclusions are interpreted separately because each output contract measures a different returned value over the same exact query semantics.
+Owned-result, reference-result, reference-visitor, row-view, count-only, and existence conclusions are interpreted separately because each output contract measures a different returned value over the same exact query semantics.
 
 ## General acceptance requirements
 

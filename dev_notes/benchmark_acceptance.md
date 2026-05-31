@@ -42,6 +42,9 @@ reference-result query execution:
 reference-visitor query execution:
   visits exact row references without constructing the reference Vec
 
+row-view query execution:
+  visits borrowed exact row views without constructing owned Vector results
+
 count-only query execution:
   returns exact cardinality without owned Vector materialization
 
@@ -98,3 +101,5 @@ Count-only benchmark conclusions must stay separate from owned-result benchmark 
 Existence benchmark conclusions must stay separate from count-only conclusions unless a commit explicitly explains why the boolean output contract needs durable artifact review.
 
 Reference visitor benchmark conclusions must stay separate from reference-result and count-only conclusions. Visitor evidence measures reference delivery overhead, not geometric pruning improvement. Current visitor evidence covers small and large materialization summaries, but it still does not prove universal visitor speedup.
+
+Row-view benchmark conclusions must stay separate from owned-result and reference-visitor conclusions. Row-view materialization evidence measures borrowed row-view delivery, not full owned row reconstruction unless a later artifact explicitly says otherwise.

@@ -49,13 +49,16 @@ The review workflow currently distinguishes these output contracts:
     reference-visitor query execution:
       visits exact row references without constructing the reference Vec
 
+    row-view query execution:
+      visits borrowed exact row views without constructing owned Vector results
+
     count-only query execution:
       returns exact cardinality without owned Vector materialization
 
     existence query execution:
       returns whether the exact result set is non-empty
 
-Owned-result, reference-result, reference-visitor, count-only, and existence conclusions are interpreted separately.
+Owned-result, reference-result, reference-visitor, row-view, count-only, and existence conclusions are interpreted separately.
 
 ## Primary review command
 
@@ -638,7 +641,7 @@ The guidance should remind the reviewer to use:
     count-only workload comparison artifacts for count-only query mode movement
     existence timing summaries and debug output for exact non-empty-result behavior
 
-Decision guidance should separate owned-result, reference-result, reference-visitor, count-only, and existence conclusions.
+Decision guidance should separate owned-result, reference-result, reference-visitor, row-view, count-only, and existence conclusions.
 
 ## Reporting-only commit review
 
@@ -795,13 +798,14 @@ Use owned-result artifacts for:
 
 The review workflow now preserves the debug report's workload materialization mode summary as a CSV artifact.
 
-This artifact is separate from the count-only workload summary. Count-only summaries answer whether exact cardinality avoids owned-result materialization. Materialization mode summaries compare five output contracts for every workload:
+This artifact is separate from the count-only workload summary. Count-only summaries answer whether exact cardinality avoids owned-result materialization. Materialization mode summaries compare six output contracts for every workload:
 
     ```text
     fresh owned result
     reusable owned result
     reference-result
     reference-visitor
+    row-view
     count-only
     ```
 
@@ -811,7 +815,7 @@ The review rule is:
     Every materialization mode summary row must have agreement = pass.
     ```
 
-Use this artifact to identify whether owned result materialization, reusable output buffers, reference-result construction, reference-visitor dispatch, or count-only execution is the current output-contract cost driver. Do not use it as a standalone performance claim without repeated-trial evidence.
+Use this artifact to identify whether owned result materialization, reusable output buffers, reference-result construction, reference-visitor dispatch, row-view delivery, or count-only execution is the current output-contract cost driver. Do not use it as a standalone performance claim without repeated-trial evidence.
 
 ## Reference visitor materialization result
 
@@ -923,7 +927,7 @@ The review validator requires:
 
 The comparison artifact is validated whenever it is present. It does not require the full comparison set unless `-RequireValidatedComparisons` is explicitly used.
 
-A timing improvement is not review-grade evidence if owned, reusable-owned, reference-result, reference-visitor, and count-only output contracts disagree.
+A timing improvement is not review-grade evidence if owned, reusable-owned, reference-result, reference-visitor, row-view, and count-only output contracts disagree.
 
 ## Validation coverage reference
 

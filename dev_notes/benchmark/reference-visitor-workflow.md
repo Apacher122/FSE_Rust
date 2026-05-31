@@ -53,6 +53,7 @@ fresh owned result
 reusable owned result
 reference-result
 reference-visitor
+row-view
 count-only
 ```
 
@@ -75,6 +76,8 @@ reference_speedup
 visitor_speedup
 agreement
 ```
+
+Row-view fields are tracked in the same materialization summary after the row-view API landed. The reference visitor conclusions in this file remain about reference delivery, not borrowed row-view delivery.
 
 The debug output includes a target workload section showing reference visitor elapsed time, estimated reference-result overhead above reference visitor, and whether visitor stats match reference-result stats.
 
