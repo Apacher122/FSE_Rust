@@ -66,6 +66,7 @@ The benchmark workflow now has:
     existence query execution
     reference visitor materialization evidence for small and large datasets
     row-view materialization summary evidence
+    repeated materialization mode trial summaries
     per-workload CSV metrics
     count-only workload summary artifacts
     count-only comparison artifacts
@@ -162,6 +163,16 @@ Large dataset review with organized artifact copy:
       -Iterations 10000 `
       -CopyArtifactsToRunFolder
 
+Repeated materialization mode trials:
+
+    .\scripts\benchmark\run\run-materialization-mode-trials.ps1 `
+      -RunNumber 3 `
+      -RunIndex 1 `
+      -RunTopic "row view materialization trials" `
+      -Dataset "small" `
+      -Trials 5 `
+      -Iterations 1000
+
 ## Current dataset defaults
 
 Small dataset:
@@ -181,6 +192,8 @@ Do not compare large-depth-8 artifacts against large-depth-16 artifacts as equiv
 ## Important benchmark rules
 
 Use repeated-trial evidence, not one noisy benchmark run.
+
+Use repeated materialization mode trials for output-contract timing decisions when single materialization summaries are too noisy.
 
 Reporting/tooling-only commits should be judged by artifact correctness, not timing movement alone.
 
@@ -229,4 +242,5 @@ Current benchmark interpretation:
     existence query mode is a valid separate output contract with timing-summary benchmark evidence
     reference visitor is a valid exact reference-delivery output contract with small and large materialization evidence
     row-view query mode is a valid borrowed row-delivery output contract with materialization summary evidence
+    repeated materialization trials are available for output-contract stability checks
     future traversal or boundary-specific optimizations need new evidence before being prioritized

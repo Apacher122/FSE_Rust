@@ -596,13 +596,13 @@ Completed output-contract directions:
 count-only query API
 exists-any query API
 visitor/callback-based query API
+borrowed row-view result API
+materialization-specific repeated trial workflow
 ```
 
 Open result-representation directions:
 
 ```text
-borrowed row-view result API
-materialization-specific repeated trial workflow
 durable existence comparison track, if evidence requires it
 ```
 

@@ -27,6 +27,7 @@ scripts/benchmark/check/check-benchmark-workflow.ps1
 scripts/benchmark/review/run-low-gap-review.ps1
 scripts/benchmark/run/run-small-benchmark.ps1
 scripts/benchmark/run/run-low-gap-trials.ps1
+scripts/benchmark/run/run-materialization-mode-trials.ps1
 scripts/benchmark/summarize/summarize-target-workload-trials.ps1
 scripts/benchmark/compare/compare-materialization-mode-summary.ps1
 scripts/benchmark/artifacts/organize-benchmark-artifacts.ps1

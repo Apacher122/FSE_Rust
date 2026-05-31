@@ -105,6 +105,7 @@ function Test-BenchmarkScriptLayout {
     "benchmark\review\validate-benchmark-review-artifacts.ps1",
     "benchmark\run\run-leaf-policy-trials.ps1",
     "benchmark\run\run-low-gap-trials.ps1",
+    "benchmark\run\run-materialization-mode-trials.ps1",
     "benchmark\run\run-small-benchmark.ps1",
     "lib\benchmark-review\history.ps1",
     "benchmark\summarize\summarize-count-only-workload-summary.ps1",
@@ -133,6 +134,7 @@ function Test-BenchmarkScriptLayout {
     "validate-benchmark-review-artifacts.ps1"    = "benchmark\review\validate-benchmark-review-artifacts.ps1"
     "run-leaf-policy-trials.ps1"                 = "benchmark\run\run-leaf-policy-trials.ps1"
     "run-low-gap-trials.ps1"                     = "benchmark\run\run-low-gap-trials.ps1"
+    "run-materialization-mode-trials.ps1"        = "benchmark\run\run-materialization-mode-trials.ps1"
     "run-small-benchmark.ps1"                    = "benchmark\run\run-small-benchmark.ps1"
     "summarize-count-only-workload-summary.ps1"  = "benchmark\summarize\summarize-count-only-workload-summary.ps1"
     "summarize-existence-timing-summary.ps1"     = "benchmark\summarize\summarize-existence-timing-summary.ps1"

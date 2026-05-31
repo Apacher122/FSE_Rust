@@ -5,6 +5,9 @@ $BenchmarkArtifactReservedDirectoryNames = @(
 
 $BenchmarkArtifactFilePrefixes = @(
   "materialization-mode-summary-comparison-",
+  "materialization-mode-trial-details-",
+  "materialization-mode-trial-summary-",
+  "materialization-mode-trial-notes-",
   "existence-timing-summary-",
   "materialization-mode-summary-",
   "count-only-workload-summary-comparison-",
@@ -31,6 +34,7 @@ $BenchmarkArtifactFilePrefixes = @(
 ) | Sort-Object -Property Length -Descending
 
 $BenchmarkArtifactDirectoryPrefixes = @(
+  "materialization-mode-trials-",
   "low-gap-trials-",
   "leaf-policy-trials-"
 ) | Sort-Object -Property Length -Descending

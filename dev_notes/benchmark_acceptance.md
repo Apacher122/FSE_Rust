@@ -103,3 +103,17 @@ Existence benchmark conclusions must stay separate from count-only conclusions u
 Reference visitor benchmark conclusions must stay separate from reference-result and count-only conclusions. Visitor evidence measures reference delivery overhead, not geometric pruning improvement. Current visitor evidence covers small and large materialization summaries, but it still does not prove universal visitor speedup.
 
 Row-view benchmark conclusions must stay separate from owned-result and reference-visitor conclusions. Row-view materialization evidence measures borrowed row-view delivery, not full owned row reconstruction unless a later artifact explicitly says otherwise.
+
+Use repeated materialization mode trials when deciding whether row-view or reference-visitor output-contract timing is stable enough to justify more implementation work:
+
+```powershell
+.\scripts\benchmark\run\run-materialization-mode-trials.ps1 `
+  -RunNumber 3 `
+  -RunIndex 1 `
+  -RunTopic "row view materialization trials" `
+  -Dataset "small" `
+  -Trials 5 `
+  -Iterations 1000
+```
+
+The repeated materialization summary is valid only when `all_agreement_pass` is true for the workload being discussed.

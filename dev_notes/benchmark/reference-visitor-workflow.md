@@ -319,11 +319,12 @@ reference visitor is universally faster on large data
 reference visitor replaces count-only for resultless query use cases
 ```
 
-The next durable benchmark step should be either:
+The durable repeated materialization workflow is:
 
 ```text
-repeated materialization-summary-specific trial workflow
-large dataset comparison against a previous visitor run
+scripts/benchmark/run/run-materialization-mode-trials.ps1
 ```
+
+Use it before treating reference-visitor or row-view timing movement as stable enough to drive another API or runtime change.
 
 Use visitor timing as output-contract evidence, not as proof that geometric pruning improved.

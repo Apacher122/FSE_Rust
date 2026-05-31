@@ -817,6 +817,43 @@ The review rule is:
 
 Use this artifact to identify whether owned result materialization, reusable output buffers, reference-result construction, reference-visitor dispatch, row-view delivery, or count-only execution is the current output-contract cost driver. Do not use it as a standalone performance claim without repeated-trial evidence.
 
+## Repeated materialization mode trials
+
+Use repeated materialization mode trials when a single materialization summary is too noisy to decide whether an output contract deserves more work.
+
+Command:
+
+    ```powershell
+    .\scripts\benchmark\run\run-materialization-mode-trials.ps1 `
+    -RunNumber 3 `
+    -RunIndex 1 `
+    -RunTopic "row view materialization trials" `
+    -Dataset "small" `
+    -Trials 5 `
+    -Iterations 1000
+    ```
+
+Generated artifacts:
+
+    ```text
+    materialization-mode-trials-<label>/
+    materialization-mode-trial-details-<label>.csv
+    materialization-mode-trial-summary-<label>.csv
+    materialization-mode-trial-notes-<label>.txt
+    ```
+
+The trial directory stores each trial debug output and each per-trial materialization summary extracted from that debug output. The detail CSV is the row-level repeated evidence. The summary CSV groups by workload and reports mean elapsed times, row-view stability fields, row-view faster-than counts, and agreement counts.
+
+Repeated materialization summaries are output-contract evidence. They do not replace the normal benchmark review workflow, low-gap repeated trials, target workload review, count-only review, or existence timing review.
+
+Required interpretation rule:
+
+    ```text
+    all_agreement_pass must be true before timing movement is used for a workload.
+    ```
+
+Use repeated materialization trials to decide whether row-view, reference-visitor, reference-result, reusable-owned, owned-result, or count-only delivery looks worth deeper design work. Do not use them to claim geometric pruning improved.
+
 ## Reference visitor materialization result
 
 The first repeated small-dataset materialization review for the reference visitor used:
