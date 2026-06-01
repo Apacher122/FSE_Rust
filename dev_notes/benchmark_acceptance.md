@@ -117,3 +117,12 @@ Use repeated materialization mode trials when deciding whether row-view or refer
 ```
 
 The repeated materialization summary is valid only when `all_agreement_pass` is true for the workload being discussed.
+
+The first small and large row-view repeated materialization trials both reported agreement for every workload. The decision from those artifacts is:
+
+```text
+row-view is a valid borrowed exact row-delivery API
+row-view is not the current performance direction
+reference-visitor remains the preferred streaming exact-match delivery path
+batch row-view delivery and reference-list row-view iteration should stay paused unless new evidence or a caller requirement changes the priority
+```

@@ -241,6 +241,12 @@ Current benchmark interpretation:
     count-only query mode is a valid separate output contract
     existence query mode is a valid separate output contract with timing-summary benchmark evidence
     reference visitor is a valid exact reference-delivery output contract with small and large materialization evidence
-    row-view query mode is a valid borrowed row-delivery output contract with materialization summary evidence
+    row-view query mode is a valid borrowed row-delivery output contract but not the current performance direction
     repeated materialization trials are available for output-contract stability checks
     future traversal or boundary-specific optimizations need new evidence before being prioritized
+
+Current row-view decision:
+
+    repeated small and large materialization trials preserved exact agreement
+    row-view did not beat reference-visitor on any matched large workload
+    row-view should not be expanded into batch or reference-list APIs for performance without new evidence

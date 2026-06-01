@@ -586,6 +586,57 @@ count-only remains the resultless floor when only cardinality is needed
 
 This evidence should not be interpreted as a pruning improvement. It is result-delivery evidence over exact matches after the normal FSE execution pipeline has already selected and evaluated candidates.
 
+## Row-view materialization trial conclusion
+
+The borrowed row-view API was tested through repeated materialization trials after row-view timing was added to the materialization summary.
+
+The small run used:
+
+```text
+label: run003-r01-row-view-materialization-trials-small
+dataset: small
+trials: 5
+iterations: 1000
+agreement failures: 0
+```
+
+Small result:
+
+```text
+row-view beat reference-result on the selective cluster workloads
+row-view did not beat reference-visitor on any workload
+full_dataset_range row-view timing was worse than reference-result and reference-visitor
+```
+
+The large run used:
+
+```text
+label: run003-r01-row-view-materialization-trials-large
+dataset: large
+max depth: 16
+trials: 5
+iterations: 1000
+agreement failures: 0
+```
+
+Large result:
+
+```text
+row-view did not beat reference-visitor on any matched workload
+large_cross_cluster_boundary: 532.2ns row-view versus 381.0ns reference-visitor
+large_full_dataset_range: 18.6414us row-view versus 3.9052us reference-visitor
+```
+
+Conclusion:
+
+```text
+row-view is semantically valid and useful as a borrowed API shape
+row-view is not the next performance direction
+reference-visitor remains the better streaming exact-match delivery path
+do not expand row-view into reference-list or batch APIs for performance without new evidence
+do not use row-view materialization evidence to justify SIMD reconstruction work
+```
+
 ## Future optimization direction
 
 The next meaningful optimization direction is a result representation or query API decision.
@@ -604,9 +655,11 @@ Open result-representation directions:
 
 ```text
 durable existence comparison track, if evidence requires it
+public output-contract documentation
+fallible query API variants
 ```
 
-Future result-representation work should be treated as an intentional API or output-contract change, not incidental hot-path cleanup.
+Future result-representation work should be treated as an intentional API or output-contract change, not incidental hot-path cleanup. Row-view remains valid API surface, but current evidence does not justify expanding it as a performance project.
 
 ## Acceptance rule for result-representation work
 
@@ -633,6 +686,7 @@ large target confirms result materialization dominates retained execution
 count-only query mode is a valid separate output contract
 existence query mode is a valid separate exact non-empty-result output contract
 reference visitor is a valid separate exact reference-delivery output contract
+row-view is a valid borrowed row-delivery output contract but not the current performance direction
 future traversal or boundary-specific optimizations need new evidence before being prioritized
 ```
 
@@ -655,5 +709,6 @@ count-only workload summary
 count-only workload comparison
 existence timing summary
 reference visitor materialization summary
+repeated materialization trial summaries
 debug diagnostics for explanation only
 ```

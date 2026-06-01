@@ -854,6 +854,42 @@ Required interpretation rule:
 
 Use repeated materialization trials to decide whether row-view, reference-visitor, reference-result, reusable-owned, owned-result, or count-only delivery looks worth deeper design work. Do not use them to claim geometric pruning improved.
 
+## Current row-view materialization decision
+
+The first small and large repeated row-view materialization trials used:
+
+    ```text
+    run003-r01-row-view-materialization-trials-small
+    run003-r01-row-view-materialization-trials-large
+    ```
+
+Both runs used 5 trials and 1000 iterations. The small summary loaded 30 detail rows across 6 workloads. The large summary loaded 65 detail rows across 13 workloads. Both summaries reported zero agreement failures.
+
+Small result:
+
+    ```text
+    row-view beat reference-result on the selective cluster workloads
+    row-view did not beat reference-visitor on any workload
+    full_dataset_range favored reference-visitor and count-only over row-view
+    ```
+
+Large result:
+
+    ```text
+    row-view did not beat reference-visitor on any matched workload
+    large_cross_cluster_boundary: 532.2ns row-view, 381.0ns reference-visitor
+    large_full_dataset_range: 18.6414us row-view, 3.9052us reference-visitor
+    ```
+
+Decision:
+
+    ```text
+    keep row-view as an exact borrowed output contract
+    do not expand row-view for performance work based on current evidence
+    prefer reference-visitor for streaming exact match delivery
+    pause batch row-view delivery and reference-list row-view iteration unless a caller requirement changes the priority
+    ```
+
 ## Reference visitor materialization result
 
 The first repeated small-dataset materialization review for the reference visitor used:

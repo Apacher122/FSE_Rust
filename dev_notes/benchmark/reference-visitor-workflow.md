@@ -306,6 +306,97 @@ count-only remains lower because it does not deliver references
 large_full_dataset_range is the stronger large-dataset evidence for visitor materialization savings
 ```
 
+## Row-view materialization trial decision
+
+Row-view timing was promoted to repeated materialization trials after the borrowed row-view API landed.
+
+The small repeated trial used:
+
+```text
+label: run003-r01-row-view-materialization-trials-small
+dataset: small
+trials: 5
+iterations: 1000
+```
+
+The summary reported `all_agreement_pass = true` for all 6 workloads.
+
+Small row-view result:
+
+```text
+cluster_boundary_range:
+  reference-result: 134.8ns
+  reference-visitor: 109.4ns
+  row-view: 118.2ns
+  count-only: 106.4ns
+
+cluster_range_000:
+  reference-result: 105.6ns
+  reference-visitor: 85.0ns
+  row-view: 91.8ns
+  count-only: 85.6ns
+
+full_dataset_range:
+  reference-result: 79.0ns
+  reference-visitor: 50.0ns
+  row-view: 129.0ns
+  count-only: 23.8ns
+```
+
+Small interpretation:
+
+```text
+row-view beat reference-result on the selective cluster workloads
+row-view did not beat reference-visitor on any workload
+full_dataset_range makes row-view worse than reference-result and reference-visitor
+```
+
+The large repeated trial used:
+
+```text
+label: run003-r01-row-view-materialization-trials-large
+dataset: large
+max depth: 16
+trials: 5
+iterations: 1000
+```
+
+The summary reported `all_agreement_pass = true` for all 13 workloads.
+
+Large row-view result:
+
+```text
+large_cross_cluster_boundary:
+  reference-result: 382.8ns
+  reference-visitor: 381.0ns
+  row-view: 532.2ns
+  count-only: 335.4ns
+
+large_full_dataset_range:
+  reference-result: 11.8312us
+  reference-visitor: 3.9052us
+  row-view: 18.6414us
+  count-only: 23.4ns
+```
+
+Large interpretation:
+
+```text
+row-view did not beat reference-visitor on any matched workload
+row-view only beat reference-result in 1 of 5 trials for large_cluster_range_004
+large_full_dataset_range strongly favors reference-visitor over row-view
+```
+
+Decision:
+
+```text
+keep row-view as a valid borrowed exact row-delivery API
+do not expand row-view for performance based on current evidence
+prefer reference-visitor for streaming exact match delivery
+pause reference-list row-view iteration and batch row-view delivery unless a caller requirement or new artifact changes the decision
+do not use row-view evidence to justify SIMD reconstruction work
+```
+
 ## Limits
 
 These materialization runs are useful output-contract evidence, not broad FSE performance proof.
