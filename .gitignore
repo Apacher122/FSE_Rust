@@ -10,6 +10,7 @@ c[0-9]*-*.txt
 /temp
 *.txt
 TODO
+/FSE_Documents
 
 # VS Code
 .vscode/*

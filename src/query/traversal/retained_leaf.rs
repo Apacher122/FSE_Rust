@@ -1,4 +1,4 @@
-//! Retained-leaf traversal output types.
+//! Retained leaf types produced by query traversal.
 
 use crate::storage::{FSEIndex, LeafReconstructionShape};
 
@@ -6,11 +6,11 @@ use crate::storage::{FSEIndex, LeafReconstructionShape};
 ///
 /// # Runtime Role
 ///
-/// `RetainedLeafCoverage` describes whether traversal proved that a retained
-/// leaf is fully covered by the query or only partially overlaps the query.
+/// `RetainedLeafCoverage` describes the relationship between the query region
+/// and the retained leaf bounds.
 ///
-/// Covered leaves can skip exact per-row predicate checks during retained-leaf
-/// execution. Partial leaves must still use the exact predicate path.
+/// Covered leaves do not need per-row predicate checks. Partial leaves still
+/// need exact predicate checks.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RetainedLeafCoverage {
     /// The query fully contains the retained leaf bounds.
@@ -20,17 +20,15 @@ pub enum RetainedLeafCoverage {
     Partial,
 }
 
-/// A retained leaf paired with its traversal-time coverage classification.
+/// A retained leaf and its traversal-time coverage classification.
 ///
 /// # Runtime Role
 ///
-/// `RetainedLeaf` is the Stage I handoff to retained-partition execution. It
-/// keeps the leaf identifier together with the geometric proof discovered during
-/// traversal.
+/// `RetainedLeaf` is the Stage I output consumed by retained-leaf execution. It
+/// stores a leaf node id and the coverage classification produced by traversal.
 ///
-/// Normal traversal also carries cached reconstruction shape metadata so Stage
-/// II does not need to look that shape back up by node id. Test constructors
-/// still support id-only retained leaves for older unit tests.
+/// Traversal-produced values may also store cached reconstruction shape
+/// metadata. Id-only constructors are kept for tests and compatibility helpers.
 #[derive(Clone, Copy, Debug)]
 pub struct RetainedLeaf {
     /// Retained leaf node identifier.
@@ -55,8 +53,7 @@ impl RetainedLeaf {
     ///
     /// # Runtime Role
     ///
-    /// This id-only constructor is kept for tests and compatibility helpers.
-    /// Runtime traversal should prefer [`RetainedLeaf::covered_with_shape`].
+    /// This constructor does not store reconstruction shape metadata.
     pub fn covered(node_id: usize) -> Self {
         Self {
             node_id,
@@ -69,8 +66,7 @@ impl RetainedLeaf {
     ///
     /// # Runtime Role
     ///
-    /// This id-only constructor is kept for tests and compatibility helpers.
-    /// Runtime traversal should prefer [`RetainedLeaf::partial_with_shape`].
+    /// This constructor does not store reconstruction shape metadata.
     pub fn partial(node_id: usize) -> Self {
         Self {
             node_id,
