@@ -1,6 +1,6 @@
 use crate::build::{
     BuildConfig, FSEBuilder, validate_hierarchy_topology, validate_index,
-    validate_leaf_cardinality, validate_parent_child_bounds,
+    validate_leaf_cardinality, validate_leaf_record_bounds, validate_parent_child_bounds,
 };
 use crate::math::{BoundingBox, ResidualBlock, Vector};
 use crate::storage::{FSEIndex, PartitionNode};
@@ -183,6 +183,53 @@ fn validate_parent_child_bounds_accepts_child_sharing_parent_boundary() {
 }
 
 #[test]
+fn validate_leaf_record_bounds_returns_true_for_builder_output() {
+    let points = vec![
+        Vector::new(vec![0.0, 0.0]),
+        Vector::new(vec![1.0, 1.0]),
+        Vector::new(vec![8.0, 8.0]),
+        Vector::new(vec![9.0, 9.0]),
+    ];
+
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let index = builder.build(&points);
+
+    assert!(validate_leaf_record_bounds(&index));
+}
+
+#[test]
+fn validate_leaf_record_bounds_rejects_reconstructed_row_outside_leaf_bounds() {
+    let node = PartitionNode::new(
+        0,
+        vec![0.0, 0.0],
+        BoundingBox::new(vec![0.0, 0.0], vec![1.0, 1.0]),
+        ResidualBlock::new(vec![vec![2.0], vec![0.5]]),
+        Vec::new(),
+        true,
+    );
+
+    let index = FSEIndex::new(vec![node], 0);
+
+    assert!(!validate_leaf_record_bounds(&index));
+}
+
+#[test]
+fn validate_leaf_record_bounds_accepts_boundary_values() {
+    let node = PartitionNode::new(
+        0,
+        vec![0.5, 0.5],
+        BoundingBox::new(vec![0.0, 0.0], vec![1.0, 1.0]),
+        ResidualBlock::new(vec![vec![-0.5, 0.5], vec![-0.5, 0.5]]),
+        Vec::new(),
+        true,
+    );
+
+    let index = FSEIndex::new(vec![node], 0);
+
+    assert!(validate_leaf_record_bounds(&index));
+}
+
+#[test]
 fn validate_index_returns_valid_report_for_builder_output() {
     let points = vec![
         Vector::new(vec![0.0, 0.0]),
@@ -197,6 +244,7 @@ fn validate_index_returns_valid_report_for_builder_output() {
 
     let report = validate_index(&index, config.max_leaf_size);
     assert!(report.leaf_cardinality_valid);
+    assert!(report.leaf_record_bounds_valid);
     assert!(report.hierarchy_topology_valid);
     assert!(report.parent_child_bounds_valid);
     assert!(report.is_valid());
@@ -216,6 +264,28 @@ fn validate_index_reports_leaf_cardinality_failure() {
     let report = validate_index(&index, 2);
 
     assert!(!report.leaf_cardinality_valid);
+    assert!(report.leaf_record_bounds_valid);
+    assert!(report.hierarchy_topology_valid);
+    assert!(report.parent_child_bounds_valid);
+    assert!(!report.is_valid());
+}
+
+#[test]
+fn validate_index_reports_leaf_record_bounds_failure() {
+    let node = PartitionNode::new(
+        0,
+        vec![0.0, 0.0],
+        BoundingBox::new(vec![0.0, 0.0], vec![1.0, 1.0]),
+        ResidualBlock::new(vec![vec![0.25], vec![1.5]]),
+        Vec::new(),
+        true,
+    );
+
+    let index = FSEIndex::new(vec![node], 0);
+    let report = validate_index(&index, 8);
+
+    assert!(report.leaf_cardinality_valid);
+    assert!(!report.leaf_record_bounds_valid);
     assert!(report.hierarchy_topology_valid);
     assert!(report.parent_child_bounds_valid);
     assert!(!report.is_valid());
@@ -225,6 +295,7 @@ fn validate_index_reports_leaf_cardinality_failure() {
 fn validation_report_requires_all_checks_to_pass() {
     let report = crate::build::IndexValidationReport {
         leaf_cardinality_valid: true,
+        leaf_record_bounds_valid: true,
         hierarchy_topology_valid: true,
         parent_child_bounds_valid: false,
     };

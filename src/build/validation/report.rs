@@ -10,6 +10,8 @@
 pub struct IndexValidationReport {
     /// Whether all leaf nodes satisfy the configured maximum leaf size.
     pub leaf_cardinality_valid: bool,
+    /// Whether reconstructed leaf rows are contained by their leaf bounds.
+    pub leaf_record_bounds_valid: bool,
     /// Whether the hierarchy topology is structurally valid.
     pub hierarchy_topology_valid: bool,
     /// Whether every child bounding box is contained by its parent.
@@ -20,6 +22,7 @@ impl IndexValidationReport {
     /// Returns true only when every validation check passed.
     pub fn is_valid(&self) -> bool {
         self.leaf_cardinality_valid
+            && self.leaf_record_bounds_valid
             && self.hierarchy_topology_valid
             && self.parent_child_bounds_valid
     }

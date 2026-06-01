@@ -30,6 +30,7 @@ fn test_metadata() -> BenchmarkCsvMetadata {
         index_zero_volume_leaf_count: 0,
         index_valid: true,
         leaf_cardinality_valid: true,
+        leaf_record_bounds_valid: true,
         hierarchy_topology_valid: true,
         parent_child_bounds_valid: true,
     }

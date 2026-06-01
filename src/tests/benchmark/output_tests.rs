@@ -30,6 +30,7 @@ fn benchmark_overview_render_includes_run_metadata() {
     assert!(output.contains("FSE execution: parallel"));
     assert!(output.contains("FSE parallel min leaves: 2"));
     assert!(output.contains("Index validation: true"));
+    assert!(output.contains("leaf record bounds valid: true"));
 }
 
 #[test]
@@ -200,6 +201,7 @@ fn test_overview(
         },
         validation: IndexValidationReport {
             leaf_cardinality_valid: true,
+            leaf_record_bounds_valid: true,
             hierarchy_topology_valid: true,
             parent_child_bounds_valid: true,
         },

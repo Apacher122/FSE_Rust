@@ -154,6 +154,12 @@ pub fn render_benchmark_overview(overview: &BenchmarkRunOverview) -> String {
     .unwrap();
     writeln!(
         output,
+        "  leaf record bounds valid: {}",
+        overview.validation.leaf_record_bounds_valid
+    )
+    .unwrap();
+    writeln!(
+        output,
         "  hierarchy topology valid: {}",
         overview.validation.hierarchy_topology_valid
     )
