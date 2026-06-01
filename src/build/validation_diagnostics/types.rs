@@ -80,6 +80,45 @@ pub struct ParentChildBoundsViolation {
     pub child_id: usize,
 }
 
+/// Node whose observed parent count does not match the ownership rule.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeafOwnershipParentCountViolation {
+    /// Node identifier.
+    pub node_id: usize,
+
+    /// Number of parent references found for the node.
+    pub parent_count: usize,
+
+    /// Required parent count for the node.
+    pub expected_parent_count: usize,
+}
+
+/// Node whose declared cardinality does not match its owned leaf cardinality.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeafOwnershipCardinalityViolation {
+    /// Node identifier.
+    pub node_id: usize,
+
+    /// Declared node cardinality.
+    pub cardinality: usize,
+
+    /// Cardinality obtained by summing the node's owned leaf subtrees.
+    pub owned_leaf_cardinality: usize,
+}
+
+/// Detailed leaf ownership cardinality diagnostics.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeafOwnershipCardinalityDiagnostics {
+    /// Nodes with an invalid number of parents.
+    pub parent_count_violations: Vec<LeafOwnershipParentCountViolation>,
+
+    /// Nodes whose declared cardinality differs from owned leaf cardinality.
+    pub cardinality_violations: Vec<LeafOwnershipCardinalityViolation>,
+
+    /// Nodes that are not reachable from the root.
+    pub unowned_node_ids: Vec<usize>,
+}
+
 /// Detailed hierarchy topology diagnostics.
 ///
 /// # Runtime Role
@@ -123,6 +162,9 @@ pub struct IndexValidationDiagnostics {
 
     /// Reconstructed leaf rows outside their leaf bounds.
     pub leaf_record_bounds_violations: Vec<LeafRecordBoundsViolation>,
+
+    /// Leaf ownership cardinality diagnostics.
+    pub leaf_ownership_cardinality: LeafOwnershipCardinalityDiagnostics,
 
     /// Hierarchy topology diagnostics.
     pub hierarchy_topology: HierarchyTopologyDiagnostics,

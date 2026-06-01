@@ -23,6 +23,7 @@ pub use validation::{
 };
 pub use validation_diagnostics::{
     HierarchyTopologyDiagnostics, IndexValidationDiagnostics, InvalidChildReference,
-    LeafCardinalityViolation, LeafRecordBoundsViolation, ParentChildBoundsViolation,
-    index_validation_diagnostics,
+    LeafCardinalityViolation, LeafOwnershipCardinalityDiagnostics,
+    LeafOwnershipCardinalityViolation, LeafOwnershipParentCountViolation,
+    LeafRecordBoundsViolation, ParentChildBoundsViolation, index_validation_diagnostics,
 };
