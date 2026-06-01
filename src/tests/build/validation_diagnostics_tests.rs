@@ -1,7 +1,7 @@
 use crate::benchmark::workloads::large_clustered_points_2d;
 use crate::build::{BuildConfig, FSEBuilder, index_validation_diagnostics};
 use crate::math::{BoundingBox, ResidualBlock, Scalar};
-use crate::storage::{FSEIndex, PartitionNode};
+use crate::storage::{FSEIndex, LeafReconstructionShape, PartitionNode};
 
 #[test]
 fn validation_diagnostics_reports_large_leaf_cardinality_violations() {
@@ -43,9 +43,41 @@ fn validation_diagnostics_reports_no_large_topology_or_bounds_violations() {
 
     assert!(validated.validation.hierarchy_topology_valid);
     assert!(validated.validation.leaf_record_bounds_valid);
+    assert!(validated.validation.leaf_reconstruction_metadata_valid);
     assert!(validated.validation.leaf_ownership_cardinality_valid);
     assert!(validated.validation.parent_child_bounds_valid);
     assert_eq!(diagnostics.node_identifier_mismatches.len(), 0);
+    assert!(
+        diagnostics
+            .leaf_reconstruction_metadata
+            .leaf_count_mismatch
+            .is_none()
+    );
+    assert!(
+        diagnostics
+            .leaf_reconstruction_metadata
+            .shape_list_mismatch
+            .is_none()
+    );
+    assert!(
+        diagnostics
+            .leaf_reconstruction_metadata
+            .shape_list_length_mismatch
+            .is_none()
+    );
+    assert!(
+        diagnostics
+            .leaf_reconstruction_metadata
+            .shape_lookup_length_mismatch
+            .is_none()
+    );
+    assert_eq!(
+        diagnostics
+            .leaf_reconstruction_metadata
+            .shape_lookup_mismatches
+            .len(),
+        0
+    );
     assert_eq!(diagnostics.leaf_record_bounds_violations.len(), 0);
     assert_eq!(
         diagnostics
@@ -246,6 +278,71 @@ fn validation_diagnostics_reports_node_identifier_mismatches() {
     assert_eq!(mismatch.stored_id, 7);
 }
 
+#[test]
+fn validation_diagnostics_reports_leaf_reconstruction_metadata_list_mismatches() {
+    let mut index = two_leaf_test_index();
+    index.leaf_count = 1;
+    index.leaf_node_ids = vec![2, 1];
+    index.leaf_reconstruction_shapes[0] = LeafReconstructionShape::new(1, 1, 99);
+
+    let diagnostics = index_validation_diagnostics(&index, 8);
+
+    let leaf_count = diagnostics
+        .leaf_reconstruction_metadata
+        .leaf_count_mismatch
+        .expect("leaf count mismatch should be reported");
+
+    assert_eq!(leaf_count.expected_leaf_count, 2);
+    assert_eq!(leaf_count.cached_leaf_count, 1);
+
+    let shape_list = diagnostics
+        .leaf_reconstruction_metadata
+        .shape_list_mismatch
+        .expect("shape list mismatch should be reported");
+
+    assert_eq!(shape_list.expected_leaf_node_ids, vec![1, 2]);
+    assert_eq!(shape_list.cached_leaf_node_ids, vec![2, 1]);
+    assert_eq!(shape_list.expected_shapes.len(), 2);
+    assert_eq!(
+        shape_list.cached_shapes[0],
+        LeafReconstructionShape::new(1, 1, 99)
+    );
+}
+
+#[test]
+fn validation_diagnostics_reports_leaf_reconstruction_metadata_lookup_mismatches() {
+    let mut index = two_leaf_test_index();
+    index.leaf_reconstruction_shapes_by_node.pop();
+
+    let diagnostics = index_validation_diagnostics(&index, 8);
+
+    let lookup_length = diagnostics
+        .leaf_reconstruction_metadata
+        .shape_lookup_length_mismatch
+        .expect("shape lookup length mismatch should be reported");
+
+    assert_eq!(lookup_length.expected_lookup_len, 3);
+    assert_eq!(lookup_length.cached_lookup_len, 2);
+    assert_eq!(
+        diagnostics
+            .leaf_reconstruction_metadata
+            .shape_lookup_mismatches
+            .len(),
+        1
+    );
+
+    let lookup = &diagnostics
+        .leaf_reconstruction_metadata
+        .shape_lookup_mismatches[0];
+
+    assert_eq!(lookup.node_id, 2);
+    assert_eq!(
+        lookup.expected_shape,
+        Some(LeafReconstructionShape::new(2, 1, 1))
+    );
+    assert_eq!(lookup.cached_shape, None);
+}
+
 fn leaf_node(id: usize, coordinate: Scalar) -> PartitionNode {
     PartitionNode::new(
         id,
@@ -255,6 +352,14 @@ fn leaf_node(id: usize, coordinate: Scalar) -> PartitionNode {
         Vec::new(),
         true,
     )
+}
+
+fn two_leaf_test_index() -> FSEIndex {
+    let root = internal_node(0, 2, vec![1, 2]);
+    let left = leaf_node(1, 0.0);
+    let right = leaf_node(2, 2.0);
+
+    FSEIndex::new(vec![root, left, right], 0)
 }
 
 fn internal_node(id: usize, cardinality: usize, children: Vec<usize>) -> PartitionNode {

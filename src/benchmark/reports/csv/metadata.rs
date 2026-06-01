@@ -82,6 +82,9 @@ pub struct BenchmarkCsvMetadata {
     /// Whether leaf cardinality validation passed.
     pub leaf_cardinality_valid: bool,
 
+    /// Whether leaf reconstruction metadata validation passed.
+    pub leaf_reconstruction_metadata_valid: bool,
+
     /// Whether reconstructed leaf rows are contained by their leaf bounds.
     pub leaf_record_bounds_valid: bool,
 
@@ -124,6 +127,9 @@ impl BenchmarkCsvMetadata {
                 .validation
                 .node_identifier_consistency_valid,
             leaf_cardinality_valid: overview.validation.leaf_cardinality_valid,
+            leaf_reconstruction_metadata_valid: overview
+                .validation
+                .leaf_reconstruction_metadata_valid,
             leaf_record_bounds_valid: overview.validation.leaf_record_bounds_valid,
             leaf_ownership_cardinality_valid: overview.validation.leaf_ownership_cardinality_valid,
             hierarchy_topology_valid: overview.validation.hierarchy_topology_valid,
@@ -157,6 +163,7 @@ pub(super) fn metadata_header_fields() -> Vec<&'static str> {
         "index_valid",
         "node_identifier_consistency_valid",
         "leaf_cardinality_valid",
+        "leaf_reconstruction_metadata_valid",
         "leaf_record_bounds_valid",
         "leaf_ownership_cardinality_valid",
         "hierarchy_topology_valid",
@@ -189,6 +196,7 @@ pub(super) fn metadata_value_fields(metadata: &BenchmarkCsvMetadata) -> Vec<Stri
         metadata.index_valid.to_string(),
         metadata.node_identifier_consistency_valid.to_string(),
         metadata.leaf_cardinality_valid.to_string(),
+        metadata.leaf_reconstruction_metadata_valid.to_string(),
         metadata.leaf_record_bounds_valid.to_string(),
         metadata.leaf_ownership_cardinality_valid.to_string(),
         metadata.hierarchy_topology_valid.to_string(),

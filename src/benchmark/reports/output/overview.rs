@@ -160,6 +160,12 @@ pub fn render_benchmark_overview(overview: &BenchmarkRunOverview) -> String {
     .unwrap();
     writeln!(
         output,
+        "  leaf reconstruction metadata valid: {}",
+        overview.validation.leaf_reconstruction_metadata_valid
+    )
+    .unwrap();
+    writeln!(
+        output,
         "  leaf record bounds valid: {}",
         overview.validation.leaf_record_bounds_valid
     )

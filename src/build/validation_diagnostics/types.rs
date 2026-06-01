@@ -1,6 +1,7 @@
 //! Validation diagnostic record types.
 
 use crate::math::Scalar;
+use crate::storage::LeafReconstructionShape;
 
 /// Leaf node that violates the configured maximum leaf cardinality.
 ///
@@ -95,6 +96,84 @@ pub struct NodeIdentifierMismatch {
     pub stored_id: usize,
 }
 
+/// Cached leaf count that does not match the leaf nodes in the index.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeafReconstructionLeafCountMismatch {
+    /// Leaf count derived from `FSEIndex::nodes`.
+    pub expected_leaf_count: usize,
+
+    /// Cached leaf count stored on the index.
+    pub cached_leaf_count: usize,
+}
+
+/// Cached leaf shape list that does not match the leaf nodes in the index.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeafReconstructionShapeListMismatch {
+    /// Leaf node identifiers derived from `FSEIndex::nodes`.
+    pub expected_leaf_node_ids: Vec<usize>,
+
+    /// Cached leaf node identifiers stored on the index.
+    pub cached_leaf_node_ids: Vec<usize>,
+
+    /// Reconstruction shapes derived from the leaf nodes.
+    pub expected_shapes: Vec<LeafReconstructionShape>,
+
+    /// Cached reconstruction shapes stored on the index.
+    pub cached_shapes: Vec<LeafReconstructionShape>,
+}
+
+/// Cached shape-list length that does not match the leaf count.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeafReconstructionShapeListLengthMismatch {
+    /// Expected number of cached leaf reconstruction shapes.
+    pub expected_shape_count: usize,
+
+    /// Actual number of cached leaf reconstruction shapes.
+    pub cached_shape_count: usize,
+}
+
+/// Cached shape lookup length that does not match the node count.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeafReconstructionShapeLookupLengthMismatch {
+    /// Expected number of lookup entries.
+    pub expected_lookup_len: usize,
+
+    /// Actual number of lookup entries.
+    pub cached_lookup_len: usize,
+}
+
+/// Cached shape lookup entry that does not match the indexed node.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeafReconstructionShapeLookupMismatch {
+    /// Node-list position checked in the lookup table.
+    pub node_id: usize,
+
+    /// Expected lookup shape for the node.
+    pub expected_shape: Option<LeafReconstructionShape>,
+
+    /// Cached lookup shape for the node.
+    pub cached_shape: Option<LeafReconstructionShape>,
+}
+
+/// Detailed leaf reconstruction metadata diagnostics.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeafReconstructionMetadataDiagnostics {
+    /// Leaf-count mismatch, if present.
+    pub leaf_count_mismatch: Option<LeafReconstructionLeafCountMismatch>,
+
+    /// Leaf-node-id or shape-list mismatch, if present.
+    pub shape_list_mismatch: Option<LeafReconstructionShapeListMismatch>,
+
+    /// Shape-list length mismatch, if present.
+    pub shape_list_length_mismatch: Option<LeafReconstructionShapeListLengthMismatch>,
+
+    /// Shape-lookup length mismatch, if present.
+    pub shape_lookup_length_mismatch: Option<LeafReconstructionShapeLookupLengthMismatch>,
+
+    /// Shape lookup entries that do not match indexed nodes.
+    pub shape_lookup_mismatches: Vec<LeafReconstructionShapeLookupMismatch>,
+}
+
 /// Node whose observed parent count does not match the ownership rule.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeafOwnershipParentCountViolation {
@@ -177,6 +256,9 @@ pub struct IndexValidationDiagnostics {
 
     /// Leaf cardinality violations.
     pub leaf_cardinality_violations: Vec<LeafCardinalityViolation>,
+
+    /// Leaf reconstruction metadata diagnostics.
+    pub leaf_reconstruction_metadata: LeafReconstructionMetadataDiagnostics,
 
     /// Reconstructed leaf rows outside their leaf bounds.
     pub leaf_record_bounds_violations: Vec<LeafRecordBoundsViolation>,

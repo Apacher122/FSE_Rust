@@ -12,6 +12,8 @@ pub struct IndexValidationReport {
     pub node_identifier_consistency_valid: bool,
     /// Whether all leaf nodes satisfy the configured maximum leaf size.
     pub leaf_cardinality_valid: bool,
+    /// Whether cached leaf reconstruction metadata matches the leaf nodes.
+    pub leaf_reconstruction_metadata_valid: bool,
     /// Whether reconstructed leaf rows are contained by their leaf bounds.
     pub leaf_record_bounds_valid: bool,
     /// Whether leaf ownership cardinalities match internal node cardinalities.
@@ -27,6 +29,7 @@ impl IndexValidationReport {
     pub fn is_valid(&self) -> bool {
         self.node_identifier_consistency_valid
             && self.leaf_cardinality_valid
+            && self.leaf_reconstruction_metadata_valid
             && self.leaf_record_bounds_valid
             && self.leaf_ownership_cardinality_valid
             && self.hierarchy_topology_valid

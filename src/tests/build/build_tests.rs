@@ -281,6 +281,7 @@ fn build_validated_keeps_leaf_cardinality_valid_when_hard_split_is_forced() {
     assert!(validated.index.node_count() > 1);
     assert!(validated.validation.node_identifier_consistency_valid);
     assert!(validated.validation.leaf_cardinality_valid);
+    assert!(validated.validation.leaf_reconstruction_metadata_valid);
     assert!(validated.validation.leaf_ownership_cardinality_valid);
     assert!(validated.validation.hierarchy_topology_valid);
     assert!(validated.validation.parent_child_bounds_valid);

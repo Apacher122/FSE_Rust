@@ -5,6 +5,7 @@
 
 mod bounds;
 mod leaf;
+mod leaf_reconstruction;
 mod leaf_records;
 mod node_ids;
 mod ownership;
@@ -15,6 +16,9 @@ pub use types::{
     HierarchyTopologyDiagnostics, IndexValidationDiagnostics, InvalidChildReference,
     LeafCardinalityViolation, LeafOwnershipCardinalityDiagnostics,
     LeafOwnershipCardinalityViolation, LeafOwnershipParentCountViolation,
+    LeafReconstructionLeafCountMismatch, LeafReconstructionMetadataDiagnostics,
+    LeafReconstructionShapeListLengthMismatch, LeafReconstructionShapeListMismatch,
+    LeafReconstructionShapeLookupLengthMismatch, LeafReconstructionShapeLookupMismatch,
     LeafRecordBoundsViolation, NodeIdentifierMismatch, ParentChildBoundsViolation,
 };
 
@@ -22,6 +26,7 @@ use crate::storage::FSEIndex;
 
 use self::bounds::parent_child_bounds_violations;
 use self::leaf::leaf_cardinality_violations;
+use self::leaf_reconstruction::leaf_reconstruction_metadata_diagnostics;
 use self::leaf_records::leaf_record_bounds_violations;
 use self::node_ids::node_identifier_mismatches;
 use self::ownership::leaf_ownership_cardinality_diagnostics;
@@ -40,6 +45,7 @@ pub fn index_validation_diagnostics(
     IndexValidationDiagnostics {
         node_identifier_mismatches: node_identifier_mismatches(index),
         leaf_cardinality_violations: leaf_cardinality_violations(index, max_leaf_size),
+        leaf_reconstruction_metadata: leaf_reconstruction_metadata_diagnostics(index),
         leaf_record_bounds_violations: leaf_record_bounds_violations(index),
         leaf_ownership_cardinality: leaf_ownership_cardinality_diagnostics(index),
         hierarchy_topology: hierarchy_topology_diagnostics(index),
