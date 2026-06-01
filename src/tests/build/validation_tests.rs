@@ -1,6 +1,7 @@
 use crate::build::{
     BuildConfig, FSEBuilder, validate_hierarchy_topology, validate_index,
-    validate_leaf_cardinality, validate_leaf_record_bounds, validate_parent_child_bounds,
+    validate_leaf_cardinality, validate_leaf_ownership_cardinality, validate_leaf_record_bounds,
+    validate_parent_child_bounds,
 };
 use crate::math::{BoundingBox, ResidualBlock, Vector};
 use crate::storage::{FSEIndex, PartitionNode};
@@ -230,6 +231,82 @@ fn validate_leaf_record_bounds_accepts_boundary_values() {
 }
 
 #[test]
+fn validate_leaf_ownership_cardinality_returns_true_for_builder_output() {
+    let points = vec![
+        Vector::new(vec![0.0, 0.0]),
+        Vector::new(vec![1.0, 1.0]),
+        Vector::new(vec![8.0, 8.0]),
+        Vector::new(vec![9.0, 9.0]),
+    ];
+
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let index = builder.build(&points);
+
+    assert!(validate_leaf_ownership_cardinality(&index));
+}
+
+#[test]
+fn validate_leaf_ownership_cardinality_rejects_internal_cardinality_mismatch() {
+    let root = PartitionNode::with_cardinality(
+        0,
+        vec![0.0, 0.0],
+        BoundingBox::new(vec![0.0, 0.0], vec![10.0, 10.0]),
+        ResidualBlock::new(vec![Vec::new(), Vec::new()]),
+        3,
+        vec![1, 2],
+        false,
+    );
+
+    let left = PartitionNode::new(
+        1,
+        vec![1.0, 1.0],
+        BoundingBox::new(vec![1.0, 1.0], vec![1.0, 1.0]),
+        ResidualBlock::new(vec![vec![0.0], vec![0.0]]),
+        Vec::new(),
+        true,
+    );
+
+    let right = PartitionNode::new(
+        2,
+        vec![2.0, 2.0],
+        BoundingBox::new(vec![2.0, 2.0], vec![2.0, 2.0]),
+        ResidualBlock::new(vec![vec![0.0], vec![0.0]]),
+        Vec::new(),
+        true,
+    );
+
+    let index = FSEIndex::new(vec![root, left, right], 0);
+
+    assert!(!validate_leaf_ownership_cardinality(&index));
+}
+
+#[test]
+fn validate_leaf_ownership_cardinality_rejects_shared_child_leaf() {
+    let root = PartitionNode::with_cardinality(
+        0,
+        vec![0.0, 0.0],
+        BoundingBox::new(vec![0.0, 0.0], vec![10.0, 10.0]),
+        ResidualBlock::new(vec![Vec::new(), Vec::new()]),
+        2,
+        vec![1, 1],
+        false,
+    );
+
+    let child = PartitionNode::new(
+        1,
+        vec![1.0, 1.0],
+        BoundingBox::new(vec![1.0, 1.0], vec![1.0, 1.0]),
+        ResidualBlock::new(vec![vec![0.0], vec![0.0]]),
+        Vec::new(),
+        true,
+    );
+
+    let index = FSEIndex::new(vec![root, child], 0);
+
+    assert!(!validate_leaf_ownership_cardinality(&index));
+}
+
+#[test]
 fn validate_index_returns_valid_report_for_builder_output() {
     let points = vec![
         Vector::new(vec![0.0, 0.0]),
@@ -245,6 +322,7 @@ fn validate_index_returns_valid_report_for_builder_output() {
     let report = validate_index(&index, config.max_leaf_size);
     assert!(report.leaf_cardinality_valid);
     assert!(report.leaf_record_bounds_valid);
+    assert!(report.leaf_ownership_cardinality_valid);
     assert!(report.hierarchy_topology_valid);
     assert!(report.parent_child_bounds_valid);
     assert!(report.is_valid());
@@ -265,6 +343,7 @@ fn validate_index_reports_leaf_cardinality_failure() {
 
     assert!(!report.leaf_cardinality_valid);
     assert!(report.leaf_record_bounds_valid);
+    assert!(report.leaf_ownership_cardinality_valid);
     assert!(report.hierarchy_topology_valid);
     assert!(report.parent_child_bounds_valid);
     assert!(!report.is_valid());
@@ -286,6 +365,48 @@ fn validate_index_reports_leaf_record_bounds_failure() {
 
     assert!(report.leaf_cardinality_valid);
     assert!(!report.leaf_record_bounds_valid);
+    assert!(report.leaf_ownership_cardinality_valid);
+    assert!(report.hierarchy_topology_valid);
+    assert!(report.parent_child_bounds_valid);
+    assert!(!report.is_valid());
+}
+
+#[test]
+fn validate_index_reports_leaf_ownership_cardinality_failure() {
+    let root = PartitionNode::with_cardinality(
+        0,
+        vec![0.0, 0.0],
+        BoundingBox::new(vec![0.0, 0.0], vec![10.0, 10.0]),
+        ResidualBlock::new(vec![Vec::new(), Vec::new()]),
+        3,
+        vec![1, 2],
+        false,
+    );
+
+    let left = PartitionNode::new(
+        1,
+        vec![1.0, 1.0],
+        BoundingBox::new(vec![1.0, 1.0], vec![1.0, 1.0]),
+        ResidualBlock::new(vec![vec![0.0], vec![0.0]]),
+        Vec::new(),
+        true,
+    );
+
+    let right = PartitionNode::new(
+        2,
+        vec![2.0, 2.0],
+        BoundingBox::new(vec![2.0, 2.0], vec![2.0, 2.0]),
+        ResidualBlock::new(vec![vec![0.0], vec![0.0]]),
+        Vec::new(),
+        true,
+    );
+
+    let index = FSEIndex::new(vec![root, left, right], 0);
+    let report = validate_index(&index, 8);
+
+    assert!(report.leaf_cardinality_valid);
+    assert!(report.leaf_record_bounds_valid);
+    assert!(!report.leaf_ownership_cardinality_valid);
     assert!(report.hierarchy_topology_valid);
     assert!(report.parent_child_bounds_valid);
     assert!(!report.is_valid());
@@ -296,6 +417,7 @@ fn validation_report_requires_all_checks_to_pass() {
     let report = crate::build::IndexValidationReport {
         leaf_cardinality_valid: true,
         leaf_record_bounds_valid: true,
+        leaf_ownership_cardinality_valid: true,
         hierarchy_topology_valid: true,
         parent_child_bounds_valid: false,
     };

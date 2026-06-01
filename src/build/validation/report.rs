@@ -12,6 +12,8 @@ pub struct IndexValidationReport {
     pub leaf_cardinality_valid: bool,
     /// Whether reconstructed leaf rows are contained by their leaf bounds.
     pub leaf_record_bounds_valid: bool,
+    /// Whether leaf ownership cardinalities match internal node cardinalities.
+    pub leaf_ownership_cardinality_valid: bool,
     /// Whether the hierarchy topology is structurally valid.
     pub hierarchy_topology_valid: bool,
     /// Whether every child bounding box is contained by its parent.
@@ -23,6 +25,7 @@ impl IndexValidationReport {
     pub fn is_valid(&self) -> bool {
         self.leaf_cardinality_valid
             && self.leaf_record_bounds_valid
+            && self.leaf_ownership_cardinality_valid
             && self.hierarchy_topology_valid
             && self.parent_child_bounds_valid
     }

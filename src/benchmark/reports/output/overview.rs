@@ -160,6 +160,12 @@ pub fn render_benchmark_overview(overview: &BenchmarkRunOverview) -> String {
     .unwrap();
     writeln!(
         output,
+        "  leaf ownership cardinality valid: {}",
+        overview.validation.leaf_ownership_cardinality_valid
+    )
+    .unwrap();
+    writeln!(
+        output,
         "  hierarchy topology valid: {}",
         overview.validation.hierarchy_topology_valid
     )

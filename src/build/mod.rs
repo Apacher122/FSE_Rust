@@ -19,7 +19,7 @@ pub use metrics::{
 };
 pub use validation::{
     IndexValidationReport, validate_hierarchy_topology, validate_index, validate_leaf_cardinality,
-    validate_leaf_record_bounds, validate_parent_child_bounds,
+    validate_leaf_ownership_cardinality, validate_leaf_record_bounds, validate_parent_child_bounds,
 };
 pub use validation_diagnostics::{
     HierarchyTopologyDiagnostics, IndexValidationDiagnostics, InvalidChildReference,
