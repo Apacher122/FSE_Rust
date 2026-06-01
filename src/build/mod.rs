@@ -23,5 +23,6 @@ pub use validation::{
 };
 pub use validation_diagnostics::{
     HierarchyTopologyDiagnostics, IndexValidationDiagnostics, InvalidChildReference,
-    LeafCardinalityViolation, ParentChildBoundsViolation, index_validation_diagnostics,
+    LeafCardinalityViolation, LeafRecordBoundsViolation, ParentChildBoundsViolation,
+    index_validation_diagnostics,
 };

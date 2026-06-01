@@ -65,7 +65,7 @@ fn reconstructed_row_is_inside_bounds(node: &PartitionNode, row: usize, dimensio
     for dimension in 0..dimensions {
         let value = node.centroid[dimension] + node.residuals.dimensions[dimension][row];
 
-        if !value_is_inside_bounds(
+        if !value_is_inside_leaf_bounds(
             value,
             node.bounds.min[dimension],
             node.bounds.max[dimension],
@@ -77,7 +77,7 @@ fn reconstructed_row_is_inside_bounds(node: &PartitionNode, row: usize, dimensio
     true
 }
 
-fn value_is_inside_bounds(value: Scalar, minimum: Scalar, maximum: Scalar) -> bool {
+pub(crate) fn value_is_inside_leaf_bounds(value: Scalar, minimum: Scalar, maximum: Scalar) -> bool {
     if !value.is_finite() {
         return false;
     }

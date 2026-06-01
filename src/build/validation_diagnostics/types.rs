@@ -1,5 +1,7 @@
 //! Validation diagnostic record types.
 
+use crate::math::Scalar;
+
 /// Leaf node that violates the configured maximum leaf cardinality.
 ///
 /// # Runtime Role
@@ -19,6 +21,33 @@ pub struct LeafCardinalityViolation {
 
     /// Number of records above the configured maximum.
     pub overflow_by: usize,
+}
+
+/// Reconstructed leaf row value outside its leaf bounds.
+///
+/// # Runtime Role
+///
+/// `LeafRecordBoundsViolation` identifies the row and dimension that failed
+/// the leaf bounded-support check.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LeafRecordBoundsViolation {
+    /// Leaf node identifier.
+    pub node_id: usize,
+
+    /// Residual row index inside the leaf.
+    pub row: usize,
+
+    /// Coordinate dimension that failed the bounds check.
+    pub dimension: usize,
+
+    /// Reconstructed coordinate value.
+    pub value: Scalar,
+
+    /// Minimum allowed coordinate value for the dimension.
+    pub minimum: Scalar,
+
+    /// Maximum allowed coordinate value for the dimension.
+    pub maximum: Scalar,
 }
 
 /// Invalid child reference found during hierarchy validation.
@@ -87,10 +116,13 @@ pub struct HierarchyTopologyDiagnostics {
 ///
 /// `IndexValidationDiagnostics` gives benchmark and test output enough detail
 /// to explain why an index validation summary failed.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct IndexValidationDiagnostics {
     /// Leaf cardinality violations.
     pub leaf_cardinality_violations: Vec<LeafCardinalityViolation>,
+
+    /// Reconstructed leaf rows outside their leaf bounds.
+    pub leaf_record_bounds_violations: Vec<LeafRecordBoundsViolation>,
 
     /// Hierarchy topology diagnostics.
     pub hierarchy_topology: HierarchyTopologyDiagnostics,
