@@ -45,6 +45,7 @@ fn validation_diagnostics_reports_no_large_topology_or_bounds_violations() {
     assert!(validated.validation.leaf_record_bounds_valid);
     assert!(validated.validation.leaf_ownership_cardinality_valid);
     assert!(validated.validation.parent_child_bounds_valid);
+    assert_eq!(diagnostics.node_identifier_mismatches.len(), 0);
     assert_eq!(diagnostics.leaf_record_bounds_violations.len(), 0);
     assert_eq!(
         diagnostics
@@ -218,6 +219,31 @@ fn validation_diagnostics_reports_unowned_nodes() {
     assert_eq!(violation.node_id, 1);
     assert_eq!(violation.parent_count, 0);
     assert_eq!(violation.expected_parent_count, 1);
+}
+
+#[test]
+fn validation_diagnostics_reports_self_reference_by_node_position() {
+    let node = internal_node(7, 0, vec![0]);
+
+    let index = FSEIndex::new(vec![node], 0);
+    let diagnostics = index_validation_diagnostics(&index, 8);
+
+    assert_eq!(diagnostics.hierarchy_topology.self_reference_count, 1);
+}
+
+#[test]
+fn validation_diagnostics_reports_node_identifier_mismatches() {
+    let node = leaf_node(7, 0.0);
+
+    let index = FSEIndex::new(vec![node], 0);
+    let diagnostics = index_validation_diagnostics(&index, 8);
+
+    assert_eq!(diagnostics.node_identifier_mismatches.len(), 1);
+
+    let mismatch = &diagnostics.node_identifier_mismatches[0];
+
+    assert_eq!(mismatch.expected_id, 0);
+    assert_eq!(mismatch.stored_id, 7);
 }
 
 fn leaf_node(id: usize, coordinate: Scalar) -> PartitionNode {

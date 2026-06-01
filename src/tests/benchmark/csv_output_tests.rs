@@ -30,6 +30,7 @@ fn test_metadata() -> BenchmarkCsvMetadata {
         index_density: 0.5,
         index_zero_volume_leaf_count: 1,
         index_valid: true,
+        node_identifier_consistency_valid: true,
         leaf_cardinality_valid: true,
         leaf_record_bounds_valid: true,
         leaf_ownership_cardinality_valid: true,

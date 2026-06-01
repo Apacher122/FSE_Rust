@@ -26,7 +26,7 @@ pub fn validate_hierarchy_topology(index: &FSEIndex) -> bool {
         return false;
     }
 
-    for node in &index.nodes {
+    for (node_id, node) in index.nodes.iter().enumerate() {
         if node.is_leaf && !node.children.is_empty() {
             return false;
         }
@@ -38,7 +38,7 @@ pub fn validate_hierarchy_topology(index: &FSEIndex) -> bool {
                 return false;
             }
 
-            if *child_id == node.id {
+            if *child_id == node_id {
                 return false;
             }
         }

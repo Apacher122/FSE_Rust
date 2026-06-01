@@ -148,6 +148,12 @@ pub fn render_benchmark_overview(overview: &BenchmarkRunOverview) -> String {
     .unwrap();
     writeln!(
         output,
+        "  node identifier consistency valid: {}",
+        overview.validation.node_identifier_consistency_valid
+    )
+    .unwrap();
+    writeln!(
+        output,
         "  leaf cardinality valid: {}",
         overview.validation.leaf_cardinality_valid
     )

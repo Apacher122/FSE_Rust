@@ -76,6 +76,9 @@ pub struct BenchmarkCsvMetadata {
     /// Whether all index validation checks passed.
     pub index_valid: bool,
 
+    /// Whether node identifiers match their index positions.
+    pub node_identifier_consistency_valid: bool,
+
     /// Whether leaf cardinality validation passed.
     pub leaf_cardinality_valid: bool,
 
@@ -117,6 +120,9 @@ impl BenchmarkCsvMetadata {
             index_density: overview.index_structure.index_density,
             index_zero_volume_leaf_count: overview.index_structure.zero_volume_leaf_count,
             index_valid: overview.validation.is_valid(),
+            node_identifier_consistency_valid: overview
+                .validation
+                .node_identifier_consistency_valid,
             leaf_cardinality_valid: overview.validation.leaf_cardinality_valid,
             leaf_record_bounds_valid: overview.validation.leaf_record_bounds_valid,
             leaf_ownership_cardinality_valid: overview.validation.leaf_ownership_cardinality_valid,
@@ -149,6 +155,7 @@ pub(super) fn metadata_header_fields() -> Vec<&'static str> {
         "index_density",
         "index_zero_volume_leaf_count",
         "index_valid",
+        "node_identifier_consistency_valid",
         "leaf_cardinality_valid",
         "leaf_record_bounds_valid",
         "leaf_ownership_cardinality_valid",
@@ -180,6 +187,7 @@ pub(super) fn metadata_value_fields(metadata: &BenchmarkCsvMetadata) -> Vec<Stri
         format_scalar(metadata.index_density),
         metadata.index_zero_volume_leaf_count.to_string(),
         metadata.index_valid.to_string(),
+        metadata.node_identifier_consistency_valid.to_string(),
         metadata.leaf_cardinality_valid.to_string(),
         metadata.leaf_record_bounds_valid.to_string(),
         metadata.leaf_ownership_cardinality_valid.to_string(),

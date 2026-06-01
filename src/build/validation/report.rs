@@ -8,6 +8,8 @@
 /// result object that can be used by tests, demos, and future builder diagnostics.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IndexValidationReport {
+    /// Whether node identifiers match their index positions.
+    pub node_identifier_consistency_valid: bool,
     /// Whether all leaf nodes satisfy the configured maximum leaf size.
     pub leaf_cardinality_valid: bool,
     /// Whether reconstructed leaf rows are contained by their leaf bounds.
@@ -23,7 +25,8 @@ pub struct IndexValidationReport {
 impl IndexValidationReport {
     /// Returns true only when every validation check passed.
     pub fn is_valid(&self) -> bool {
-        self.leaf_cardinality_valid
+        self.node_identifier_consistency_valid
+            && self.leaf_cardinality_valid
             && self.leaf_record_bounds_valid
             && self.leaf_ownership_cardinality_valid
             && self.hierarchy_topology_valid

@@ -80,6 +80,21 @@ pub struct ParentChildBoundsViolation {
     pub child_id: usize,
 }
 
+/// Node whose stored identifier does not match its index position.
+///
+/// # Runtime Role
+///
+/// `NodeIdentifierMismatch` records a node whose `PartitionNode::id` differs
+/// from its position in `FSEIndex::nodes`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NodeIdentifierMismatch {
+    /// Expected node identifier from the node-list position.
+    pub expected_id: usize,
+
+    /// Stored node identifier.
+    pub stored_id: usize,
+}
+
 /// Node whose observed parent count does not match the ownership rule.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeafOwnershipParentCountViolation {
@@ -157,6 +172,9 @@ pub struct HierarchyTopologyDiagnostics {
 /// to explain why an index validation summary failed.
 #[derive(Clone, Debug, PartialEq)]
 pub struct IndexValidationDiagnostics {
+    /// Node identifier mismatches.
+    pub node_identifier_mismatches: Vec<NodeIdentifierMismatch>,
+
     /// Leaf cardinality violations.
     pub leaf_cardinality_violations: Vec<LeafCardinalityViolation>,
 

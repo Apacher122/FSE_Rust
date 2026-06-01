@@ -14,7 +14,7 @@ pub(super) fn hierarchy_topology_diagnostics(index: &FSEIndex) -> HierarchyTopol
     let mut leaf_nodes_with_children_count = 0;
     let mut internal_nodes_without_children_count = 0;
 
-    for node in &index.nodes {
+    for (node_id, node) in index.nodes.iter().enumerate() {
         if node.is_leaf && !node.children.is_empty() {
             leaf_nodes_with_children_count += 1;
         }
@@ -26,13 +26,13 @@ pub(super) fn hierarchy_topology_diagnostics(index: &FSEIndex) -> HierarchyTopol
         for child_id in &node.children {
             if *child_id >= index.nodes.len() {
                 invalid_child_references.push(InvalidChildReference {
-                    parent_id: node.id,
+                    parent_id: node_id,
                     child_id: *child_id,
                 });
                 continue;
             }
 
-            if *child_id == node.id {
+            if *child_id == node_id {
                 self_reference_count += 1;
             }
         }
