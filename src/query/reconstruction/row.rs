@@ -21,8 +21,8 @@ use super::shape::validate_partition_reconstruction_shape;
 /// # Panics
 ///
 /// Panics when centroid and residual dimensionality are inconsistent, when the
-/// residual row is out of range, or when residual dimensions have inconsistent
-/// row counts.
+/// residual row is out of range, when residual dimensions have inconsistent row
+/// counts, or when reconstruction produces a non-finite coordinate.
 pub fn reconstruct_row_into(node: &PartitionNode, row: usize, output: &mut Vec<Scalar>) {
     let shape = validate_partition_reconstruction_shape(node);
 
@@ -32,6 +32,7 @@ pub fn reconstruct_row_into(node: &PartitionNode, row: usize, output: &mut Vec<S
     );
 
     reconstruct_row_into_prevalidated(node, row, shape.dimensions, output);
+    assert_reconstructed_values_are_finite(output);
 }
 
 /// Reconstructs one row after the caller has already validated partition shape.
@@ -80,5 +81,14 @@ pub(crate) fn reconstruct_row_into_prevalidated(
     for (centroid_value, residual_dimension) in node.centroid.iter().zip(&node.residuals.dimensions)
     {
         output.push(*centroid_value + residual_dimension[row]);
+    }
+}
+
+fn assert_reconstructed_values_are_finite(values: &[Scalar]) {
+    for value in values {
+        assert!(
+            value.is_finite(),
+            "reconstructed coordinate values must be finite"
+        );
     }
 }

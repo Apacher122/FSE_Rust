@@ -186,6 +186,23 @@ fn reconstruction_can_write_single_row_into_reusable_buffer() {
 }
 
 #[test]
+#[should_panic(expected = "reconstructed coordinate values must be finite")]
+fn reconstruction_into_buffer_rejects_non_finite_coordinate() {
+    let node = PartitionNode::new(
+        0,
+        vec![f32::MAX],
+        BoundingBox::new(vec![0.0], vec![f32::MAX]),
+        ResidualBlock::new(vec![vec![f32::MAX]]),
+        Vec::new(),
+        true,
+    );
+
+    let mut values = Vec::new();
+
+    reconstruct_row_into(&node, 0, &mut values);
+}
+
+#[test]
 fn evaluator_returns_only_points_inside_query_region() {
     let points = vec![
         Vector::new(vec![0.0, 0.0]),
