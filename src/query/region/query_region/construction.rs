@@ -9,8 +9,9 @@ impl QueryRegion {
     ///
     /// # Panics
     ///
-    /// Panics when minimum and maximum vectors have different dimensionality or
-    /// when no dimensions are provided.
+    /// Panics when minimum and maximum vectors have different dimensionality,
+    /// when no dimensions are provided, when any bound is not finite, or when
+    /// any dimension has a minimum greater than its maximum.
     pub fn new(min: Vec<Scalar>, max: Vec<Scalar>) -> Self {
         assert_eq!(
             min.len(),
@@ -21,6 +22,17 @@ impl QueryRegion {
             !min.is_empty(),
             "query region must have at least one dimension"
         );
+
+        for (dimension, (minimum, maximum)) in min.iter().zip(&max).enumerate() {
+            assert!(
+                minimum.is_finite() && maximum.is_finite(),
+                "query bounds must be finite in every dimension"
+            );
+            assert!(
+                minimum <= maximum,
+                "query minimum must not exceed maximum in dimension {dimension}"
+            );
+        }
 
         Self { min, max }
     }
