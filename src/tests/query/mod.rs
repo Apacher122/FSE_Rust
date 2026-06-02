@@ -3,6 +3,7 @@
 mod correctness_tests;
 mod count_tests;
 mod execution_batch_tests;
+mod execution_contract_tests;
 mod execution_covered_leaf_tests;
 mod execution_determinism_tests;
 mod execution_into_tests;
