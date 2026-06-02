@@ -41,9 +41,9 @@ impl PartitionNode {
     /// # Panics
     ///
     /// Panics if the dimensionality of the centroid, bounds, or residual block
-    /// is inconsistent, if the centroid is empty, if a leaf node has a cardinality
-    /// different from its stored residual row count, or if stored residual rows
-    /// exceed the declared subtree cardinality.
+    /// is inconsistent, if the centroid is empty or not finite, if a leaf node
+    /// has a cardinality different from its stored residual row count, or if
+    /// stored residual rows exceed the declared subtree cardinality.
     pub fn with_cardinality(
         id: usize,
         centroid: Vec<Scalar>,
@@ -56,6 +56,10 @@ impl PartitionNode {
         let dimensions = centroid.len();
 
         assert!(dimensions > 0, "partition centroid must not be empty");
+        assert!(
+            centroid.iter().all(|value| value.is_finite()),
+            "partition centroid values must be finite"
+        );
 
         assert_eq!(
             bounds.dimensions(),

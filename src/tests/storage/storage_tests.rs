@@ -98,3 +98,31 @@ fn internal_partition_rejects_more_stored_rows_than_declared_cardinality() {
         false,
     );
 }
+
+#[test]
+#[should_panic(expected = "partition centroid values must be finite")]
+fn partition_node_rejects_nan_centroid_value() {
+    let _node = PartitionNode::with_cardinality(
+        0,
+        vec![f32::NAN],
+        BoundingBox::new(vec![0.0], vec![1.0]),
+        ResidualBlock::new(vec![vec![0.0]]),
+        1,
+        Vec::new(),
+        true,
+    );
+}
+
+#[test]
+#[should_panic(expected = "partition centroid values must be finite")]
+fn partition_node_rejects_infinite_centroid_value() {
+    let _node = PartitionNode::with_cardinality(
+        0,
+        vec![f32::INFINITY],
+        BoundingBox::new(vec![0.0], vec![1.0]),
+        ResidualBlock::new(vec![vec![0.0]]),
+        1,
+        Vec::new(),
+        true,
+    );
+}
