@@ -637,6 +637,79 @@ do not expand row-view into reference-list or batch APIs for performance without
 do not use row-view materialization evidence to justify SIMD reconstruction work
 ```
 
+## Post-correctness execution baseline
+
+After the query execution contracts were checked against flat scan, the post-correctness baseline review used:
+
+```text
+small label: run004-r01-post-correctness-execution-baseline-small
+large label: run004-r01-post-correctness-execution-baseline-large
+trials: 5
+iterations: 10000
+artifact validation: completed
+history update: completed
+```
+
+Both reviews produced the normal benchmark bundle, low-gap repeated trial summaries, target workload summaries, materialization summaries, organized run-folder copies, and history rows.
+
+The small review reported:
+
+```text
+dataset records: 60
+index nodes: 23
+leaf count: 12
+index valid: true
+target workload: cluster_boundary_range
+target FSE average elapsed: about 262.6ns
+target KD-tree average elapsed: about 263.6ns
+target matched records: 5
+target reconstructed records: 10
+target retained leaves: 2
+target count-only stats match owned: true
+target reference stats match count-only: true
+target reusable-owned stats match owned: true
+materialization agreement: pass for every workload
+```
+
+The large review reported:
+
+```text
+dataset records: 10000
+index nodes: 2559
+leaf count: 1280
+index valid: true
+target workload: large_cross_cluster_boundary
+target FSE average elapsed: about 2.175us
+target KD-tree average elapsed: about 2.305us
+target matched records: 71
+target reconstructed records: 78
+target retained leaves: 10
+target count-only stats match owned: true
+target reference stats match count-only: true
+target reusable-owned stats match owned: true
+materialization agreement: pass for every workload
+```
+
+The low-gap repeated summaries reported:
+
+```text
+small KD-tree low mean timing ratio: 1.046131
+small R-tree low mean timing ratio: 1.270611
+large KD-tree low mean timing ratio: 1.068691
+large R-tree low mean timing ratio: 1.097639
+```
+
+Interpretation:
+
+```text
+the post-correctness baseline is valid benchmark evidence
+small and large index validation both passed
+all materialization summary rows preserved agreement
+target workload structural stats agreed across count-only, reference-result, and reusable-owned contracts
+the run should be used as the baseline before later builder, traversal, reconstruction, SIMD, or parallel changes
+do not treat this as proof that a new optimization improved performance because this commit records a baseline after correctness hardening
+```
+
 ## Future optimization direction
 
 The next meaningful optimization direction is a result representation or query API decision.
