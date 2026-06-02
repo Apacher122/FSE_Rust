@@ -4,6 +4,9 @@
 //! function. It preserves the same staged execution semantics as the owned,
 //! reference, count-only, and existence output contracts without allocating a
 //! result vector for the references themselves.
+//!
+//! The visitor APIs are output-contract variants. They do not change geometric
+//! pruning, reconstruction, or exact predicate evaluation.
 
 use crate::query::QueryRegion;
 use crate::query::region::QueryBoundsClassification;
@@ -27,6 +30,10 @@ use super::stats::{
 /// This output contract is useful when a caller wants to stream exact matches
 /// into an external accumulator, callback, or row-processing pipeline without
 /// allocating a `Vec<QueryResultReference>`.
+///
+/// The visitor receives the same references that
+/// [`execute_query_references`](super::references::execute_query_references)
+/// would return for the same index and query.
 ///
 /// # Formal Reference
 ///
@@ -96,6 +103,9 @@ where
 /// receives a [`QueryResultRowView`] for each exact match and chooses whether to
 /// inspect coordinates lazily, write them into a reusable buffer, or materialize
 /// an owned vector.
+///
+/// The row-view visitor exposes the same exact result set as the reference
+/// visitor. It changes only the value passed to the visitor callback.
 ///
 /// # Formal Reference
 ///

@@ -24,7 +24,8 @@ use super::owned::execute_query_with_stats_and_options;
 /// query semantics as [`super::owned::execute_query`], but writes the results
 /// into `results` instead of returning a freshly allocated outer `Vec<Vector>`.
 ///
-/// Existing capacity may be reused.
+/// Existing capacity may be reused. The output contract is still owned-result
+/// execution; only the outer result buffer is supplied by the caller.
 ///
 /// # Formal Reference
 ///
@@ -50,6 +51,9 @@ pub fn execute_query_into(
 /// Serial execution reuses the caller-provided result buffer directly. Parallel
 /// execution preserves exact semantics but currently falls back to the existing
 /// owned-result report path before replacing the caller buffer.
+///
+/// This function returns the same exact rows as [`super::owned::execute_query`]
+/// for the same index, query, and execution mode.
 ///
 /// # Panics
 ///

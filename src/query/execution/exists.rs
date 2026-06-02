@@ -3,6 +3,10 @@
 //! Existence queries return whether the exact result set `E(Q, F)` is non-empty.
 //! The execution path preserves `Geometry -> Reconstruction -> Logic` and may
 //! stop candidate evaluation after the first exact match.
+//!
+//! Existence execution is a boolean output contract over the same exact result
+//! set used by owned-result, reference-result, visitor, and count-only
+//! execution.
 
 use crate::query::region::QueryBoundsClassification;
 use crate::query::{QueryRegion, RetainedLeaf, RetainedLeafCoverage};
@@ -35,6 +39,10 @@ impl ExistenceSearchReport {
 /// materialized rows, row references, or exact cardinality. It evaluates the
 /// same exact result set `E(Q, F)` as the other query output contracts and
 /// returns whether that set is non-empty.
+///
+/// This is not an approximate membership test. A `true` result means at least
+/// one row satisfies exact predicate evaluation after geometric pruning and
+/// reconstruction.
 ///
 /// # Formal Reference
 ///
@@ -69,6 +77,10 @@ pub fn query_has_match(index: &FSEIndex, query: &QueryRegion) -> bool {
 /// `QueryExecutionStats::matched_records` is `1` when existence is proven and
 /// `0` otherwise. `QueryExecutionStats::reconstructed_records` matches
 /// `inspected_records` for this output contract.
+///
+/// `matched_records` is boolean-valued for this report. Use
+/// [`crate::query::count_query_matches_with_stats`] when exact cardinality is
+/// required.
 ///
 /// # Formal Reference
 ///

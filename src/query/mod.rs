@@ -2,6 +2,18 @@
 //!
 //! This module contains query region definitions and the staged execution logic
 //! used by the FSE runtime.
+//!
+//! The public query APIs expose several output contracts over the same exact
+//! result set. Owned-result, reusable owned-result, reference-result,
+//! reference-visitor, row-view visitor, count-only, and existence execution all
+//! use the same geometric traversal and exact predicate semantics. They differ
+//! only in how accepted rows are delivered to the caller.
+//!
+//! Use owned-result execution when callers need materialized
+//! [`crate::math::Vector`] values. Use reference or visitor execution when
+//! callers can defer row materialization. Use count-only or existence execution
+//! when callers need cardinality or non-empty-result information instead of
+//! rows.
 
 pub mod evaluator;
 pub mod execution;

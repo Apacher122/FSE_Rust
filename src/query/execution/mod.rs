@@ -4,6 +4,22 @@
 //! `api`, execution configuration lives in `options`, execution report types
 //! live in `reports`, and the serial, parallel, retained-leaf, and root-covered
 //! execution paths are split by responsibility.
+//!
+//! All public execution functions preserve the same exact query semantics:
+//!
+//! ```text
+//! Geometry -> Reconstruction -> Logic
+//! ```
+//!
+//! The output contract determines what is returned after exact predicate
+//! evaluation:
+//!
+//! - owned-result APIs return materialized [`crate::math::Vector`] values;
+//! - reusable owned-result APIs write materialized rows into a caller buffer;
+//! - reference-result APIs return [`QueryResultReference`] values;
+//! - visitor APIs stream references or borrowed row views;
+//! - count-only APIs return exact cardinality;
+//! - existence APIs return whether the exact result set is non-empty.
 
 mod api;
 mod count;

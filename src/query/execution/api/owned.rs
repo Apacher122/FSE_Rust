@@ -18,7 +18,7 @@ use super::super::stats::{apply_batch_report_to_stats, root_disjoint_stats, stat
 /// # Runtime Role
 ///
 /// This function composes the complete minimal query pipeline using default
-/// execution options:
+/// execution options and returns the exact matches as owned [`Vector`] values:
 ///
 /// 1. Metadata pruning.
 /// 2. Deferred reconstruction.
@@ -32,7 +32,7 @@ use super::super::stats::{apply_batch_report_to_stats, root_disjoint_stats, stat
 ///
 /// Stage I evaluates `Π(Q, P_k)` to form `R_T(Q)`. Stage II reconstructs
 /// retained candidates through `Φ`. Stage III applies `σ_Q` in coordinate
-/// space and returns owned `Vector` values for exact matches.
+/// space and returns owned rows for exact matches.
 ///
 /// # Panics
 ///
@@ -46,7 +46,8 @@ pub fn execute_query(index: &FSEIndex, query: &QueryRegion) -> Vec<Vector> {
 /// # Runtime Role
 ///
 /// This function allows callers to choose an execution strategy while preserving
-/// exact query semantics.
+/// exact query semantics. The selected strategy changes retained-leaf execution,
+/// not the result set.
 ///
 /// # Panics
 ///
@@ -74,7 +75,7 @@ pub fn execute_query_with_options(
 /// `Geometry -> Reconstruction -> Logic`.
 ///
 /// The returned `QueryExecutionReport` materializes the exact result set
-/// `E(Q, F)` as owned `Vector` values.
+/// `E(Q, F)` as owned [`Vector`] values.
 ///
 /// # Panics
 ///

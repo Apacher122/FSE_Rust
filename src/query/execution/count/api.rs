@@ -19,6 +19,9 @@ use super::matching::count_retained_matches_without_results;
 /// or aggregate planning information without paying the owned-result
 /// materialization cost of `execute_query`.
 ///
+/// The returned count is the cardinality of the same exact result set returned
+/// by owned-result and reference-result execution.
+///
 /// # Formal Reference
 ///
 /// This preserves the staged execution model:
@@ -45,6 +48,9 @@ pub fn count_query_matches(index: &FSEIndex, query: &QueryRegion) -> usize {
 /// execution while avoiding final result allocation. `matched_records` is
 /// duplicated at the top level for convenience and inside `stats` for
 /// consistency with the existing execution report shape.
+///
+/// The report preserves the same structural statistics contract used by the
+/// owned-result query report when both evaluate the same index and query.
 ///
 /// # Panics
 ///

@@ -20,6 +20,11 @@ use super::matching::{append_fully_covered_index_references, append_retained_ref
 /// owned-result query execution, but returns leaf/row references instead of
 /// allocating one owned vector per match.
 ///
+/// The returned references are members of the same exact result set returned by
+/// owned-result execution. Use [`reconstruct_query_result_references`](super::reconstruct_query_result_references)
+/// or [`reconstruct_query_result_reference`](super::reconstruct_query_result_reference)
+/// when owned coordinates are needed later.
+///
 /// # Formal Reference
 ///
 /// This preserves the required execution order:
@@ -51,7 +56,10 @@ pub fn execute_query_references(
 /// semantics:
 ///
 /// - owned-result execution materializes owned `Vector` values.
+/// - reusable owned-result execution writes owned values into a caller buffer.
 /// - reference-result execution materializes row references.
+/// - reference visitor execution streams row references.
+/// - row-view visitor execution streams borrowed row views.
 /// - count-only execution returns exact cardinality.
 /// - existence execution returns whether the exact result set is non-empty.
 ///
