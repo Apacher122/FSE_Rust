@@ -8,3 +8,4 @@ mod construction;
 mod shape;
 
 pub use self::block::ResidualBlock;
+pub use self::construction::ResidualBlockError;

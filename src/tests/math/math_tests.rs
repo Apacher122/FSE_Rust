@@ -1,4 +1,6 @@
-use crate::math::{BoundingBox, ResidualBlock, Vector};
+use crate::math::{
+    BoundingBox, BoundingBoxError, ResidualBlock, ResidualBlockError, Vector, VectorError,
+};
 
 #[test]
 fn coordinate_vector_accepts_finite_coordinates() {
@@ -7,6 +9,46 @@ fn coordinate_vector_accepts_finite_coordinates() {
     assert_eq!(vector.values, vec![1.0, 2.0]);
     assert_eq!(vector.dimensions(), 2);
     assert!(!vector.is_empty());
+}
+
+#[test]
+fn coordinate_vector_checked_constructor_accepts_finite_coordinates() {
+    let vector =
+        Vector::try_new(vec![1.0, 2.0]).expect("valid coordinate vector should be accepted");
+
+    assert_eq!(vector.values, vec![1.0, 2.0]);
+    assert_eq!(vector.dimensions(), 2);
+    assert!(!vector.is_empty());
+}
+
+#[test]
+fn coordinate_vector_checked_constructor_reports_empty_coordinates() {
+    let error =
+        Vector::try_new(Vec::new()).expect_err("empty coordinate vector should be rejected");
+
+    assert_eq!(error, VectorError::Empty);
+    assert_eq!(
+        error.to_string(),
+        "coordinate vector must have at least one dimension"
+    );
+}
+
+#[test]
+fn coordinate_vector_checked_constructor_reports_nan_coordinate() {
+    let error = Vector::try_new(vec![1.0, f32::NAN])
+        .expect_err("non-finite coordinate vector should be rejected");
+
+    assert_eq!(error, VectorError::NonFinite { dimension: 1 });
+    assert_eq!(error.to_string(), "coordinate vector values must be finite");
+}
+
+#[test]
+fn coordinate_vector_checked_constructor_reports_infinite_coordinate() {
+    let error = Vector::try_new(vec![f32::INFINITY])
+        .expect_err("non-finite coordinate vector should be rejected");
+
+    assert_eq!(error, VectorError::NonFinite { dimension: 0 });
+    assert_eq!(error.to_string(), "coordinate vector values must be finite");
 }
 
 #[test]
@@ -59,6 +101,69 @@ fn bounding_boxes_do_not_intersect_when_any_dimension_is_disjoint() {
     let right = BoundingBox::new(vec![2.0, 0.5], vec![3.0, 0.75]);
 
     assert!(!left.intersects(&right));
+}
+
+#[test]
+fn bounding_box_checked_constructor_accepts_valid_bounds() {
+    let bounds = BoundingBox::try_new(vec![0.0, 1.0], vec![2.0, 3.0])
+        .expect("valid bounding box should be accepted");
+
+    assert_eq!(bounds.min, vec![0.0, 1.0]);
+    assert_eq!(bounds.max, vec![2.0, 3.0]);
+}
+
+#[test]
+fn bounding_box_checked_constructor_reports_mismatched_bound_dimensions() {
+    let error = BoundingBox::try_new(vec![0.0, 1.0], vec![2.0])
+        .expect_err("mismatched bounding box dimensions should be rejected");
+
+    assert_eq!(
+        error,
+        BoundingBoxError::DimensionMismatch {
+            min_dimensions: 2,
+            max_dimensions: 1,
+        }
+    );
+    assert_eq!(
+        error.to_string(),
+        "bounding box min and max vectors must have the same dimensionality"
+    );
+}
+
+#[test]
+fn bounding_box_checked_constructor_reports_empty_bounds() {
+    let error = BoundingBox::try_new(Vec::new(), Vec::new())
+        .expect_err("empty bounding box dimensions should be rejected");
+
+    assert_eq!(error, BoundingBoxError::Empty);
+    assert_eq!(
+        error.to_string(),
+        "bounding box must have at least one dimension"
+    );
+}
+
+#[test]
+fn bounding_box_checked_constructor_reports_non_finite_bounds() {
+    let error = BoundingBox::try_new(vec![0.0, f32::NAN], vec![1.0, 2.0])
+        .expect_err("non-finite bounding box bounds should be rejected");
+
+    assert_eq!(error, BoundingBoxError::NonFinite { dimension: 1 });
+    assert_eq!(
+        error.to_string(),
+        "bounding box bounds must be finite in every dimension"
+    );
+}
+
+#[test]
+fn bounding_box_checked_constructor_reports_inverted_bounds() {
+    let error = BoundingBox::try_new(vec![0.0, 4.0], vec![1.0, 2.0])
+        .expect_err("inverted bounding box bounds should be rejected");
+
+    assert_eq!(error, BoundingBoxError::InvertedRange { dimension: 1 });
+    assert_eq!(
+        error.to_string(),
+        "bounding box minimum must not exceed maximum in dimension 1"
+    );
 }
 
 #[test]
@@ -128,6 +233,17 @@ fn residual_block_accepts_dimensions_with_matching_row_counts() {
 }
 
 #[test]
+fn residual_block_checked_constructor_accepts_dimensions_with_matching_row_counts() {
+    let residuals = ResidualBlock::try_new(vec![vec![1.0, 2.0], vec![3.0, 4.0]])
+        .expect("valid residual block should be accepted");
+
+    assert_eq!(residuals.dimensions(), 2);
+    assert_eq!(residuals.cardinality(), 2);
+    assert!(residuals.has_consistent_shape());
+    assert_eq!(residuals.dimension_lengths(), vec![2, 2]);
+}
+
+#[test]
 fn residual_block_accepts_empty_internal_node_dimensions() {
     let residuals = ResidualBlock::new(vec![Vec::new(), Vec::new()]);
 
@@ -136,6 +252,67 @@ fn residual_block_accepts_empty_internal_node_dimensions() {
     assert!(residuals.is_empty());
     assert!(residuals.has_consistent_shape());
     assert_eq!(residuals.dimension_lengths(), vec![0, 0]);
+}
+
+#[test]
+fn residual_block_checked_constructor_accepts_empty_internal_node_dimensions() {
+    let residuals = ResidualBlock::try_new(vec![Vec::new(), Vec::new()])
+        .expect("empty internal residual dimensions should be accepted");
+
+    assert_eq!(residuals.dimensions(), 2);
+    assert_eq!(residuals.cardinality(), 0);
+    assert!(residuals.is_empty());
+    assert!(residuals.has_consistent_shape());
+    assert_eq!(residuals.dimension_lengths(), vec![0, 0]);
+}
+
+#[test]
+fn residual_block_checked_constructor_reports_uneven_dimension_lengths() {
+    let error = ResidualBlock::try_new(vec![vec![1.0, 2.0], vec![3.0]])
+        .expect_err("uneven residual dimension lengths should be rejected");
+
+    assert_eq!(
+        error,
+        ResidualBlockError::UnevenDimensionLength {
+            dimension: 1,
+            actual_rows: 1,
+            expected_rows: 2,
+        }
+    );
+    assert_eq!(
+        error.to_string(),
+        "residual dimension 1 has 1 rows but expected 2"
+    );
+}
+
+#[test]
+fn residual_block_checked_constructor_reports_nan_residual_value() {
+    let error = ResidualBlock::try_new(vec![vec![1.0], vec![f32::NAN]])
+        .expect_err("non-finite residual value should be rejected");
+
+    assert_eq!(
+        error,
+        ResidualBlockError::NonFinite {
+            dimension: 1,
+            row: 0,
+        }
+    );
+    assert_eq!(error.to_string(), "residual values must be finite");
+}
+
+#[test]
+fn residual_block_checked_constructor_reports_infinite_residual_value() {
+    let error = ResidualBlock::try_new(vec![vec![f32::INFINITY]])
+        .expect_err("non-finite residual value should be rejected");
+
+    assert_eq!(
+        error,
+        ResidualBlockError::NonFinite {
+            dimension: 0,
+            row: 0,
+        }
+    );
+    assert_eq!(error.to_string(), "residual values must be finite");
 }
 
 #[test]

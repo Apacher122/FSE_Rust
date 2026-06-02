@@ -1,8 +1,65 @@
 //! Bounding box construction helpers.
 
+use std::error::Error;
+use std::fmt;
+
 use crate::math::{Scalar, Vector};
 
 use super::BoundingBox;
+
+/// Error returned when checked bounding box construction fails.
+///
+/// # Runtime Role
+///
+/// `BoundingBoxError` lets caller-facing code validate bounded-support regions
+/// without relying on panic-based construction.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BoundingBoxError {
+    /// Minimum and maximum coordinate vectors do not have the same length.
+    DimensionMismatch {
+        /// Number of minimum-bound dimensions.
+        min_dimensions: usize,
+
+        /// Number of maximum-bound dimensions.
+        max_dimensions: usize,
+    },
+
+    /// No dimensions were provided.
+    Empty,
+
+    /// At least one bound value is not finite.
+    NonFinite {
+        /// Dimension containing the non-finite value.
+        dimension: usize,
+    },
+
+    /// A minimum bound is greater than its maximum bound.
+    InvertedRange {
+        /// Dimension containing the inverted range.
+        dimension: usize,
+    },
+}
+
+impl fmt::Display for BoundingBoxError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::DimensionMismatch { .. } => formatter
+                .write_str("bounding box min and max vectors must have the same dimensionality"),
+            Self::Empty => formatter.write_str("bounding box must have at least one dimension"),
+            Self::NonFinite { .. } => {
+                formatter.write_str("bounding box bounds must be finite in every dimension")
+            }
+            Self::InvertedRange { dimension } => {
+                write!(
+                    formatter,
+                    "bounding box minimum must not exceed maximum in dimension {dimension}"
+                )
+            }
+        }
+    }
+}
+
+impl Error for BoundingBoxError {}
 
 impl BoundingBox {
     /// Creates a bounding box from explicit minimum and maximum coordinates.
@@ -13,19 +70,30 @@ impl BoundingBox {
     /// when no dimensions are provided, when any bound is not finite, or when
     /// any dimension has a minimum greater than its maximum.
     pub fn new(min: Vec<Scalar>, max: Vec<Scalar>) -> Self {
-        assert_eq!(
-            min.len(),
-            max.len(),
-            "bounding box min and max vectors must have the same dimensionality"
-        );
-        assert!(
-            !min.is_empty(),
-            "bounding box must have at least one dimension"
-        );
+        Self::try_new(min, max).unwrap_or_else(|error| panic!("{error}"))
+    }
 
-        validate_explicit_bounds(&min, &max);
+    /// Creates a bounding box and returns an error when bounds are invalid.
+    ///
+    /// # Runtime Role
+    ///
+    /// This constructor is intended for caller-facing input validation. It
+    /// enforces the same invariants as [`BoundingBox::new`] without panicking.
+    pub fn try_new(min: Vec<Scalar>, max: Vec<Scalar>) -> Result<Self, BoundingBoxError> {
+        if min.len() != max.len() {
+            return Err(BoundingBoxError::DimensionMismatch {
+                min_dimensions: min.len(),
+                max_dimensions: max.len(),
+            });
+        }
 
-        Self { min, max }
+        if min.is_empty() {
+            return Err(BoundingBoxError::Empty);
+        }
+
+        validate_explicit_bounds(&min, &max)?;
+
+        Ok(Self { min, max })
     }
 
     /// Builds the exact bounding box for a non-empty set of points.
@@ -82,15 +150,16 @@ impl BoundingBox {
     }
 }
 
-fn validate_explicit_bounds(min: &[Scalar], max: &[Scalar]) {
+fn validate_explicit_bounds(min: &[Scalar], max: &[Scalar]) -> Result<(), BoundingBoxError> {
     for (dimension, (minimum, maximum)) in min.iter().zip(max).enumerate() {
-        assert!(
-            minimum.is_finite() && maximum.is_finite(),
-            "bounding box bounds must be finite in every dimension"
-        );
-        assert!(
-            minimum <= maximum,
-            "bounding box minimum must not exceed maximum in dimension {dimension}"
-        );
+        if !minimum.is_finite() || !maximum.is_finite() {
+            return Err(BoundingBoxError::NonFinite { dimension });
+        }
+
+        if minimum > maximum {
+            return Err(BoundingBoxError::InvertedRange { dimension });
+        }
     }
+
+    Ok(())
 }

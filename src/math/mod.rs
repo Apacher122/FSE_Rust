@@ -7,7 +7,7 @@ pub mod centroid;
 pub mod residuals;
 pub mod vector;
 
-pub use bounds::BoundingBox;
-pub use centroid::compute_centroid;
-pub use residuals::ResidualBlock;
-pub use vector::{Scalar, Vector};
+pub use bounds::{BoundingBox, BoundingBoxError};
+pub use centroid::{CentroidError, compute_centroid, try_compute_centroid};
+pub use residuals::{ResidualBlock, ResidualBlockError};
+pub use vector::{Scalar, Vector, VectorError};

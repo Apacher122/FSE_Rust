@@ -9,3 +9,4 @@ mod metrics;
 mod spatial;
 
 pub use self::box_shape::BoundingBox;
+pub use self::construction::BoundingBoxError;
