@@ -9,6 +9,7 @@ mod leaf_reconstruction;
 mod leaf_records;
 mod node_ids;
 mod ownership;
+mod partition_metadata;
 mod report;
 mod topology;
 
@@ -19,6 +20,10 @@ pub use leaf_records::validate_leaf_record_bounds;
 pub(crate) use leaf_records::value_is_inside_leaf_bounds;
 pub use node_ids::validate_node_identifier_consistency;
 pub use ownership::validate_leaf_ownership_cardinality;
+pub use partition_metadata::validate_partition_dimensional_metadata;
+pub(crate) use partition_metadata::{
+    bounds_ranges_are_valid, partition_dimensional_metadata_is_valid,
+};
 pub use report::IndexValidationReport;
 pub use topology::validate_hierarchy_topology;
 
@@ -36,6 +41,7 @@ use crate::storage::FSEIndex;
 /// This function validates:
 ///
 /// - node identifier consistency,
+/// - partition dimensional metadata,
 /// - leaf cardinality,
 /// - leaf reconstruction metadata,
 /// - leaf record bounded support,
@@ -45,6 +51,7 @@ use crate::storage::FSEIndex;
 pub fn validate_index(index: &FSEIndex, max_leaf_size: usize) -> IndexValidationReport {
     IndexValidationReport {
         node_identifier_consistency_valid: validate_node_identifier_consistency(index),
+        partition_dimensional_metadata_valid: validate_partition_dimensional_metadata(index),
         leaf_cardinality_valid: validate_leaf_cardinality(index, max_leaf_size),
         leaf_reconstruction_metadata_valid: validate_leaf_reconstruction_metadata(index),
         leaf_record_bounds_valid: validate_leaf_record_bounds(index),

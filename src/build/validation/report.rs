@@ -10,6 +10,8 @@
 pub struct IndexValidationReport {
     /// Whether node identifiers match their index positions.
     pub node_identifier_consistency_valid: bool,
+    /// Whether partition dimensional metadata is internally consistent.
+    pub partition_dimensional_metadata_valid: bool,
     /// Whether all leaf nodes satisfy the configured maximum leaf size.
     pub leaf_cardinality_valid: bool,
     /// Whether cached leaf reconstruction metadata matches the leaf nodes.
@@ -28,6 +30,7 @@ impl IndexValidationReport {
     /// Returns true only when every validation check passed.
     pub fn is_valid(&self) -> bool {
         self.node_identifier_consistency_valid
+            && self.partition_dimensional_metadata_valid
             && self.leaf_cardinality_valid
             && self.leaf_reconstruction_metadata_valid
             && self.leaf_record_bounds_valid

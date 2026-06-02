@@ -37,6 +37,7 @@ fn test_metadata() -> BenchmarkCsvMetadata {
         index_zero_volume_leaf_count: 1,
         index_valid: true,
         node_identifier_consistency_valid: true,
+        partition_dimensional_metadata_valid: true,
         leaf_cardinality_valid: true,
         leaf_reconstruction_metadata_valid: true,
         leaf_record_bounds_valid: true,
@@ -94,6 +95,7 @@ fn csv_metadata_can_be_built_from_benchmark_overview() {
         },
         validation: IndexValidationReport {
             node_identifier_consistency_valid: true,
+            partition_dimensional_metadata_valid: true,
             leaf_cardinality_valid: true,
             leaf_reconstruction_metadata_valid: true,
             leaf_record_bounds_valid: true,
@@ -127,6 +129,7 @@ fn csv_metadata_can_be_built_from_benchmark_overview() {
     assert_eq!(metadata.index_zero_volume_leaf_count, 1);
     assert!(metadata.index_valid);
     assert!(metadata.node_identifier_consistency_valid);
+    assert!(metadata.partition_dimensional_metadata_valid);
     assert!(metadata.leaf_cardinality_valid);
     assert!(metadata.leaf_reconstruction_metadata_valid);
     assert!(metadata.leaf_record_bounds_valid);
@@ -254,7 +257,7 @@ fn csv_export_with_metadata_includes_metadata_header() {
     assert!(csv.contains("index_leaf_count,index_internal_node_count"));
     assert!(csv.contains("index_density,index_zero_volume_leaf_count"));
     assert!(csv.contains(
-        "node_identifier_consistency_valid,leaf_cardinality_valid,leaf_reconstruction_metadata_valid,leaf_record_bounds_valid,leaf_ownership_cardinality_valid"
+        "node_identifier_consistency_valid,partition_dimensional_metadata_valid,leaf_cardinality_valid,leaf_reconstruction_metadata_valid,leaf_record_bounds_valid,leaf_ownership_cardinality_valid"
     ));
     assert!(csv.contains("fse_execution_mode,fse_parallel_min_retained_leaves"));
 }
@@ -269,7 +272,7 @@ fn csv_export_with_metadata_includes_metadata_values() {
 
     assert_eq!(rows.len(), 2);
     assert!(rows[1].starts_with(
-        "60,15,6,\"flat_scan, kd_tree\",3,4,8,8,parallel,2,8,7,60,4,8,7.500000,120.000000,15.000000,0.500000,1,true,true,true,true,true,true,true,true"
+        "60,15,6,\"flat_scan, kd_tree\",3,4,8,8,parallel,2,8,7,60,4,8,7.500000,120.000000,15.000000,0.500000,1,true,true,true,true,true,true,true,true,true"
     ));
 }
 
@@ -455,7 +458,7 @@ fn workload_csv_export_with_metadata_includes_metadata_header() {
     assert!(csv.contains("target_leaf_size,max_leaf_size,max_depth"));
     assert!(csv.contains("index_density,index_zero_volume_leaf_count"));
     assert!(csv.contains(
-        "node_identifier_consistency_valid,leaf_cardinality_valid,leaf_reconstruction_metadata_valid,leaf_record_bounds_valid,leaf_ownership_cardinality_valid"
+        "node_identifier_consistency_valid,partition_dimensional_metadata_valid,leaf_cardinality_valid,leaf_reconstruction_metadata_valid,leaf_record_bounds_valid,leaf_ownership_cardinality_valid"
     ));
     assert!(csv.contains("baseline_name,baseline_label,comparison_label,workload_name"));
 }
@@ -481,7 +484,7 @@ fn workload_csv_export_with_metadata_includes_execution_mode_values() {
 
     assert!(rows.len() > 1);
     assert!(rows[1].starts_with(
-        "60,15,6,\"flat_scan, kd_tree\",3,4,8,8,parallel,2,8,7,60,4,8,7.500000,120.000000,15.000000,0.500000,1,true,true,true,true,true,true,true,true"
+        "60,15,6,\"flat_scan, kd_tree\",3,4,8,8,parallel,2,8,7,60,4,8,7.500000,120.000000,15.000000,0.500000,1,true,true,true,true,true,true,true,true,true"
     ));
 }
 

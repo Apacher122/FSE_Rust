@@ -3,6 +3,8 @@
 use crate::math::Scalar;
 use crate::storage::{FSEIndex, PartitionNode};
 
+use super::partition_metadata::bounds_ranges_are_valid;
+
 const BOUNDS_TOLERANCE_FACTOR: Scalar = 8.0;
 
 /// Validates that every reconstructed leaf row is inside its leaf bounds.
@@ -30,7 +32,10 @@ fn leaf_records_are_inside_bounds(node: &PartitionNode) -> bool {
         return false;
     }
 
-    if node.bounds.dimensions() != dimensions || node.residuals.dimensions() != dimensions {
+    if node.bounds.min.len() != dimensions
+        || node.bounds.max.len() != dimensions
+        || node.residuals.dimensions() != dimensions
+    {
         return false;
     }
 
@@ -42,7 +47,7 @@ fn leaf_records_are_inside_bounds(node: &PartitionNode) -> bool {
         return false;
     }
 
-    if !bounds_ranges_are_valid(&node.bounds.min, &node.bounds.max) {
+    if !bounds_ranges_are_valid(&node.bounds) {
         return false;
     }
 
@@ -53,12 +58,6 @@ fn leaf_records_are_inside_bounds(node: &PartitionNode) -> bool {
     }
 
     true
-}
-
-fn bounds_ranges_are_valid(min: &[Scalar], max: &[Scalar]) -> bool {
-    min.iter()
-        .zip(max)
-        .all(|(minimum, maximum)| minimum.is_finite() && maximum.is_finite() && minimum <= maximum)
 }
 
 fn reconstructed_row_is_inside_bounds(node: &PartitionNode, row: usize, dimensions: usize) -> bool {

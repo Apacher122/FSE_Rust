@@ -96,6 +96,74 @@ pub struct NodeIdentifierMismatch {
     pub stored_id: usize,
 }
 
+/// Detailed partition dimensional metadata diagnostics.
+///
+/// # Runtime Role
+///
+/// `PartitionDimensionalMetadataDiagnostics` records whether index-level
+/// dimensional metadata is valid and lists partition nodes with invalid local
+/// dimensional metadata.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PartitionDimensionalMetadataDiagnostics {
+    /// Dimensionality stored on the index.
+    pub index_dimensions: usize,
+
+    /// Whether the index dimensionality is nonzero.
+    pub index_dimensions_valid: bool,
+
+    /// Whether the root identifier points to an existing node.
+    pub root_valid: bool,
+
+    /// Partition nodes with invalid dimensional metadata.
+    pub violations: Vec<PartitionDimensionalMetadataViolation>,
+}
+
+/// Partition node with invalid dimensional metadata.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PartitionDimensionalMetadataViolation {
+    /// Node identifier.
+    pub node_id: usize,
+
+    /// Dimensionality stored on the index.
+    pub index_dimensions: usize,
+
+    /// Number of centroid dimensions.
+    pub centroid_dimensions: usize,
+
+    /// Number of minimum-bound dimensions.
+    pub bounds_min_dimensions: usize,
+
+    /// Number of maximum-bound dimensions.
+    pub bounds_max_dimensions: usize,
+
+    /// Number of residual dimensions.
+    pub residual_dimensions: usize,
+
+    /// Stored residual row count for each residual dimension.
+    pub residual_dimension_lengths: Vec<usize>,
+
+    /// Declared partition cardinality.
+    pub cardinality: usize,
+
+    /// Number of residual rows physically stored on the partition.
+    pub stored_cardinality: usize,
+
+    /// Whether the partition is marked as a leaf.
+    pub is_leaf: bool,
+
+    /// Whether all centroid values are finite.
+    pub centroid_finite: bool,
+
+    /// Whether all bound values are finite.
+    pub bounds_finite: bool,
+
+    /// Whether every minimum bound is less than or equal to its maximum bound.
+    pub bounds_ranges_valid: bool,
+
+    /// Whether all residual values are finite.
+    pub residuals_finite: bool,
+}
+
 /// Cached leaf count that does not match the leaf nodes in the index.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeafReconstructionLeafCountMismatch {
@@ -253,6 +321,9 @@ pub struct HierarchyTopologyDiagnostics {
 pub struct IndexValidationDiagnostics {
     /// Node identifier mismatches.
     pub node_identifier_mismatches: Vec<NodeIdentifierMismatch>,
+
+    /// Partition dimensional metadata diagnostics.
+    pub partition_dimensional_metadata: PartitionDimensionalMetadataDiagnostics,
 
     /// Leaf cardinality violations.
     pub leaf_cardinality_violations: Vec<LeafCardinalityViolation>,

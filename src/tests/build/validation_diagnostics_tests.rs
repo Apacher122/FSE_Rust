@@ -46,7 +46,18 @@ fn validation_diagnostics_reports_no_large_topology_or_bounds_violations() {
     assert!(validated.validation.leaf_reconstruction_metadata_valid);
     assert!(validated.validation.leaf_ownership_cardinality_valid);
     assert!(validated.validation.parent_child_bounds_valid);
+    assert!(validated.validation.partition_dimensional_metadata_valid);
     assert_eq!(diagnostics.node_identifier_mismatches.len(), 0);
+    assert!(
+        diagnostics
+            .partition_dimensional_metadata
+            .index_dimensions_valid
+    );
+    assert!(diagnostics.partition_dimensional_metadata.root_valid);
+    assert_eq!(
+        diagnostics.partition_dimensional_metadata.violations.len(),
+        0
+    );
     assert!(
         diagnostics
             .leaf_reconstruction_metadata
@@ -276,6 +287,64 @@ fn validation_diagnostics_reports_node_identifier_mismatches() {
 
     assert_eq!(mismatch.expected_id, 0);
     assert_eq!(mismatch.stored_id, 7);
+}
+
+#[test]
+fn validation_diagnostics_reports_partition_dimensional_metadata_violations() {
+    let mut index = two_leaf_test_index();
+    index.nodes[0].bounds.max.pop();
+
+    let diagnostics = index_validation_diagnostics(&index, 8);
+
+    assert!(
+        diagnostics
+            .partition_dimensional_metadata
+            .index_dimensions_valid
+    );
+    assert!(diagnostics.partition_dimensional_metadata.root_valid);
+    assert_eq!(
+        diagnostics.partition_dimensional_metadata.violations.len(),
+        1
+    );
+
+    let violation = &diagnostics.partition_dimensional_metadata.violations[0];
+
+    assert_eq!(violation.node_id, 0);
+    assert_eq!(violation.index_dimensions, 1);
+    assert_eq!(violation.centroid_dimensions, 1);
+    assert_eq!(violation.bounds_min_dimensions, 1);
+    assert_eq!(violation.bounds_max_dimensions, 0);
+    assert_eq!(violation.residual_dimensions, 1);
+    assert_eq!(violation.residual_dimension_lengths, vec![0]);
+    assert_eq!(violation.cardinality, 2);
+    assert_eq!(violation.stored_cardinality, 0);
+    assert!(!violation.is_leaf);
+    assert!(violation.centroid_finite);
+    assert!(violation.bounds_finite);
+    assert!(!violation.bounds_ranges_valid);
+    assert!(violation.residuals_finite);
+}
+
+#[test]
+fn validation_diagnostics_reports_partition_index_dimension_mismatch() {
+    let mut index = two_leaf_test_index();
+    index.dimensions = 2;
+
+    let diagnostics = index_validation_diagnostics(&index, 8);
+
+    assert_eq!(
+        diagnostics.partition_dimensional_metadata.index_dimensions,
+        2
+    );
+    assert!(
+        diagnostics
+            .partition_dimensional_metadata
+            .index_dimensions_valid
+    );
+    assert_eq!(
+        diagnostics.partition_dimensional_metadata.violations.len(),
+        3
+    );
 }
 
 #[test]

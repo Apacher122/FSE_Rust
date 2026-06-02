@@ -9,6 +9,7 @@ mod leaf_reconstruction;
 mod leaf_records;
 mod node_ids;
 mod ownership;
+mod partition_metadata;
 mod topology;
 mod types;
 
@@ -20,6 +21,7 @@ pub use types::{
     LeafReconstructionShapeListLengthMismatch, LeafReconstructionShapeListMismatch,
     LeafReconstructionShapeLookupLengthMismatch, LeafReconstructionShapeLookupMismatch,
     LeafRecordBoundsViolation, NodeIdentifierMismatch, ParentChildBoundsViolation,
+    PartitionDimensionalMetadataDiagnostics, PartitionDimensionalMetadataViolation,
 };
 
 use crate::storage::FSEIndex;
@@ -30,6 +32,7 @@ use self::leaf_reconstruction::leaf_reconstruction_metadata_diagnostics;
 use self::leaf_records::leaf_record_bounds_violations;
 use self::node_ids::node_identifier_mismatches;
 use self::ownership::leaf_ownership_cardinality_diagnostics;
+use self::partition_metadata::partition_dimensional_metadata_diagnostics;
 use self::topology::hierarchy_topology_diagnostics;
 
 /// Builds detailed validation diagnostics for an FSE index.
@@ -44,6 +47,7 @@ pub fn index_validation_diagnostics(
 ) -> IndexValidationDiagnostics {
     IndexValidationDiagnostics {
         node_identifier_mismatches: node_identifier_mismatches(index),
+        partition_dimensional_metadata: partition_dimensional_metadata_diagnostics(index),
         leaf_cardinality_violations: leaf_cardinality_violations(index, max_leaf_size),
         leaf_reconstruction_metadata: leaf_reconstruction_metadata_diagnostics(index),
         leaf_record_bounds_violations: leaf_record_bounds_violations(index),

@@ -21,7 +21,7 @@ pub use validation::{
     IndexValidationReport, validate_hierarchy_topology, validate_index, validate_leaf_cardinality,
     validate_leaf_ownership_cardinality, validate_leaf_reconstruction_metadata,
     validate_leaf_record_bounds, validate_node_identifier_consistency,
-    validate_parent_child_bounds,
+    validate_parent_child_bounds, validate_partition_dimensional_metadata,
 };
 pub use validation_diagnostics::{
     HierarchyTopologyDiagnostics, IndexValidationDiagnostics, InvalidChildReference,
@@ -31,5 +31,6 @@ pub use validation_diagnostics::{
     LeafReconstructionShapeListLengthMismatch, LeafReconstructionShapeListMismatch,
     LeafReconstructionShapeLookupLengthMismatch, LeafReconstructionShapeLookupMismatch,
     LeafRecordBoundsViolation, NodeIdentifierMismatch, ParentChildBoundsViolation,
+    PartitionDimensionalMetadataDiagnostics, PartitionDimensionalMetadataViolation,
     index_validation_diagnostics,
 };

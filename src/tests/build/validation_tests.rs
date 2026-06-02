@@ -3,6 +3,7 @@ use crate::build::{
     validate_leaf_cardinality, validate_leaf_ownership_cardinality,
     validate_leaf_reconstruction_metadata, validate_leaf_record_bounds,
     validate_node_identifier_consistency, validate_parent_child_bounds,
+    validate_partition_dimensional_metadata,
 };
 use crate::math::{BoundingBox, ResidualBlock, Vector};
 use crate::storage::{FSEIndex, LeafReconstructionShape, PartitionNode};
@@ -115,6 +116,71 @@ fn validate_node_identifier_consistency_rejects_position_mismatch() {
     let index = FSEIndex::new(vec![node], 0);
 
     assert!(!validate_node_identifier_consistency(&index));
+}
+
+#[test]
+fn validate_partition_dimensional_metadata_returns_true_for_builder_output() {
+    let points = vec![
+        Vector::new(vec![0.0, 0.0]),
+        Vector::new(vec![1.0, 1.0]),
+        Vector::new(vec![8.0, 8.0]),
+        Vector::new(vec![9.0, 9.0]),
+    ];
+
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let index = builder.build(&points);
+
+    assert!(validate_partition_dimensional_metadata(&index));
+}
+
+#[test]
+fn validate_partition_dimensional_metadata_rejects_index_dimension_mismatch() {
+    let mut index = two_leaf_test_index();
+    index.dimensions = 3;
+
+    assert!(!validate_partition_dimensional_metadata(&index));
+}
+
+#[test]
+fn validate_partition_dimensional_metadata_rejects_malformed_bounds_shape() {
+    let mut index = two_leaf_test_index();
+    index.nodes[0].bounds.max.pop();
+
+    assert!(!validate_partition_dimensional_metadata(&index));
+    assert!(!validate_parent_child_bounds(&index));
+}
+
+#[test]
+fn validate_partition_dimensional_metadata_rejects_invalid_bounds_range() {
+    let mut index = two_leaf_test_index();
+    index.nodes[0].bounds.min[0] = 4.0;
+
+    assert!(!validate_partition_dimensional_metadata(&index));
+    assert!(!validate_parent_child_bounds(&index));
+}
+
+#[test]
+fn validate_partition_dimensional_metadata_rejects_inconsistent_residual_shape() {
+    let mut index = two_leaf_test_index();
+    index.nodes[1].residuals.dimensions[0].push(1.0);
+
+    assert!(!validate_partition_dimensional_metadata(&index));
+}
+
+#[test]
+fn validate_partition_dimensional_metadata_rejects_leaf_cardinality_shape_mismatch() {
+    let mut index = two_leaf_test_index();
+    index.nodes[1].cardinality = 2;
+
+    assert!(!validate_partition_dimensional_metadata(&index));
+}
+
+#[test]
+fn validate_partition_dimensional_metadata_rejects_internal_stored_rows_above_cardinality() {
+    let mut index = two_leaf_test_index();
+    index.nodes[0].residuals = ResidualBlock::new(vec![vec![0.0, 1.0, 2.0], vec![0.0, 1.0, 2.0]]);
+
+    assert!(!validate_partition_dimensional_metadata(&index));
 }
 
 #[test]
@@ -327,6 +393,14 @@ fn validate_leaf_record_bounds_accepts_boundary_values() {
 }
 
 #[test]
+fn validate_leaf_record_bounds_rejects_malformed_leaf_bounds_shape() {
+    let mut index = two_leaf_test_index();
+    index.nodes[1].bounds.max.pop();
+
+    assert!(!validate_leaf_record_bounds(&index));
+}
+
+#[test]
 fn validate_leaf_ownership_cardinality_returns_true_for_builder_output() {
     let points = vec![
         Vector::new(vec![0.0, 0.0]),
@@ -417,6 +491,7 @@ fn validate_index_returns_valid_report_for_builder_output() {
 
     let report = validate_index(&index, config.max_leaf_size);
     assert!(report.node_identifier_consistency_valid);
+    assert!(report.partition_dimensional_metadata_valid);
     assert!(report.leaf_cardinality_valid);
     assert!(report.leaf_reconstruction_metadata_valid);
     assert!(report.leaf_record_bounds_valid);
@@ -440,6 +515,7 @@ fn validate_index_reports_leaf_cardinality_failure() {
     let report = validate_index(&index, 2);
 
     assert!(report.node_identifier_consistency_valid);
+    assert!(report.partition_dimensional_metadata_valid);
     assert!(!report.leaf_cardinality_valid);
     assert!(report.leaf_reconstruction_metadata_valid);
     assert!(report.leaf_record_bounds_valid);
@@ -464,6 +540,7 @@ fn validate_index_reports_leaf_record_bounds_failure() {
     let report = validate_index(&index, 8);
 
     assert!(report.node_identifier_consistency_valid);
+    assert!(report.partition_dimensional_metadata_valid);
     assert!(report.leaf_cardinality_valid);
     assert!(report.leaf_reconstruction_metadata_valid);
     assert!(!report.leaf_record_bounds_valid);
@@ -507,6 +584,7 @@ fn validate_index_reports_leaf_ownership_cardinality_failure() {
     let report = validate_index(&index, 8);
 
     assert!(report.node_identifier_consistency_valid);
+    assert!(report.partition_dimensional_metadata_valid);
     assert!(report.leaf_cardinality_valid);
     assert!(report.leaf_reconstruction_metadata_valid);
     assert!(report.leaf_record_bounds_valid);
@@ -531,12 +609,31 @@ fn validate_index_reports_node_identifier_consistency_failure() {
     let report = validate_index(&index, 8);
 
     assert!(!report.node_identifier_consistency_valid);
+    assert!(report.partition_dimensional_metadata_valid);
     assert!(report.leaf_cardinality_valid);
     assert!(report.leaf_reconstruction_metadata_valid);
     assert!(report.leaf_record_bounds_valid);
     assert!(report.leaf_ownership_cardinality_valid);
     assert!(report.hierarchy_topology_valid);
     assert!(report.parent_child_bounds_valid);
+    assert!(!report.is_valid());
+}
+
+#[test]
+fn validate_index_reports_partition_dimensional_metadata_failure() {
+    let mut index = two_leaf_test_index();
+    index.nodes[0].bounds.max.pop();
+
+    let report = validate_index(&index, 8);
+
+    assert!(report.node_identifier_consistency_valid);
+    assert!(!report.partition_dimensional_metadata_valid);
+    assert!(report.leaf_cardinality_valid);
+    assert!(report.leaf_reconstruction_metadata_valid);
+    assert!(report.leaf_record_bounds_valid);
+    assert!(report.leaf_ownership_cardinality_valid);
+    assert!(report.hierarchy_topology_valid);
+    assert!(!report.parent_child_bounds_valid);
     assert!(!report.is_valid());
 }
 
@@ -548,6 +645,7 @@ fn validate_index_reports_leaf_reconstruction_metadata_failure() {
     let report = validate_index(&index, 8);
 
     assert!(report.node_identifier_consistency_valid);
+    assert!(report.partition_dimensional_metadata_valid);
     assert!(report.leaf_cardinality_valid);
     assert!(!report.leaf_reconstruction_metadata_valid);
     assert!(report.leaf_record_bounds_valid);
@@ -561,6 +659,7 @@ fn validate_index_reports_leaf_reconstruction_metadata_failure() {
 fn validation_report_requires_all_checks_to_pass() {
     let report = crate::build::IndexValidationReport {
         node_identifier_consistency_valid: true,
+        partition_dimensional_metadata_valid: true,
         leaf_cardinality_valid: true,
         leaf_reconstruction_metadata_valid: true,
         leaf_record_bounds_valid: true,

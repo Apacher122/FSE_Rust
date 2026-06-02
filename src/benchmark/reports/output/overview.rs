@@ -154,6 +154,12 @@ pub fn render_benchmark_overview(overview: &BenchmarkRunOverview) -> String {
     .unwrap();
     writeln!(
         output,
+        "  partition dimensional metadata valid: {}",
+        overview.validation.partition_dimensional_metadata_valid
+    )
+    .unwrap();
+    writeln!(
+        output,
         "  leaf cardinality valid: {}",
         overview.validation.leaf_cardinality_valid
     )

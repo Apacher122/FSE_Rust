@@ -1,7 +1,6 @@
 //! Leaf record bounds validation diagnostics.
 
-use crate::build::validation::value_is_inside_leaf_bounds;
-use crate::math::Scalar;
+use crate::build::validation::{bounds_ranges_are_valid, value_is_inside_leaf_bounds};
 use crate::storage::{FSEIndex, PartitionNode};
 
 use super::types::LeafRecordBoundsViolation;
@@ -30,7 +29,10 @@ fn collect_leaf_record_bounds_violations(
         return;
     }
 
-    if node.bounds.dimensions() != dimensions || node.residuals.dimensions() != dimensions {
+    if node.bounds.min.len() != dimensions
+        || node.bounds.max.len() != dimensions
+        || node.residuals.dimensions() != dimensions
+    {
         return;
     }
 
@@ -38,7 +40,7 @@ fn collect_leaf_record_bounds_violations(
         return;
     }
 
-    if !bounds_ranges_are_valid(&node.bounds.min, &node.bounds.max) {
+    if !bounds_ranges_are_valid(&node.bounds) {
         return;
     }
 
@@ -62,10 +64,4 @@ fn collect_leaf_record_bounds_violations(
             }
         }
     }
-}
-
-fn bounds_ranges_are_valid(min: &[Scalar], max: &[Scalar]) -> bool {
-    min.iter()
-        .zip(max)
-        .all(|(minimum, maximum)| minimum.is_finite() && maximum.is_finite() && minimum <= maximum)
 }

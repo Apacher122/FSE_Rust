@@ -2,6 +2,8 @@
 
 use crate::storage::FSEIndex;
 
+use super::partition_metadata::bounds_ranges_are_valid;
+
 /// Validates that every child bounding box is contained by its parent.
 ///
 /// # Runtime Role
@@ -20,12 +22,20 @@ pub fn validate_parent_child_bounds(index: &FSEIndex) -> bool {
     }
 
     for node in &index.nodes {
+        if !bounds_ranges_are_valid(&node.bounds) {
+            return false;
+        }
+
         for child_id in &node.children {
             if *child_id >= index.nodes.len() {
                 return false;
             }
 
             let child = &index.nodes[*child_id];
+
+            if !bounds_ranges_are_valid(&child.bounds) {
+                return false;
+            }
 
             if !node.bounds.contains_bounds(&child.bounds) {
                 return false;
