@@ -23,7 +23,21 @@ pub struct Vector {
 
 impl Vector {
     /// Creates a new vector from a sequence of coordinate values.
+    ///
+    /// # Panics
+    ///
+    /// Panics when no coordinates are provided or when any coordinate is not
+    /// finite.
     pub fn new(values: Vec<Scalar>) -> Vector {
+        assert!(
+            !values.is_empty(),
+            "coordinate vector must have at least one dimension"
+        );
+        assert!(
+            values.iter().all(|value| value.is_finite()),
+            "coordinate vector values must be finite"
+        );
+
         Vector { values }
     }
 

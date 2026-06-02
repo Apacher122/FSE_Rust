@@ -17,3 +17,21 @@ fn centroid_of_single_point_is_that_point() {
     let centroid = compute_centroid(&points);
     assert_eq!(centroid, vec![3.0, 7.0]);
 }
+
+#[test]
+#[should_panic(expected = "point coordinates must be finite")]
+fn centroid_rejects_non_finite_point_coordinate() {
+    let points = vec![Vector {
+        values: vec![f32::NAN],
+    }];
+
+    let _centroid = compute_centroid(&points);
+}
+
+#[test]
+#[should_panic(expected = "centroid values must be finite")]
+fn centroid_rejects_non_finite_computed_value() {
+    let points = vec![Vector::new(vec![f32::MAX]), Vector::new(vec![f32::MAX])];
+
+    let _centroid = compute_centroid(&points);
+}

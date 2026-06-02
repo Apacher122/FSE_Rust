@@ -42,19 +42,8 @@ fn compare_points_lexicographically_falls_back_to_vector_length() {
 }
 
 #[test]
-fn compare_points_lexicographically_treats_unordered_scalar_positions_as_equal() {
-    let left = Vector::new(vec![f32::NAN]);
-    let right = Vector::new(vec![0.0]);
-
-    assert_eq!(
-        compare_points_lexicographically(&left, &right),
-        Ordering::Equal
-    );
-}
-
-#[test]
-fn compare_points_lexicographically_continues_after_unordered_scalar_positions() {
-    let left = Vector::new(vec![f32::NAN, 1.0]);
+fn compare_points_lexicographically_continues_after_equal_scalar_positions() {
+    let left = Vector::new(vec![0.0, 1.0]);
     let right = Vector::new(vec![0.0, 2.0]);
 
     assert_eq!(

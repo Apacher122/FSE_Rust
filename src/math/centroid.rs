@@ -15,7 +15,8 @@ use crate::math::{Scalar, Vector};
 ///
 /// # Panics
 ///
-/// Panics when the point set is empty or dimensionality is inconsistent.
+/// Panics when the point set is empty, dimensionality is inconsistent, a point
+/// coordinate is not finite, or a computed centroid value is not finite.
 pub fn compute_centroid(points: &[Vector]) -> Vec<Scalar> {
     assert!(
         !points.is_empty(),
@@ -33,13 +34,18 @@ pub fn compute_centroid(points: &[Vector]) -> Vec<Scalar> {
         );
 
         for dimension in 0..dimensions {
-            centroid[dimension] += point.values[dimension];
+            let coordinate = point.values[dimension];
+
+            assert!(coordinate.is_finite(), "point coordinates must be finite");
+
+            centroid[dimension] += coordinate;
         }
     }
 
     let count = points.len() as Scalar;
     for value in &mut centroid {
         *value /= count;
+        assert!(value.is_finite(), "centroid values must be finite");
     }
     centroid
 }

@@ -16,9 +16,11 @@ impl ResidualBlock {
     ///
     /// # Panics
     ///
-    /// Panics when residual dimensions do not contain the same number of rows.
+    /// Panics when residual dimensions do not contain the same number of rows
+    /// or when any residual value is not finite.
     pub fn new(dimensions: Vec<Vec<Scalar>>) -> Self {
         Self::assert_consistent_shape(&dimensions);
+        Self::assert_finite_values(&dimensions);
 
         Self { dimensions }
     }
@@ -35,11 +37,16 @@ impl ResidualBlock {
     ///
     /// # Panics
     ///
-    /// Panics when dimensionality is inconsistent.
+    /// Panics when dimensionality is inconsistent or when a centroid or point
+    /// coordinate is not finite.
     pub fn from_points(points: &[Vector], centroid: &[Scalar]) -> Self {
         let dimensions = centroid.len();
 
         assert!(dimensions > 0, "centroid must have at least one dimension");
+        assert!(
+            centroid.iter().all(|value| value.is_finite()),
+            "centroid values must be finite"
+        );
 
         let mut residuals = vec![Vec::with_capacity(points.len()); dimensions];
 
@@ -51,7 +58,11 @@ impl ResidualBlock {
             );
 
             for dimension in 0..dimensions {
-                residuals[dimension].push(point.values[dimension] - centroid[dimension]);
+                let coordinate = point.values[dimension];
+
+                assert!(coordinate.is_finite(), "point coordinates must be finite");
+
+                residuals[dimension].push(coordinate - centroid[dimension]);
             }
         }
 
@@ -73,6 +84,14 @@ impl ResidualBlock {
                 "residual dimension {dimension_index} has {} rows but expected {expected_rows}",
                 dimension.len()
             );
+        }
+    }
+
+    fn assert_finite_values(dimensions: &[Vec<Scalar>]) {
+        for dimension in dimensions {
+            for value in dimension {
+                assert!(value.is_finite(), "residual values must be finite");
+            }
         }
     }
 }
