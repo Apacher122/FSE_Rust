@@ -1,6 +1,7 @@
 //! Benchmark tests.
 
 mod app_tests;
+mod app_validation_tests;
 mod baseline_tests;
 mod benchmark_tests;
 mod cli_tests;

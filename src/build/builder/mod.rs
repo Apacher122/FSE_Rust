@@ -11,4 +11,4 @@ mod types;
 pub use acceptance::accepts_split_quality;
 pub use config::BuildConfig;
 pub use construction::FSEBuilder;
-pub use types::ValidatedFSEIndex;
+pub use types::{BuildValidationError, ValidatedFSEIndex};

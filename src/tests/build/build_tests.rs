@@ -330,6 +330,56 @@ fn build_validated_splits_zero_volume_partition_when_extent_improves() {
 }
 
 #[test]
+fn build_checked_returns_validated_index_when_validation_passes() {
+    let points = dominant_gap_points();
+
+    let config = BuildConfig::new(16, 8).with_target_leaf_size(2);
+    let builder = FSEBuilder::new(config);
+    let checked = builder
+        .build_checked(&points)
+        .expect("checked build should accept valid builder output");
+
+    assert!(checked.index.node_count() > 1);
+    assert!(checked.validation.is_valid());
+}
+
+#[test]
+fn build_checked_returns_diagnostics_when_validation_fails() {
+    let points = vec![
+        Vector::new(vec![0.0, 0.0]),
+        Vector::new(vec![1.0, 1.0]),
+        Vector::new(vec![2.0, 2.0]),
+        Vector::new(vec![3.0, 3.0]),
+    ];
+
+    let builder = FSEBuilder::new(BuildConfig::new(1, 0));
+    let error = builder
+        .build_checked(&points)
+        .expect_err("checked build should reject invalid builder output");
+
+    assert!(!error.validation.is_valid());
+    assert!(!error.validation.leaf_cardinality_valid);
+    assert_eq!(
+        error.to_string(),
+        "constructed FSE index failed validation: leaf cardinality"
+    );
+    assert_eq!(error.index.node_count(), 1);
+    assert_eq!(error.diagnostics.leaf_cardinality_violations.len(), 1);
+
+    let violation = &error.diagnostics.leaf_cardinality_violations[0];
+
+    assert_eq!(violation.node_id, 0);
+    assert_eq!(violation.cardinality, 4);
+    assert_eq!(violation.max_leaf_size, 1);
+    assert_eq!(violation.overflow_by, 3);
+
+    let validated = error.into_validated();
+
+    assert_eq!(validated.index.node_count(), 1);
+    assert!(!validated.validation.is_valid());
+}
+
+#[test]
 fn builder_exposes_configuration() {
     let config = BuildConfig::new(4, 12);
     let builder = FSEBuilder::new(config.clone());

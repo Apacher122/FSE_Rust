@@ -2,9 +2,11 @@
 
 use crate::build::builder::acceptance::accepts_split_quality;
 use crate::build::builder::config::BuildConfig;
-use crate::build::builder::types::{AcceptedStructuralSplit, ValidatedFSEIndex};
+use crate::build::builder::types::{
+    AcceptedStructuralSplit, BuildValidationError, ValidatedFSEIndex,
+};
 use crate::build::splitter::best_structural_split;
-use crate::build::validate_index;
+use crate::build::{index_validation_diagnostics, validate_index};
 use crate::math::Vector;
 use crate::storage::{FSEIndex, PartitionNode};
 
@@ -72,8 +74,9 @@ impl FSEBuilder {
     ///
     /// # Runtime Role
     ///
-    /// This is a convenience method for callers that want both the constructed
-    /// hierarchy and an immediate validation report.
+    /// This is a report-only construction path. It always returns the
+    /// constructed index with its validation report, even when validation fails.
+    /// Use [`FSEBuilder::build_checked`] when invalid output should be rejected.
     ///
     /// # Panics
     ///
@@ -83,6 +86,32 @@ impl FSEBuilder {
         let validation = validate_index(&index, self.config.max_leaf_size);
 
         ValidatedFSEIndex { index, validation }
+    }
+
+    /// Builds an index and returns an error when validation fails.
+    ///
+    /// # Runtime Role
+    ///
+    /// This is the strict construction path for callers that need a validated
+    /// hierarchy before query execution or benchmark reporting. Invalid builds
+    /// return compact validation results and detailed diagnostics.
+    ///
+    /// # Panics
+    ///
+    /// Panics under the same conditions as [`FSEBuilder::build`].
+    pub fn build_checked(
+        &self,
+        points: &[Vector],
+    ) -> Result<ValidatedFSEIndex, BuildValidationError> {
+        let validated = self.build_validated(points);
+
+        if validated.validation.is_valid() {
+            return Ok(validated);
+        }
+
+        let diagnostics = index_validation_diagnostics(&validated.index, self.config.max_leaf_size);
+
+        Err(BuildValidationError::new(validated, diagnostics))
     }
 
     fn build_node(

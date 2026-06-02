@@ -10,7 +10,9 @@ use crate::benchmark::runner::{
     MultiBaselineBenchmarkSuiteReport, run_multi_baseline_benchmark_suite_with_options,
 };
 use crate::benchmark::workloads::QueryWorkloadCase;
-use crate::build::{FSEBuilder, IndexValidationReport, index_structure_metrics};
+use crate::build::{
+    BuildValidationError, FSEBuilder, IndexValidationReport, index_structure_metrics,
+};
 use crate::math::Vector;
 use crate::storage::FSEIndex;
 
@@ -65,6 +67,7 @@ impl BenchmarkApplicationContext {
     /// This constructor performs all setup required before benchmark execution:
     /// dataset selection, workload selection, timing configuration, index
     /// construction, validation, and baseline registry initialization.
+    ///
     pub fn from_cli_config(cli_config: BenchmarkCliConfig) -> Self {
         let BenchmarkCliConfig {
             suite_config,
@@ -95,6 +98,46 @@ impl BenchmarkApplicationContext {
             validation: validated.validation,
             registry: BaselineRegistry::new(),
         }
+    }
+
+    /// Tries to build a benchmark application context from parsed CLI configuration.
+    ///
+    /// # Runtime Role
+    ///
+    /// This is the fallible benchmark setup path used by the binary application
+    /// when benchmark execution must not continue with an invalid index.
+    pub fn try_from_cli_config(
+        cli_config: BenchmarkCliConfig,
+    ) -> Result<Self, BuildValidationError> {
+        let BenchmarkCliConfig {
+            suite_config,
+            baseline_set,
+            baseline_kinds,
+            csv_output,
+            terminal_output_mode,
+        } = cli_config;
+
+        let points = suite_config.dataset();
+        let workloads = suite_config.workloads();
+        let timing_config = suite_config.timing_config();
+
+        // build happens once here so the rest of the app uses ready state
+        let builder = FSEBuilder::new(suite_config.build_config());
+        let validated = builder.build_checked(&points)?;
+
+        Ok(Self {
+            suite_config,
+            baseline_set,
+            baseline_kinds,
+            csv_output,
+            terminal_output_mode,
+            points,
+            workloads,
+            timing_config,
+            index: validated.index,
+            validation: validated.validation,
+            registry: BaselineRegistry::new(),
+        })
     }
 
     /// Returns whether this context represents a multi-baseline run.

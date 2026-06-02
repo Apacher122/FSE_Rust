@@ -29,7 +29,7 @@ use crate::benchmark::reports::write_benchmark_csv_outputs;
 pub fn run_benchmark_application(
     cli_config: BenchmarkCliConfig,
 ) -> Result<BenchmarkApplicationOutput, BenchmarkApplicationError> {
-    let context = BenchmarkApplicationContext::from_cli_config(cli_config);
+    let context = BenchmarkApplicationContext::try_from_cli_config(cli_config)?;
     let result_bundle = BenchmarkApplicationResultBundle::from_context(&context);
 
     // keep the public run function as the short happy path

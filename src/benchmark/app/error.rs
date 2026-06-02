@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fmt;
 
 use crate::benchmark::reports::BenchmarkCsvWriteError;
+use crate::build::BuildValidationError;
 
 /// Error returned by benchmark application orchestration.
 ///
@@ -13,6 +14,9 @@ use crate::benchmark::reports::BenchmarkCsvWriteError;
 /// failures that happen after CLI parsing succeeds.
 #[derive(Debug)]
 pub enum BenchmarkApplicationError {
+    /// Checked index construction failed validation.
+    BuildValidation(BuildValidationError),
+
     /// CSV output failed.
     CsvWrite(BenchmarkCsvWriteError),
 }
@@ -20,6 +24,7 @@ pub enum BenchmarkApplicationError {
 impl fmt::Display for BenchmarkApplicationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            BenchmarkApplicationError::BuildValidation(error) => write!(formatter, "{}", error),
             BenchmarkApplicationError::CsvWrite(error) => write!(formatter, "{}", error),
         }
     }
@@ -28,8 +33,15 @@ impl fmt::Display for BenchmarkApplicationError {
 impl Error for BenchmarkApplicationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            BenchmarkApplicationError::BuildValidation(error) => Some(error),
             BenchmarkApplicationError::CsvWrite(error) => Some(error),
         }
+    }
+}
+
+impl From<BuildValidationError> for BenchmarkApplicationError {
+    fn from(error: BuildValidationError) -> Self {
+        Self::BuildValidation(error)
     }
 }
 

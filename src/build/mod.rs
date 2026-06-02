@@ -10,7 +10,7 @@ pub mod validation;
 pub mod validation_diagnostics;
 pub mod variance;
 
-pub use builder::{BuildConfig, FSEBuilder, ValidatedFSEIndex};
+pub use builder::{BuildConfig, BuildValidationError, FSEBuilder, ValidatedFSEIndex};
 pub use metrics::{
     IndexStructureMetrics, SiblingOverlapMetrics, SplitQualityMetrics, bounding_extent_sum,
     index_density, index_structure_metrics, partition_density, sibling_overlap_extent_sum,
