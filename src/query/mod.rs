@@ -38,7 +38,7 @@ pub(crate) use execution::{
     count_retained_matches_without_results, execute_retained_leaf_batch_for_diagnostics,
 };
 pub use reconstruction::{reconstruct_partition, reconstruct_point, reconstruct_row_into};
-pub use region::QueryRegion;
+pub use region::{QueryRegion, QueryRegionError};
 pub use traversal::{
     QueryTraversalReport, QueryTraversalStats, RetainedLeaf, RetainedLeafCoverage, traverse,
     traverse_with_stats,

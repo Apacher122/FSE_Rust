@@ -9,4 +9,5 @@ mod construction;
 mod point_predicate;
 mod shape;
 
+pub use self::construction::QueryRegionError;
 pub use self::shape::QueryRegion;
