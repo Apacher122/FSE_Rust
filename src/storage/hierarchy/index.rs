@@ -1,8 +1,50 @@
 //! Global FSE index hierarchy.
 
+use std::error::Error;
+use std::fmt;
+
 use crate::storage::PartitionNode;
 
 use super::LeafReconstructionShape;
+
+/// Error returned when checked FSE index construction fails.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FSEIndexError {
+    /// No partition nodes were provided.
+    EmptyNodeList,
+    /// The requested root id does not exist in the node list.
+    MissingRoot {
+        /// Requested root node id.
+        root: usize,
+        /// Number of nodes provided.
+        node_count: usize,
+    },
+    /// A node had a different dimensionality than the root node.
+    DimensionMismatch {
+        /// Node containing the mismatched dimensionality.
+        node: usize,
+        /// Dimensionality found in the node.
+        actual_dimensions: usize,
+        /// Dimensionality expected from the root node.
+        expected_dimensions: usize,
+    },
+}
+
+impl fmt::Display for FSEIndexError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyNodeList => formatter.write_str("index must contain at least one node"),
+            Self::MissingRoot { .. } => {
+                formatter.write_str("root node id must exist in the node list")
+            }
+            Self::DimensionMismatch { .. } => {
+                formatter.write_str("all nodes in an index must have the same dimensionality")
+            }
+        }
+    }
+}
+
+impl Error for FSEIndexError {}
 
 /// In-memory representation of an FSE hierarchy.
 ///
@@ -73,19 +115,36 @@ impl FSEIndex {
     /// Panics when the node list is empty, the root does not exist, or node
     /// dimensionality is inconsistent.
     pub fn new(nodes: Vec<PartitionNode>, root: usize) -> Self {
-        assert!(!nodes.is_empty(), "index must contain at least one node");
-        assert!(
-            root < nodes.len(),
-            "root node id must exist in the node list"
-        );
+        Self::try_new(nodes, root).unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    /// Creates a new index and returns an error when hierarchy metadata is invalid.
+    ///
+    /// # Runtime Role
+    ///
+    /// This constructor is intended for caller-facing input validation. It
+    /// enforces the same invariants as [`FSEIndex::new`] without panicking.
+    pub fn try_new(nodes: Vec<PartitionNode>, root: usize) -> Result<Self, FSEIndexError> {
+        if nodes.is_empty() {
+            return Err(FSEIndexError::EmptyNodeList);
+        }
+
+        if root >= nodes.len() {
+            return Err(FSEIndexError::MissingRoot {
+                root,
+                node_count: nodes.len(),
+            });
+        }
 
         let dimensions = nodes[root].dimensions();
-        for node in &nodes {
-            assert_eq!(
-                node.dimensions(),
-                dimensions,
-                "all nodes in an index must have the same dimensionality"
-            );
+        for (node_id, node) in nodes.iter().enumerate() {
+            if node.dimensions() != dimensions {
+                return Err(FSEIndexError::DimensionMismatch {
+                    node: node_id,
+                    actual_dimensions: node.dimensions(),
+                    expected_dimensions: dimensions,
+                });
+            }
         }
 
         let mut leaf_node_ids = Vec::new();
@@ -110,7 +169,7 @@ impl FSEIndex {
 
         let leaf_count = leaf_node_ids.len();
 
-        Self {
+        Ok(Self {
             nodes,
             root,
             dimensions,
@@ -118,12 +177,19 @@ impl FSEIndex {
             leaf_node_ids,
             leaf_reconstruction_shapes,
             leaf_reconstruction_shapes_by_node,
-        }
+        })
     }
 
     /// Creates a single-leaf index from a root partition.
     pub fn from_root(root: PartitionNode) -> Self {
         Self::new(vec![root], 0)
+    }
+
+    /// Creates a single-leaf index from a root partition.
+    ///
+    /// This is the checked counterpart to [`FSEIndex::from_root`].
+    pub fn try_from_root(root: PartitionNode) -> Result<Self, FSEIndexError> {
+        Self::try_new(vec![root], 0)
     }
 
     /// Returns the root partition.

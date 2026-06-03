@@ -8,4 +8,5 @@
 mod construction;
 mod node;
 
+pub use construction::PartitionFromPointsError;
 pub use node::PartitionNode;

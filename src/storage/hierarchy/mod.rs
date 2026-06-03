@@ -3,5 +3,5 @@
 mod index;
 mod leaf_shape;
 
-pub use index::FSEIndex;
+pub use index::{FSEIndex, FSEIndexError};
 pub use leaf_shape::LeafReconstructionShape;
