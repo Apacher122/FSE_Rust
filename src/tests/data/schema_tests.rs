@@ -15,6 +15,14 @@ fn fse_value_reports_non_null_field_type() {
         FSEValue::Boolean(true).field_type(),
         Some(FSEFieldType::Boolean)
     );
+    assert_eq!(
+        FSEValue::TimestampMillis(1_735_689_600_000).field_type(),
+        Some(FSEFieldType::TimestampMillis)
+    );
+    assert_eq!(
+        FSEValue::Category("open".to_string()).field_type(),
+        Some(FSEFieldType::Category)
+    );
 }
 
 #[test]
@@ -31,9 +39,11 @@ fn schema_accepts_unique_named_fields() {
         FSEField::new("case_id", FSEFieldType::Integer, false),
         FSEField::new("category", FSEFieldType::Text, false),
         FSEField::new("latitude", FSEFieldType::Float, true),
+        FSEField::new("created_at", FSEFieldType::TimestampMillis, false),
+        FSEField::new("status", FSEFieldType::Category, false),
     ]);
 
-    assert_eq!(schema.len(), 3);
+    assert_eq!(schema.len(), 5);
     assert!(!schema.is_empty());
     assert_eq!(schema.fields()[0].name, "case_id");
     assert_eq!(
@@ -46,6 +56,20 @@ fn schema_accepts_unique_named_fields() {
             .expect("field should exist")
             .field_type,
         FSEFieldType::Float
+    );
+    assert_eq!(
+        schema
+            .field_named("created_at")
+            .expect("field should exist")
+            .field_type,
+        FSEFieldType::TimestampMillis
+    );
+    assert_eq!(
+        schema
+            .field_named("status")
+            .expect("field should exist")
+            .field_type,
+        FSEFieldType::Category
     );
 }
 

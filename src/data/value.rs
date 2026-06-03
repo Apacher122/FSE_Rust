@@ -20,6 +20,12 @@ pub enum FSEValue {
     /// Boolean value.
     Boolean(bool),
 
+    /// Timestamp value represented as milliseconds since the Unix epoch.
+    TimestampMillis(i64),
+
+    /// Categorical value represented by a stable label.
+    Category(String),
+
     /// Missing value.
     Null,
 }
@@ -32,6 +38,8 @@ impl FSEValue {
             Self::Float(_) => Some(FSEFieldType::Float),
             Self::Text(_) => Some(FSEFieldType::Text),
             Self::Boolean(_) => Some(FSEFieldType::Boolean),
+            Self::TimestampMillis(_) => Some(FSEFieldType::TimestampMillis),
+            Self::Category(_) => Some(FSEFieldType::Category),
             Self::Null => None,
         }
     }
@@ -61,4 +69,10 @@ pub enum FSEFieldType {
 
     /// Boolean field.
     Boolean,
+
+    /// Timestamp field represented as milliseconds since the Unix epoch.
+    TimestampMillis,
+
+    /// Categorical field represented by stable labels.
+    Category,
 }

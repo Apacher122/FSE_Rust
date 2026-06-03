@@ -9,11 +9,13 @@ fn record_accepts_values_matching_schema() {
             FSEValue::Text("burglary".to_string()),
             FSEValue::Float(41.881),
             FSEValue::Null,
+            FSEValue::TimestampMillis(1_735_689_600_000),
+            FSEValue::Category("open".to_string()),
         ],
         &schema,
     );
 
-    assert_eq!(record.len(), 4);
+    assert_eq!(record.len(), 6);
     assert!(!record.is_empty());
     assert_eq!(record.value(0), Some(&FSEValue::Integer(42)));
     assert_eq!(
@@ -34,12 +36,12 @@ fn checked_record_reports_field_count_mismatch() {
         error,
         FSERecordError::FieldCountMismatch {
             value_count: 1,
-            field_count: 4,
+            field_count: 6,
         }
     );
     assert_eq!(
         error.to_string(),
-        "record has 1 values but schema requires 4"
+        "record has 1 values but schema requires 6"
     );
 }
 
@@ -53,6 +55,8 @@ fn checked_record_reports_null_for_non_nullable_field() {
             FSEValue::Null,
             FSEValue::Float(41.881),
             FSEValue::Null,
+            FSEValue::TimestampMillis(1_735_689_600_000),
+            FSEValue::Category("open".to_string()),
         ],
         &schema,
     )
@@ -80,6 +84,8 @@ fn checked_record_allows_null_for_nullable_field() {
             FSEValue::Text("burglary".to_string()),
             FSEValue::Float(41.881),
             FSEValue::Null,
+            FSEValue::TimestampMillis(1_735_689_600_000),
+            FSEValue::Category("open".to_string()),
         ],
         &schema,
     )
@@ -98,6 +104,8 @@ fn checked_record_reports_field_type_mismatch() {
             FSEValue::Text("burglary".to_string()),
             FSEValue::Float(41.881),
             FSEValue::Null,
+            FSEValue::TimestampMillis(1_735_689_600_000),
+            FSEValue::Category("open".to_string()),
         ],
         &schema,
     )
@@ -119,7 +127,98 @@ fn checked_record_reports_field_type_mismatch() {
 }
 
 #[test]
-#[should_panic(expected = "record has 1 values but schema requires 4")]
+fn checked_record_accepts_temporal_and_categorical_values() {
+    let schema = crime_schema();
+
+    let record = FSERecord::try_new(
+        vec![
+            FSEValue::Integer(42),
+            FSEValue::Text("burglary".to_string()),
+            FSEValue::Float(41.881),
+            FSEValue::Null,
+            FSEValue::TimestampMillis(1_735_689_600_000),
+            FSEValue::Category("open".to_string()),
+        ],
+        &schema,
+    )
+    .expect("temporal and categorical values should match schema");
+
+    assert_eq!(
+        record.value_named(&schema, "created_at"),
+        Some(&FSEValue::TimestampMillis(1_735_689_600_000))
+    );
+    assert_eq!(
+        record.value_named(&schema, "status"),
+        Some(&FSEValue::Category("open".to_string()))
+    );
+}
+
+#[test]
+fn checked_record_reports_temporal_type_mismatch() {
+    let schema = crime_schema();
+
+    let error = FSERecord::try_new(
+        vec![
+            FSEValue::Integer(42),
+            FSEValue::Text("burglary".to_string()),
+            FSEValue::Float(41.881),
+            FSEValue::Null,
+            FSEValue::Integer(1_735_689_600_000),
+            FSEValue::Category("open".to_string()),
+        ],
+        &schema,
+    )
+    .expect_err("timestamp field should reject integer value");
+
+    assert_eq!(
+        error,
+        FSERecordError::FieldTypeMismatch {
+            field: 4,
+            name: "created_at".to_string(),
+            expected: FSEFieldType::TimestampMillis,
+            actual: FSEFieldType::Integer,
+        }
+    );
+    assert_eq!(
+        error.to_string(),
+        "field 'created_at' expected TimestampMillis but found Integer"
+    );
+}
+
+#[test]
+fn checked_record_reports_categorical_type_mismatch() {
+    let schema = crime_schema();
+
+    let error = FSERecord::try_new(
+        vec![
+            FSEValue::Integer(42),
+            FSEValue::Text("burglary".to_string()),
+            FSEValue::Float(41.881),
+            FSEValue::Null,
+            FSEValue::TimestampMillis(1_735_689_600_000),
+            FSEValue::Text("open".to_string()),
+        ],
+        &schema,
+    )
+    .expect_err("category field should reject text value");
+
+    assert_eq!(
+        error,
+        FSERecordError::FieldTypeMismatch {
+            field: 5,
+            name: "status".to_string(),
+            expected: FSEFieldType::Category,
+            actual: FSEFieldType::Text,
+        }
+    );
+    assert_eq!(
+        error.to_string(),
+        "field 'status' expected Category but found Text"
+    );
+}
+
+#[test]
+#[should_panic(expected = "record has 1 values but schema requires 6")]
 fn record_rejects_field_count_mismatch() {
     let schema = crime_schema();
 
@@ -132,5 +231,7 @@ fn crime_schema() -> FSESchema {
         FSEField::new("category", FSEFieldType::Text, false),
         FSEField::new("latitude", FSEFieldType::Float, false),
         FSEField::new("notes", FSEFieldType::Text, true),
+        FSEField::new("created_at", FSEFieldType::TimestampMillis, false),
+        FSEField::new("status", FSEFieldType::Category, false),
     ])
 }
