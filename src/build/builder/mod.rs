@@ -9,6 +9,6 @@ mod construction;
 mod types;
 
 pub use acceptance::accepts_split_quality;
-pub use config::BuildConfig;
+pub use config::{BuildConfig, BuildConfigError};
 pub use construction::FSEBuilder;
-pub use types::{BuildValidationError, ValidatedFSEIndex};
+pub use types::{BuildCheckedError, BuildInputError, BuildValidationError, ValidatedFSEIndex};

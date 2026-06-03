@@ -1,8 +1,9 @@
 use crate::build::builder::accepts_split_quality;
 use crate::build::{
-    BuildConfig, FSEBuilder, split_quality_metrics_for_axis, validate_leaf_cardinality,
+    BuildCheckedError, BuildConfig, BuildConfigError, BuildInputError, FSEBuilder,
+    split_quality_metrics_for_axis, validate_leaf_cardinality,
 };
-use crate::math::Vector;
+use crate::math::{CentroidError, Vector};
 use crate::query::{QueryRegion, execute_query};
 
 #[test]
@@ -15,6 +16,76 @@ fn builder_creates_single_leaf_when_points_fit_target_leaf_size() {
     assert_eq!(index.node_count(), 1);
     assert!(index.root_node().is_leaf);
     assert_eq!(index.root_node().cardinality, 2);
+}
+
+#[test]
+fn checked_builder_creates_single_leaf_when_points_fit_target_leaf_size() {
+    let points = vec![Vector::new(vec![0.0, 0.0]), Vector::new(vec![1.0, 1.0])];
+
+    let builder = FSEBuilder::new(BuildConfig::new(4, 8));
+    let index = builder
+        .try_build(&points)
+        .expect("valid points should build an index");
+
+    assert_eq!(index.node_count(), 1);
+    assert!(index.root_node().is_leaf);
+    assert_eq!(index.root_node().cardinality, 2);
+}
+
+#[test]
+fn checked_builder_reports_empty_point_input() {
+    let builder = FSEBuilder::new(BuildConfig::new(4, 8));
+
+    let error = builder
+        .try_build(&[])
+        .expect_err("empty point input should be rejected");
+
+    assert_eq!(error, BuildInputError::EmptyPointSet);
+    assert_eq!(error.to_string(), "cannot build an index from empty points");
+}
+
+#[test]
+fn checked_builder_reports_dimension_mismatch() {
+    let points = vec![Vector::new(vec![0.0, 0.0]), Vector::new(vec![1.0])];
+    let builder = FSEBuilder::new(BuildConfig::new(4, 8));
+
+    let error = builder
+        .try_build(&points)
+        .expect_err("mismatched point dimensions should be rejected");
+
+    assert_eq!(
+        error,
+        BuildInputError::Points(CentroidError::DimensionMismatch {
+            point: 1,
+            actual_dimensions: 1,
+            expected_dimensions: 2,
+        })
+    );
+    assert_eq!(
+        error.to_string(),
+        "all points must have the same dimensionality"
+    );
+}
+
+#[test]
+fn checked_builder_reports_non_finite_point_coordinate() {
+    let points = vec![Vector {
+        values: vec![f32::NAN],
+    }];
+    let builder = FSEBuilder::new(BuildConfig::new(4, 8));
+
+    let error = builder
+        .try_build(&points)
+        .expect_err("non-finite point coordinate should be rejected");
+
+    assert_eq!(
+        error,
+        BuildInputError::Points(CentroidError::NonFiniteCoordinate {
+            point: 0,
+            dimension: 0,
+        })
+    );
+    assert_eq!(error.to_string(), "point coordinates must be finite");
 }
 
 #[test]
@@ -149,11 +220,75 @@ fn build_config_uses_max_leaf_size_as_default_target_leaf_size() {
 }
 
 #[test]
+fn checked_build_config_uses_max_leaf_size_as_default_target_leaf_size() {
+    let config = BuildConfig::try_new(4, 8).expect("valid build config should be accepted");
+
+    assert_eq!(config.target_leaf_size, 4);
+    assert_eq!(config.max_leaf_size, 4);
+}
+
+#[test]
+fn checked_build_config_reports_zero_max_leaf_size() {
+    let error = BuildConfig::try_new(0, 8).expect_err("zero max leaf size should be rejected");
+
+    assert_eq!(error, BuildConfigError::MaxLeafSizeZero);
+    assert_eq!(error.to_string(), "max_leaf_size must be greater than zero");
+}
+
+#[test]
 fn build_config_can_set_target_leaf_size_below_hard_leaf_size() {
     let config = BuildConfig::new(8, 8).with_target_leaf_size(3);
 
     assert_eq!(config.target_leaf_size, 3);
     assert_eq!(config.max_leaf_size, 8);
+}
+
+#[test]
+fn checked_build_config_can_set_target_leaf_size_below_hard_leaf_size() {
+    let config = BuildConfig::new(8, 8)
+        .try_with_target_leaf_size(3)
+        .expect("valid target leaf size should be accepted");
+
+    assert_eq!(config.target_leaf_size, 3);
+    assert_eq!(config.max_leaf_size, 8);
+}
+
+#[test]
+fn checked_build_config_reports_zero_target_leaf_size() {
+    let error = BuildConfig::new(8, 8)
+        .try_with_target_leaf_size(0)
+        .expect_err("zero target leaf size should be rejected");
+
+    assert_eq!(error, BuildConfigError::TargetLeafSizeZero);
+    assert_eq!(
+        error.to_string(),
+        "target_leaf_size must be greater than zero"
+    );
+}
+
+#[test]
+fn checked_build_config_reports_target_leaf_size_above_hard_leaf_size() {
+    let error = BuildConfig::new(8, 8)
+        .try_with_target_leaf_size(9)
+        .expect_err("target leaf size above hard leaf size should be rejected");
+
+    assert_eq!(
+        error,
+        BuildConfigError::TargetLeafSizeExceedsMax {
+            target_leaf_size: 9,
+            max_leaf_size: 8,
+        }
+    );
+    assert_eq!(
+        error.to_string(),
+        "target_leaf_size must not exceed max_leaf_size"
+    );
+}
+
+#[test]
+#[should_panic(expected = "max_leaf_size must be greater than zero")]
+fn build_config_rejects_zero_max_leaf_size() {
+    let _ = BuildConfig::new(0, 8);
 }
 
 #[test]
@@ -272,6 +407,24 @@ fn build_validated_returns_index_and_validation_report() {
 }
 
 #[test]
+fn checked_build_validated_returns_index_and_validation_report() {
+    let points = vec![
+        Vector::new(vec![0.0, 0.0]),
+        Vector::new(vec![1.0, 1.0]),
+        Vector::new(vec![8.0, 8.0]),
+        Vector::new(vec![9.0, 9.0]),
+    ];
+
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let validated = builder
+        .try_build_validated(&points)
+        .expect("valid points should build a validated index");
+
+    assert_eq!(validated.index.node_count(), 3);
+    assert!(validated.validation.is_valid());
+}
+
+#[test]
 fn build_validated_keeps_leaf_cardinality_valid_when_hard_split_is_forced() {
     let points = neutral_grid_points();
 
@@ -344,6 +497,35 @@ fn build_checked_returns_validated_index_when_validation_passes() {
 }
 
 #[test]
+fn try_build_checked_returns_validated_index_when_validation_passes() {
+    let points = dominant_gap_points();
+
+    let config = BuildConfig::new(16, 8).with_target_leaf_size(2);
+    let builder = FSEBuilder::new(config);
+    let checked = builder
+        .try_build_checked(&points)
+        .expect("checked build should accept valid builder output");
+
+    assert!(checked.index.node_count() > 1);
+    assert!(checked.validation.is_valid());
+}
+
+#[test]
+fn try_build_checked_reports_input_errors() {
+    let builder = FSEBuilder::new(BuildConfig::new(16, 8));
+
+    let error = builder
+        .try_build_checked(&[])
+        .expect_err("empty point input should be rejected");
+
+    assert_eq!(
+        error,
+        BuildCheckedError::Input(BuildInputError::EmptyPointSet)
+    );
+    assert_eq!(error.to_string(), "cannot build an index from empty points");
+}
+
+#[test]
 fn build_checked_returns_diagnostics_when_validation_fails() {
     let points = vec![
         Vector::new(vec![0.0, 0.0]),
@@ -377,6 +559,33 @@ fn build_checked_returns_diagnostics_when_validation_fails() {
 
     assert_eq!(validated.index.node_count(), 1);
     assert!(!validated.validation.is_valid());
+}
+
+#[test]
+fn try_build_checked_returns_diagnostics_when_validation_fails() {
+    let points = vec![
+        Vector::new(vec![0.0, 0.0]),
+        Vector::new(vec![1.0, 1.0]),
+        Vector::new(vec![2.0, 2.0]),
+        Vector::new(vec![3.0, 3.0]),
+    ];
+
+    let builder = FSEBuilder::new(BuildConfig::new(1, 0));
+    let error = builder
+        .try_build_checked(&points)
+        .expect_err("checked build should reject invalid builder output");
+
+    let BuildCheckedError::Validation(error) = error else {
+        panic!("expected validation error");
+    };
+
+    assert!(!error.validation.is_valid());
+    assert!(!error.validation.leaf_cardinality_valid);
+    assert_eq!(
+        error.to_string(),
+        "constructed FSE index failed validation: leaf cardinality"
+    );
+    assert_eq!(error.index.node_count(), 1);
 }
 
 #[test]

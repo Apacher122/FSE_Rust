@@ -6,7 +6,7 @@ use std::fmt;
 use crate::build::metrics::SplitQualityMetrics;
 use crate::build::validation::IndexValidationReport;
 use crate::build::validation_diagnostics::IndexValidationDiagnostics;
-use crate::math::Vector;
+use crate::math::{CentroidError, Vector};
 use crate::storage::FSEIndex;
 
 /// Builder output paired with validation results.
@@ -22,6 +22,42 @@ pub struct ValidatedFSEIndex {
 
     /// Validation report for the constructed index.
     pub validation: IndexValidationReport,
+}
+
+/// Error returned when checked builder input validation fails.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BuildInputError {
+    /// No coordinate vectors were provided.
+    EmptyPointSet,
+    /// Point validation failed before recursive construction.
+    Points(CentroidError),
+}
+
+impl fmt::Display for BuildInputError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyPointSet => formatter.write_str("cannot build an index from empty points"),
+            Self::Points(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for BuildInputError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::EmptyPointSet => None,
+            Self::Points(error) => Some(error),
+        }
+    }
+}
+
+impl From<CentroidError> for BuildInputError {
+    fn from(error: CentroidError) -> Self {
+        match error {
+            CentroidError::EmptyPointSet => Self::EmptyPointSet,
+            other => Self::Points(other),
+        }
+    }
 }
 
 /// Error returned when checked construction produces an invalid index.
@@ -117,6 +153,45 @@ impl fmt::Display for BuildValidationError {
 }
 
 impl Error for BuildValidationError {}
+
+/// Error returned by strict checked index construction.
+#[derive(Clone, Debug, PartialEq)]
+pub enum BuildCheckedError {
+    /// Builder input validation failed.
+    Input(BuildInputError),
+    /// Constructed output failed index validation.
+    Validation(BuildValidationError),
+}
+
+impl fmt::Display for BuildCheckedError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Input(error) => error.fmt(formatter),
+            Self::Validation(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for BuildCheckedError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Input(error) => Some(error),
+            Self::Validation(error) => Some(error),
+        }
+    }
+}
+
+impl From<BuildInputError> for BuildCheckedError {
+    fn from(error: BuildInputError) -> Self {
+        Self::Input(error)
+    }
+}
+
+impl From<BuildValidationError> for BuildCheckedError {
+    fn from(error: BuildValidationError) -> Self {
+        Self::Validation(error)
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct AcceptedStructuralSplit {

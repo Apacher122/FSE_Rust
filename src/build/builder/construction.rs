@@ -3,11 +3,12 @@
 use crate::build::builder::acceptance::accepts_split_quality;
 use crate::build::builder::config::BuildConfig;
 use crate::build::builder::types::{
-    AcceptedStructuralSplit, BuildValidationError, ValidatedFSEIndex,
+    AcceptedStructuralSplit, BuildCheckedError, BuildInputError, BuildValidationError,
+    ValidatedFSEIndex,
 };
 use crate::build::splitter::best_structural_split;
 use crate::build::{index_validation_diagnostics, validate_index};
-use crate::math::Vector;
+use crate::math::{Vector, try_compute_centroid};
 use crate::storage::{FSEIndex, PartitionNode};
 
 /// Builder for constructing an FSE index from coordinate vectors.
@@ -49,25 +50,23 @@ impl FSEBuilder {
     ///
     /// Panics when the point set is empty or dimensionality is inconsistent.
     pub fn build(&self, points: &[Vector]) -> FSEIndex {
-        assert!(
-            !points.is_empty(),
-            "cannot build an index from empty points"
-        );
+        self.try_build(points)
+            .unwrap_or_else(|error| panic!("{error}"))
+    }
 
-        let dimensions = points[0].dimensions();
-
-        for point in points {
-            assert_eq!(
-                point.dimensions(),
-                dimensions,
-                "all points must have the same dimensionality"
-            );
-        }
-
+    /// Builds an index and returns an error when input points are invalid.
+    ///
+    /// # Runtime Role
+    ///
+    /// This constructor is intended for caller-facing input validation. It
+    /// enforces the same input invariants as [`FSEBuilder::build`] without
+    /// panicking.
+    pub fn try_build(&self, points: &[Vector]) -> Result<FSEIndex, BuildInputError> {
+        validate_build_points(points)?;
         let mut nodes = Vec::new();
         let root = self.build_node(points.to_vec(), 0, &mut nodes);
 
-        FSEIndex::new(nodes, root)
+        Ok(FSEIndex::new(nodes, root))
     }
 
     /// Builds an index and validates the constructed result.
@@ -82,10 +81,23 @@ impl FSEBuilder {
     ///
     /// Panics under the same conditions as [`FSEBuilder::build`].
     pub fn build_validated(&self, points: &[Vector]) -> ValidatedFSEIndex {
-        let index = self.build(points);
+        self.try_build_validated(points)
+            .unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    /// Builds an index with validation and returns an error when input is invalid.
+    ///
+    /// # Runtime Role
+    ///
+    /// This is the checked counterpart to [`FSEBuilder::build_validated`].
+    pub fn try_build_validated(
+        &self,
+        points: &[Vector],
+    ) -> Result<ValidatedFSEIndex, BuildInputError> {
+        let index = self.try_build(points)?;
         let validation = validate_index(&index, self.config.max_leaf_size);
 
-        ValidatedFSEIndex { index, validation }
+        Ok(ValidatedFSEIndex { index, validation })
     }
 
     /// Builds an index and returns an error when validation fails.
@@ -103,7 +115,24 @@ impl FSEBuilder {
         &self,
         points: &[Vector],
     ) -> Result<ValidatedFSEIndex, BuildValidationError> {
-        let validated = self.build_validated(points);
+        self.try_build_checked(points).map_err(|error| match error {
+            BuildCheckedError::Input(input) => panic!("{input}"),
+            BuildCheckedError::Validation(validation) => validation,
+        })
+    }
+
+    /// Builds an index and returns an error when input or output validation fails.
+    ///
+    /// # Runtime Role
+    ///
+    /// This is the fully checked build path. Invalid input points return
+    /// [`BuildInputError`]. Invalid constructed hierarchy output returns
+    /// [`BuildValidationError`].
+    pub fn try_build_checked(
+        &self,
+        points: &[Vector],
+    ) -> Result<ValidatedFSEIndex, BuildCheckedError> {
+        let validated = self.try_build_validated(points)?;
 
         if validated.validation.is_valid() {
             return Ok(validated);
@@ -111,7 +140,7 @@ impl FSEBuilder {
 
         let diagnostics = index_validation_diagnostics(&validated.index, self.config.max_leaf_size);
 
-        Err(BuildValidationError::new(validated, diagnostics))
+        Err(BuildValidationError::new(validated, diagnostics).into())
     }
 
     fn build_node(
@@ -181,4 +210,14 @@ impl FSEBuilder {
             was_forced,
         })
     }
+}
+
+fn validate_build_points(points: &[Vector]) -> Result<(), BuildInputError> {
+    if points.is_empty() {
+        return Err(BuildInputError::EmptyPointSet);
+    }
+
+    try_compute_centroid(points)?;
+
+    Ok(())
 }

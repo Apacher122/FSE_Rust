@@ -1,5 +1,40 @@
 //! Builder configuration.
 
+use std::error::Error;
+use std::fmt;
+
+/// Error returned when checked build configuration fails.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BuildConfigError {
+    /// The hard maximum leaf size was zero.
+    MaxLeafSizeZero,
+    /// The target leaf size was zero.
+    TargetLeafSizeZero,
+    /// The target leaf size exceeded the hard maximum leaf size.
+    TargetLeafSizeExceedsMax {
+        /// Requested target leaf size.
+        target_leaf_size: usize,
+        /// Hard maximum leaf size.
+        max_leaf_size: usize,
+    },
+}
+
+impl fmt::Display for BuildConfigError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MaxLeafSizeZero => formatter.write_str("max_leaf_size must be greater than zero"),
+            Self::TargetLeafSizeZero => {
+                formatter.write_str("target_leaf_size must be greater than zero")
+            }
+            Self::TargetLeafSizeExceedsMax { .. } => {
+                formatter.write_str("target_leaf_size must not exceed max_leaf_size")
+            }
+        }
+    }
+}
+
+impl Error for BuildConfigError {}
+
 /// Configuration for recursive FSE index construction.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BuildConfig {
@@ -48,14 +83,26 @@ impl BuildConfig {
     ///
     /// Panics when `max_leaf_size` is zero.
     pub fn new(max_leaf_size: usize, max_depth: usize) -> Self {
-        assert!(max_leaf_size > 0, "max_leaf_size must be greater than zero");
+        Self::try_new(max_leaf_size, max_depth).unwrap_or_else(|error| panic!("{error}"))
+    }
 
-        Self {
+    /// Creates a new build configuration and returns an error when invalid.
+    ///
+    /// # Runtime Role
+    ///
+    /// This constructor is intended for caller-facing input validation. It
+    /// enforces the same invariants as [`BuildConfig::new`] without panicking.
+    pub fn try_new(max_leaf_size: usize, max_depth: usize) -> Result<Self, BuildConfigError> {
+        if max_leaf_size == 0 {
+            return Err(BuildConfigError::MaxLeafSizeZero);
+        }
+
+        Ok(Self {
             target_leaf_size: max_leaf_size,
             max_leaf_size,
             max_depth,
             require_positive_split_volume_reduction: true,
-        }
+        })
     }
 
     /// Returns a copy of this configuration with a different target leaf size.
@@ -68,18 +115,35 @@ impl BuildConfig {
     /// # Panics
     ///
     /// Panics when `target_leaf_size` is zero or greater than `max_leaf_size`.
-    pub fn with_target_leaf_size(mut self, target_leaf_size: usize) -> Self {
-        assert!(
-            target_leaf_size > 0,
-            "target_leaf_size must be greater than zero"
-        );
-        assert!(
-            target_leaf_size <= self.max_leaf_size,
-            "target_leaf_size must not exceed max_leaf_size"
-        );
+    pub fn with_target_leaf_size(self, target_leaf_size: usize) -> Self {
+        self.try_with_target_leaf_size(target_leaf_size)
+            .unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    /// Returns a checked copy of this configuration with a different target leaf size.
+    ///
+    /// # Runtime Role
+    ///
+    /// This method is intended for caller-facing input validation. It enforces
+    /// the same invariants as [`BuildConfig::with_target_leaf_size`] without
+    /// panicking.
+    pub fn try_with_target_leaf_size(
+        mut self,
+        target_leaf_size: usize,
+    ) -> Result<Self, BuildConfigError> {
+        if target_leaf_size == 0 {
+            return Err(BuildConfigError::TargetLeafSizeZero);
+        }
+
+        if target_leaf_size > self.max_leaf_size {
+            return Err(BuildConfigError::TargetLeafSizeExceedsMax {
+                target_leaf_size,
+                max_leaf_size: self.max_leaf_size,
+            });
+        }
 
         self.target_leaf_size = target_leaf_size;
-        self
+        Ok(self)
     }
 
     /// Returns a copy of this configuration with split-volume gating changed.
