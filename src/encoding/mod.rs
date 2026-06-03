@@ -5,8 +5,10 @@
 
 mod coordinate;
 mod error;
+mod numeric;
 mod traits;
 
 pub use coordinate::EncodedCoordinates;
 pub use error::FSEEncodingError;
+pub use numeric::{BooleanEncoder, FloatEncoder, IntegerEncoder, TimestampMillisEncoder};
 pub use traits::{FSEFieldEncoder, FSERecordEncoder};
