@@ -58,6 +58,7 @@
 
 pub mod benchmark;
 pub mod build;
+pub mod data;
 pub mod math;
 pub mod query;
 pub mod storage;
