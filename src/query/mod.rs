@@ -17,6 +17,7 @@
 
 pub mod evaluator;
 pub mod execution;
+pub mod predicate;
 pub mod reconstruction;
 pub mod region;
 pub mod traversal;
@@ -36,6 +37,10 @@ pub use execution::{
 
 pub(crate) use execution::{
     count_retained_matches_without_results, execute_retained_leaf_batch_for_diagnostics,
+};
+pub use predicate::{
+    FSEPredicate, FSEPredicateError, FSEPredicateField, FSEPredicateOperator,
+    ValidatedFSEPredicate, ValidatedFSEPredicateOperator,
 };
 pub use reconstruction::{reconstruct_partition, reconstruct_point, reconstruct_row_into};
 pub use region::{QueryRegion, QueryRegionError};
