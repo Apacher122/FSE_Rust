@@ -15,7 +15,6 @@
 //! when callers need cardinality or non-empty-result information instead of
 //! rows.
 
-pub mod evaluator;
 pub mod execution;
 pub mod predicate;
 pub mod predicate_compiler;
@@ -24,7 +23,6 @@ pub mod reconstruction;
 pub mod region;
 pub mod traversal;
 
-pub use evaluator::evaluate_query;
 pub use execution::{
     QueryCountReport, QueryExecutionMode, QueryExecutionOptions, QueryExecutionReport,
     QueryExecutionStats, QueryExistenceReport, QueryReferenceReport, QueryResultReference,
@@ -50,7 +48,7 @@ pub use predicate_compiler::{
 };
 pub use predicate_evaluator::evaluate_typed_predicate;
 pub use reconstruction::{reconstruct_partition, reconstruct_point, reconstruct_row_into};
-pub use region::{QueryRegion, QueryRegionError};
+pub use region::{QueryRegion, QueryRegionError, evaluate_query};
 pub use traversal::{
     QueryTraversalReport, QueryTraversalStats, RetainedLeaf, RetainedLeafCoverage, traverse,
     traverse_with_stats,

@@ -1,15 +1,15 @@
-//! Exact point-level query evaluation.
+//! Exact point-level query region evaluation.
 
 use crate::math::Vector;
-use crate::query::QueryRegion;
+
+use super::QueryRegion;
 
 /// Evaluates reconstructed points against a query region.
 ///
 /// # Runtime Role
 ///
-/// Predicate evaluation performs Stage III of the FSE query pipeline. It filters
-/// reconstructed candidate records after metadata pruning and deferred
-/// reconstruction have already occurred.
+/// Region evaluation filters reconstructed candidate records after metadata
+/// pruning and deferred reconstruction have already occurred.
 ///
 /// # Formal Reference
 ///
