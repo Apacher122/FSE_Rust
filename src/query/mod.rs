@@ -18,6 +18,7 @@
 pub mod evaluator;
 pub mod execution;
 pub mod predicate;
+pub mod predicate_compiler;
 pub mod reconstruction;
 pub mod region;
 pub mod traversal;
@@ -42,6 +43,7 @@ pub use predicate::{
     FSEPredicate, FSEPredicateError, FSEPredicateField, FSEPredicateOperator,
     ValidatedFSEPredicate, ValidatedFSEPredicateOperator,
 };
+pub use predicate_compiler::{FSEPredicateCompileError, compile_numeric_predicate_to_query_region};
 pub use reconstruction::{reconstruct_partition, reconstruct_point, reconstruct_row_into};
 pub use region::{QueryRegion, QueryRegionError};
 pub use traversal::{
