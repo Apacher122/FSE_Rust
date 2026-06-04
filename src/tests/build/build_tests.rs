@@ -3,6 +3,11 @@ use crate::build::{
     BuildCheckedError, BuildConfig, BuildConfigError, BuildInputError, FSEBuilder,
     split_quality_metrics_for_axis, validate_leaf_cardinality,
 };
+use crate::data::{FSEField, FSEFieldType, FSERecord, FSERecordBatch, FSESchema, FSEValue, RowId};
+use crate::encoding::{
+    CategoricalDictionaryEncoder, ComposedRecordEncoder, EncodedRecordBatch, FloatEncoder,
+    IntegerEncoder, encode_record_batch,
+};
 use crate::math::{CentroidError, Vector};
 use crate::query::{QueryRegion, execute_query};
 
@@ -30,6 +35,45 @@ fn checked_builder_creates_single_leaf_when_points_fit_target_leaf_size() {
     assert_eq!(index.node_count(), 1);
     assert!(index.root_node().is_leaf);
     assert_eq!(index.root_node().cardinality, 2);
+}
+
+#[test]
+fn builder_creates_index_from_encoded_record_batch() {
+    let schema = build_crime_schema();
+    let batch = build_crime_batch(&schema);
+    let encoder = build_crime_encoder(&schema);
+    let encoded = encode_record_batch(&batch, &encoder).expect("valid batch should encode");
+
+    let builder = FSEBuilder::new(BuildConfig::new(4, 8));
+    let index = builder
+        .try_build_encoded_batch(&encoded)
+        .expect("encoded batch should build an index");
+
+    assert_eq!(index.node_count(), 1);
+    assert!(index.root_node().is_leaf);
+    assert_eq!(index.root_node().cardinality, 2);
+}
+
+#[test]
+fn checked_builder_reports_empty_encoded_batch_input() {
+    let encoded = EncodedRecordBatch::new(Vec::new(), Vec::new());
+    let builder = FSEBuilder::new(BuildConfig::new(4, 8));
+
+    let error = builder
+        .try_build_encoded_batch(&encoded)
+        .expect_err("empty encoded batch should be rejected");
+
+    assert_eq!(error, BuildInputError::EmptyPointSet);
+    assert_eq!(error.to_string(), "cannot build an index from empty points");
+}
+
+#[test]
+#[should_panic(expected = "cannot build an index from empty points")]
+fn builder_rejects_empty_encoded_batch() {
+    let encoded = EncodedRecordBatch::new(Vec::new(), Vec::new());
+    let builder = FSEBuilder::new(BuildConfig::new(4, 8));
+
+    let _index = builder.build_encoded_batch(&encoded);
 }
 
 #[test]
@@ -637,4 +681,48 @@ fn dominant_gap_points() -> Vec<Vector> {
         Vector::new(vec![51.0, 0.0]),
         Vector::new(vec![52.0, 0.0]),
     ]
+}
+
+fn build_crime_schema() -> FSESchema {
+    FSESchema::new(vec![
+        FSEField::new("case_id", FSEFieldType::Integer, false),
+        FSEField::new("latitude", FSEFieldType::Float, false),
+        FSEField::new("status", FSEFieldType::Category, false),
+    ])
+}
+
+fn build_crime_encoder(schema: &FSESchema) -> ComposedRecordEncoder {
+    ComposedRecordEncoder::new(
+        schema,
+        vec![
+            Box::new(IntegerEncoder),
+            Box::new(FloatEncoder),
+            Box::new(CategoricalDictionaryEncoder::new(vec![
+                "open".to_string(),
+                "closed".to_string(),
+            ])),
+        ],
+    )
+}
+
+fn build_crime_batch(schema: &FSESchema) -> FSERecordBatch {
+    FSERecordBatch::new(
+        schema.clone(),
+        vec![RowId::new(10), RowId::new(11)],
+        vec![
+            build_crime_record(schema, 42, 41.881, "open"),
+            build_crime_record(schema, 43, 41.882, "closed"),
+        ],
+    )
+}
+
+fn build_crime_record(schema: &FSESchema, case_id: i64, latitude: f64, status: &str) -> FSERecord {
+    FSERecord::new(
+        vec![
+            FSEValue::Integer(case_id),
+            FSEValue::Float(latitude),
+            FSEValue::Category(status.to_string()),
+        ],
+        schema,
+    )
 }

@@ -8,6 +8,7 @@ use crate::build::builder::types::{
 };
 use crate::build::splitter::best_structural_split;
 use crate::build::{index_validation_diagnostics, validate_index};
+use crate::encoding::EncodedRecordBatch;
 use crate::math::{Vector, try_compute_centroid};
 use crate::storage::{FSEIndex, PartitionNode};
 
@@ -42,6 +43,29 @@ impl FSEBuilder {
     /// Returns the builder configuration.
     pub fn config(&self) -> &BuildConfig {
         &self.config
+    }
+
+    /// Builds an index from an encoded record batch.
+    ///
+    /// # Runtime Role
+    ///
+    /// This method is the typed-data entry point after semantic encoding has
+    /// produced coordinate vectors.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the encoded batch contains no vectors.
+    pub fn build_encoded_batch(&self, batch: &EncodedRecordBatch) -> FSEIndex {
+        self.try_build_encoded_batch(batch)
+            .unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    /// Builds an index from an encoded record batch and returns an error when invalid.
+    pub fn try_build_encoded_batch(
+        &self,
+        batch: &EncodedRecordBatch,
+    ) -> Result<FSEIndex, BuildInputError> {
+        self.try_build(batch.vectors())
     }
 
     /// Builds an index from raw coordinate vectors.
