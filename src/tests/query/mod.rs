@@ -12,6 +12,7 @@ mod execution_parallel_workload_tests;
 mod execution_root_coverage_tests;
 mod exists_tests;
 mod predicate_compiler_tests;
+mod predicate_evaluator_tests;
 mod predicate_tests;
 mod query_region_tests;
 mod query_tests;
