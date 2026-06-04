@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fmt;
 
 use crate::data::{FSEFieldType, FSESchemaDimensionMapping, FSEValue};
+use crate::encoding::CategoricalDictionaryEncoder;
 use crate::math::Scalar;
 
 use super::{QueryRegion, QueryRegionError, ValidatedFSEPredicate, ValidatedFSEPredicateOperator};
@@ -39,6 +40,34 @@ pub enum FSEPredicateCompileError {
         field_type: FSEFieldType,
     },
 
+    /// The predicate field type is not supported by the categorical compiler.
+    UnsupportedCategoricalFieldType {
+        /// Schema field index.
+        field: usize,
+        /// Schema field name.
+        name: String,
+        /// Unsupported field type.
+        field_type: FSEFieldType,
+    },
+
+    /// A categorical predicate used an operator other than equality.
+    UnsupportedCategoricalOperator {
+        /// Schema field index.
+        field: usize,
+        /// Schema field name.
+        name: String,
+    },
+
+    /// A categorical equality predicate referenced a category outside the dictionary.
+    UnknownCategory {
+        /// Schema field index.
+        field: usize,
+        /// Schema field name.
+        name: String,
+        /// Category label referenced by the predicate.
+        category: String,
+    },
+
     /// Query-region construction failed after compilation.
     QueryRegion(QueryRegionError),
 }
@@ -63,6 +92,22 @@ impl fmt::Display for FSEPredicateCompileError {
             } => write!(
                 formatter,
                 "predicate field '{name}' with type {field_type:?} cannot be compiled by the numeric predicate compiler"
+            ),
+            Self::UnsupportedCategoricalFieldType {
+                name, field_type, ..
+            } => write!(
+                formatter,
+                "predicate field '{name}' with type {field_type:?} cannot be compiled by the categorical predicate compiler"
+            ),
+            Self::UnsupportedCategoricalOperator { name, .. } => {
+                write!(
+                    formatter,
+                    "categorical predicate for field '{name}' must use equality"
+                )
+            }
+            Self::UnknownCategory { name, category, .. } => write!(
+                formatter,
+                "category '{category}' for field '{name}' is not in dictionary"
             ),
             Self::QueryRegion(error) => error.fmt(formatter),
         }
@@ -120,6 +165,53 @@ pub fn compile_numeric_predicate_to_query_region(
     Ok(QueryRegion::try_new(min, max)?)
 }
 
+/// Compiles a validated categorical equality predicate into a query region.
+///
+/// # Runtime Role
+///
+/// This function maps a typed categorical equality predicate through the same
+/// dictionary encoder used for record encoding, then constrains the mapped
+/// coordinate dimension to the encoded category code.
+pub fn compile_categorical_equality_predicate_to_query_region(
+    predicate: &ValidatedFSEPredicate,
+    mapping: &FSESchemaDimensionMapping,
+    encoder: &CategoricalDictionaryEncoder,
+) -> Result<QueryRegion, FSEPredicateCompileError> {
+    ensure_categorical_field(predicate)?;
+
+    let dimension = mapped_dimension(predicate, mapping)?;
+    let dimensions = coordinate_dimensions(mapping);
+    let mut min = vec![Scalar::MIN; dimensions];
+    let mut max = vec![Scalar::MAX; dimensions];
+
+    let category = match predicate.operator() {
+        ValidatedFSEPredicateOperator::Equal(FSEValue::Category(category)) => category,
+        ValidatedFSEPredicateOperator::Equal(_) => unreachable!(
+            "validated categorical predicate should contain categorical equality value"
+        ),
+        ValidatedFSEPredicateOperator::Range { .. } => {
+            return Err(FSEPredicateCompileError::UnsupportedCategoricalOperator {
+                field: predicate.field(),
+                name: predicate.name().to_string(),
+            });
+        }
+    };
+
+    let Some(code) = encoder.code_for_category(category) else {
+        return Err(FSEPredicateCompileError::UnknownCategory {
+            field: predicate.field(),
+            name: predicate.name().to_string(),
+            category: category.clone(),
+        });
+    };
+
+    let encoded = code as Scalar;
+    min[dimension] = encoded;
+    max[dimension] = encoded;
+
+    Ok(QueryRegion::try_new(min, max)?)
+}
+
 fn ensure_numeric_field(predicate: &ValidatedFSEPredicate) -> Result<(), FSEPredicateCompileError> {
     if matches!(
         predicate.field_type(),
@@ -129,6 +221,20 @@ fn ensure_numeric_field(predicate: &ValidatedFSEPredicate) -> Result<(), FSEPred
     }
 
     Err(FSEPredicateCompileError::UnsupportedFieldType {
+        field: predicate.field(),
+        name: predicate.name().to_string(),
+        field_type: predicate.field_type(),
+    })
+}
+
+fn ensure_categorical_field(
+    predicate: &ValidatedFSEPredicate,
+) -> Result<(), FSEPredicateCompileError> {
+    if predicate.field_type() == FSEFieldType::Category {
+        return Ok(());
+    }
+
+    Err(FSEPredicateCompileError::UnsupportedCategoricalFieldType {
         field: predicate.field(),
         name: predicate.name().to_string(),
         field_type: predicate.field_type(),

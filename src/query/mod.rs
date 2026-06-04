@@ -43,7 +43,10 @@ pub use predicate::{
     FSEPredicate, FSEPredicateError, FSEPredicateField, FSEPredicateOperator,
     ValidatedFSEPredicate, ValidatedFSEPredicateOperator,
 };
-pub use predicate_compiler::{FSEPredicateCompileError, compile_numeric_predicate_to_query_region};
+pub use predicate_compiler::{
+    FSEPredicateCompileError, compile_categorical_equality_predicate_to_query_region,
+    compile_numeric_predicate_to_query_region,
+};
 pub use reconstruction::{reconstruct_partition, reconstruct_point, reconstruct_row_into};
 pub use region::{QueryRegion, QueryRegionError};
 pub use traversal::{
