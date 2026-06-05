@@ -1,5 +1,6 @@
 //! Query tests.
 
+mod conjunctive_typed_plan_tests;
 mod correctness_tests;
 mod count_tests;
 mod execution_batch_tests;

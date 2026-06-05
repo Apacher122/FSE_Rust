@@ -7,8 +7,8 @@ use crate::data::{FSESchema, FSESchemaDimensionMapping};
 use crate::encoding::CategoricalDictionaryEncoder;
 
 use super::{
-    FSEPredicate, FSEPredicateCompileError, FSEPredicateError, QueryRegion, ValidatedFSEPredicate,
-    compile_categorical_equality_predicate_to_query_region,
+    FSEPredicate, FSEPredicateCompileError, FSEPredicateError, QueryRegion, QueryRegionError,
+    ValidatedFSEPredicate, compile_categorical_equality_predicate_to_query_region,
     compile_numeric_predicate_to_query_region,
 };
 
@@ -20,6 +20,9 @@ pub enum TypedQueryPlanError {
 
     /// Predicate compilation failed.
     Compile(FSEPredicateCompileError),
+
+    /// No plan components were provided for a conjunctive plan.
+    EmptyConjunction,
 }
 
 impl fmt::Display for TypedQueryPlanError {
@@ -27,6 +30,9 @@ impl fmt::Display for TypedQueryPlanError {
         match self {
             Self::Predicate(error) => error.fmt(formatter),
             Self::Compile(error) => error.fmt(formatter),
+            Self::EmptyConjunction => {
+                formatter.write_str("typed query plan conjunction requires at least one plan")
+            }
         }
     }
 }
@@ -36,6 +42,7 @@ impl Error for TypedQueryPlanError {
         match self {
             Self::Predicate(error) => Some(error),
             Self::Compile(error) => Some(error),
+            Self::EmptyConjunction => None,
         }
     }
 }
@@ -57,20 +64,58 @@ impl From<FSEPredicateCompileError> for TypedQueryPlanError {
 /// # Runtime Role
 ///
 /// `TypedQueryPlan` keeps the query region used for geometric pruning together
-/// with the validated typed predicate used for exact logical evaluation.
+/// with the validated typed predicates used for exact logical evaluation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedQueryPlan {
-    predicate: ValidatedFSEPredicate,
+    predicates: Vec<ValidatedFSEPredicate>,
     query_region: QueryRegion,
+    unsatisfiable: bool,
 }
 
 impl TypedQueryPlan {
     /// Creates a typed query plan from already validated and compiled parts.
     pub fn new(predicate: ValidatedFSEPredicate, query_region: QueryRegion) -> Self {
         Self {
-            predicate,
+            predicates: vec![predicate],
             query_region,
+            unsatisfiable: false,
         }
+    }
+
+    /// Creates a typed query plan from existing plan components.
+    ///
+    /// # Runtime Role
+    ///
+    /// The resulting plan uses the geometric intersection of component query
+    /// regions and stores every validated predicate for exact evaluation.
+    pub fn conjunctive(plans: Vec<Self>) -> Result<Self, TypedQueryPlanError> {
+        if plans.is_empty() {
+            return Err(TypedQueryPlanError::EmptyConjunction);
+        }
+
+        let mut predicates = Vec::new();
+        let mut query_region = None;
+        let mut unsatisfiable = false;
+
+        for mut plan in plans {
+            unsatisfiable |= plan.unsatisfiable;
+            query_region = Some(match query_region {
+                Some(existing) => {
+                    let intersection = intersect_query_regions(&existing, &plan.query_region)?;
+                    unsatisfiable |= intersection.unsatisfiable;
+                    intersection.query_region
+                }
+                None => plan.query_region,
+            });
+
+            predicates.append(&mut plan.predicates);
+        }
+
+        Ok(Self {
+            predicates,
+            query_region: query_region.expect("non-empty plan list should produce query region"),
+            unsatisfiable,
+        })
     }
 
     /// Creates a typed query plan for a numeric predicate.
@@ -101,11 +146,69 @@ impl TypedQueryPlan {
 
     /// Returns the validated typed predicate.
     pub fn predicate(&self) -> &ValidatedFSEPredicate {
-        &self.predicate
+        &self.predicates[0]
+    }
+
+    /// Returns the validated typed predicates.
+    pub fn predicates(&self) -> &[ValidatedFSEPredicate] {
+        &self.predicates
+    }
+
+    /// Returns true when the typed predicate set has no satisfying rows.
+    pub fn is_unsatisfiable(&self) -> bool {
+        self.unsatisfiable
     }
 
     /// Returns the geometric query region used for pruning.
     pub fn query_region(&self) -> &QueryRegion {
         &self.query_region
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct QueryRegionIntersection {
+    query_region: QueryRegion,
+    unsatisfiable: bool,
+}
+
+fn intersect_query_regions(
+    left: &QueryRegion,
+    right: &QueryRegion,
+) -> Result<QueryRegionIntersection, TypedQueryPlanError> {
+    if left.dimensions() != right.dimensions() {
+        return Err(
+            FSEPredicateCompileError::QueryRegion(QueryRegionError::DimensionMismatch {
+                min_dimensions: left.dimensions(),
+                max_dimensions: right.dimensions(),
+            })
+            .into(),
+        );
+    }
+
+    let mut min = Vec::with_capacity(left.dimensions());
+    let mut max = Vec::with_capacity(left.dimensions());
+    let mut unsatisfiable = false;
+
+    for dimension in 0..left.dimensions() {
+        let left_min = left.min[dimension];
+        let left_max = left.max[dimension];
+        let right_min = right.min[dimension];
+        let right_max = right.max[dimension];
+        let lower = left_min.max(right_min);
+        let upper = left_max.min(right_max);
+
+        if lower > upper {
+            unsatisfiable = true;
+            min.push(lower);
+            max.push(lower);
+        } else {
+            min.push(lower);
+            max.push(upper);
+        }
+    }
+
+    Ok(QueryRegionIntersection {
+        query_region: QueryRegion::try_new(min, max).map_err(FSEPredicateCompileError::from)?,
+        unsatisfiable,
+    })
 }

@@ -116,13 +116,17 @@ impl TypedQueryResultRow {
 ///
 /// # Returns
 ///
-/// Returns row identifiers for records that satisfy the validated predicate
+/// Returns row identifiers for records that satisfy the validated predicates
 /// stored in the plan. Row identifiers are returned in batch order.
 pub fn evaluate_typed_query_plan(batch: &FSERecordBatch, plan: &TypedQueryPlan) -> Vec<RowId> {
+    if plan.is_unsatisfiable() {
+        return Vec::new();
+    }
+
     let mut matches = Vec::new();
 
     for (row_id, record) in batch.row_ids().iter().zip(batch.records()) {
-        if evaluate_typed_predicate(record, plan.predicate()) {
+        if record_matches_plan(record, plan) {
             matches.push(*row_id);
         }
     }
@@ -138,10 +142,14 @@ pub fn evaluate_typed_query_plan_rows(
     batch: &FSERecordBatch,
     plan: &TypedQueryPlan,
 ) -> Vec<TypedQueryResultRow> {
+    if plan.is_unsatisfiable() {
+        return Vec::new();
+    }
+
     let mut matches = Vec::new();
 
     for (row_id, record) in batch.row_ids().iter().zip(batch.records()) {
-        if evaluate_typed_predicate(record, plan.predicate()) {
+        if record_matches_plan(record, plan) {
             matches.push(TypedQueryResultRow::new(*row_id, record.clone()));
         }
     }
@@ -168,12 +176,19 @@ pub fn evaluate_indexed_typed_query_plan(
 ///
 /// The query region in the plan is executed against the FSE hierarchy. Matching
 /// leaf row references are resolved to row identifiers and checked against the
-/// validated typed predicate stored in the plan.
+/// validated typed predicates stored in the plan.
 pub fn evaluate_indexed_typed_query_plan_with_stats(
     index: &RowMappedFSEIndex,
     batch: &FSERecordBatch,
     plan: &TypedQueryPlan,
 ) -> Result<IndexedTypedQueryReport, IndexedTypedQueryError> {
+    if plan.is_unsatisfiable() {
+        return Ok(IndexedTypedQueryReport {
+            row_ids: Vec::new(),
+            stats: unsatisfiable_plan_stats(index),
+        });
+    }
+
     let reference_report = execute_query_references_with_stats(index.index(), plan.query_region());
     let mut row_ids = Vec::with_capacity(reference_report.matches.len());
 
@@ -181,7 +196,7 @@ pub fn evaluate_indexed_typed_query_plan_with_stats(
         let row_id = row_id_for_reference(index, reference)?;
         let record = record_for_row_id(batch, row_id)?;
 
-        if evaluate_typed_predicate(record, plan.predicate()) {
+        if record_matches_plan(record, plan) {
             row_ids.push(row_id);
         }
     }
@@ -212,6 +227,13 @@ pub fn evaluate_indexed_typed_query_plan_rows_with_stats(
     batch: &FSERecordBatch,
     plan: &TypedQueryPlan,
 ) -> Result<IndexedTypedQueryRowReport, IndexedTypedQueryError> {
+    if plan.is_unsatisfiable() {
+        return Ok(IndexedTypedQueryRowReport {
+            rows: Vec::new(),
+            stats: unsatisfiable_plan_stats(index),
+        });
+    }
+
     let reference_report = execute_query_references_with_stats(index.index(), plan.query_region());
     let mut rows = Vec::with_capacity(reference_report.matches.len());
 
@@ -219,7 +241,7 @@ pub fn evaluate_indexed_typed_query_plan_rows_with_stats(
         let row_id = row_id_for_reference(index, reference)?;
         let record = record_for_row_id(batch, row_id)?;
 
-        if evaluate_typed_predicate(record, plan.predicate()) {
+        if record_matches_plan(record, plan) {
             rows.push(TypedQueryResultRow::new(row_id, record.clone()));
         }
     }
@@ -249,4 +271,18 @@ fn record_for_row_id(
     batch
         .record_for_row_id(row_id)
         .ok_or(IndexedTypedQueryError::MissingRecord { row_id })
+}
+
+fn unsatisfiable_plan_stats(index: &RowMappedFSEIndex) -> QueryExecutionStats {
+    QueryExecutionStats {
+        total_leaves: index.index().leaf_count(),
+        total_records: index.index().root_node().cardinality,
+        ..QueryExecutionStats::default()
+    }
+}
+
+fn record_matches_plan(record: &FSERecord, plan: &TypedQueryPlan) -> bool {
+    plan.predicates()
+        .iter()
+        .all(|predicate| evaluate_typed_predicate(record, predicate))
 }
