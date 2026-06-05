@@ -56,6 +56,10 @@ pub use traversal::{
     traverse_with_stats,
 };
 pub use typed_execution::{
-    TypedQueryResultRow, evaluate_typed_query_plan, evaluate_typed_query_plan_rows,
+    IndexedTypedQueryError, IndexedTypedQueryReport, IndexedTypedQueryRowReport,
+    TypedQueryResultRow, evaluate_indexed_typed_query_plan, evaluate_indexed_typed_query_plan_rows,
+    evaluate_indexed_typed_query_plan_rows_with_stats,
+    evaluate_indexed_typed_query_plan_with_stats, evaluate_typed_query_plan,
+    evaluate_typed_query_plan_rows,
 };
 pub use typed_plan::{TypedQueryPlan, TypedQueryPlanError};
