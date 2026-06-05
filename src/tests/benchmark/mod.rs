@@ -28,4 +28,5 @@ mod selectivity_tests;
 mod sibling_overlap_debug_tests;
 mod summary_tests;
 mod timing_tests;
+mod typed_comparison_tests;
 mod workload_tests;

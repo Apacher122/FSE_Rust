@@ -8,6 +8,7 @@
 mod api;
 mod execution;
 mod report;
+mod typed;
 
 pub use api::{
     compare_query_execution, compare_query_execution_repeated,
@@ -16,3 +17,7 @@ pub use api::{
 };
 
 pub use report::QueryComparisonReport;
+pub use typed::{
+    TypedQueryComparisonReport, compare_typed_query_execution,
+    compare_typed_query_execution_repeated,
+};
