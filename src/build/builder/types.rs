@@ -6,6 +6,7 @@ use std::fmt;
 use crate::build::metrics::SplitQualityMetrics;
 use crate::build::validation::IndexValidationReport;
 use crate::build::validation_diagnostics::IndexValidationDiagnostics;
+use crate::data::RowId;
 use crate::math::{CentroidError, Vector};
 use crate::storage::FSEIndex;
 
@@ -22,6 +23,62 @@ pub struct ValidatedFSEIndex {
 
     /// Validation report for the constructed index.
     pub validation: IndexValidationReport,
+}
+
+/// FSE index paired with logical row identifiers for leaf residual rows.
+///
+/// # Runtime Role
+///
+/// `RowMappedFSEIndex` keeps the numeric hierarchy separate from typed row
+/// identity while preserving the mapping needed to turn leaf row references
+/// back into stable [`RowId`] values.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RowMappedFSEIndex {
+    index: FSEIndex,
+    leaf_row_ids_by_node: Vec<Option<Vec<RowId>>>,
+}
+
+impl RowMappedFSEIndex {
+    pub(crate) fn new(index: FSEIndex, leaf_row_ids_by_node: Vec<Option<Vec<RowId>>>) -> Self {
+        debug_assert_eq!(
+            index.node_count(),
+            leaf_row_ids_by_node.len(),
+            "row-id mapping must have one slot per index node"
+        );
+
+        Self {
+            index,
+            leaf_row_ids_by_node,
+        }
+    }
+
+    /// Returns the underlying FSE index.
+    pub fn index(&self) -> &FSEIndex {
+        &self.index
+    }
+
+    /// Consumes this value and returns the underlying FSE index.
+    pub fn into_index(self) -> FSEIndex {
+        self.index
+    }
+
+    /// Returns the row identifiers stored by a leaf node.
+    ///
+    /// Returns `None` when `node_id` is outside the index or does not reference
+    /// a leaf node.
+    pub fn leaf_row_ids(&self, node_id: usize) -> Option<&[RowId]> {
+        self.leaf_row_ids_by_node
+            .get(node_id)
+            .and_then(Option::as_deref)
+    }
+
+    /// Returns the row identifier for a leaf residual row.
+    ///
+    /// Returns `None` when `node_id` is outside the index, `node_id` does not
+    /// reference a leaf node, or `row_index` is outside the leaf row count.
+    pub fn row_id_for_leaf_row(&self, node_id: usize, row_index: usize) -> Option<RowId> {
+        self.leaf_row_ids(node_id)?.get(row_index).copied()
+    }
 }
 
 /// Error returned when checked builder input validation fails.
@@ -197,6 +254,15 @@ impl From<BuildValidationError> for BuildCheckedError {
 pub(super) struct AcceptedStructuralSplit {
     pub(super) left_points: Vec<Vector>,
     pub(super) right_points: Vec<Vector>,
+    pub(super) split_dimension: usize,
+    pub(super) metrics: SplitQualityMetrics,
+    pub(super) was_forced: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct AcceptedStructuralRecordSplit<T> {
+    pub(super) left_records: Vec<T>,
+    pub(super) right_records: Vec<T>,
     pub(super) metrics: SplitQualityMetrics,
     pub(super) was_forced: bool,
 }

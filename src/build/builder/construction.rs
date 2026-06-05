@@ -1,13 +1,16 @@
 //! Recursive index construction.
 
+use std::cmp::Ordering;
+
 use crate::build::builder::acceptance::accepts_split_quality;
 use crate::build::builder::config::BuildConfig;
 use crate::build::builder::types::{
-    AcceptedStructuralSplit, BuildCheckedError, BuildInputError, BuildValidationError,
-    ValidatedFSEIndex,
+    AcceptedStructuralRecordSplit, AcceptedStructuralSplit, BuildCheckedError, BuildInputError,
+    BuildValidationError, RowMappedFSEIndex, ValidatedFSEIndex,
 };
 use crate::build::splitter::best_structural_split;
 use crate::build::{index_validation_diagnostics, validate_index};
+use crate::data::RowId;
 use crate::encoding::EncodedRecordBatch;
 use crate::math::{Vector, try_compute_centroid};
 use crate::storage::{FSEIndex, PartitionNode};
@@ -66,6 +69,38 @@ impl FSEBuilder {
         batch: &EncodedRecordBatch,
     ) -> Result<FSEIndex, BuildInputError> {
         self.try_build(batch.vectors())
+    }
+
+    /// Builds a row-mapped index from an encoded record batch.
+    ///
+    /// # Runtime Role
+    ///
+    /// This method preserves stable row identifiers beside the leaf residual
+    /// rows created during recursive construction.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the encoded batch contains no vectors.
+    pub fn build_row_mapped_encoded_batch(&self, batch: &EncodedRecordBatch) -> RowMappedFSEIndex {
+        self.try_build_row_mapped_encoded_batch(batch)
+            .unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    /// Builds a row-mapped index from an encoded record batch and returns an
+    /// error when input is invalid.
+    pub fn try_build_row_mapped_encoded_batch(
+        &self,
+        batch: &EncodedRecordBatch,
+    ) -> Result<RowMappedFSEIndex, BuildInputError> {
+        validate_build_points(batch.vectors())?;
+
+        let mut nodes = Vec::new();
+        let mut leaf_row_ids_by_node = Vec::new();
+        let records = build_records_from_encoded_batch(batch);
+        let root = self.build_row_mapped_node(records, 0, &mut nodes, &mut leaf_row_ids_by_node);
+        let index = FSEIndex::new(nodes, root);
+
+        Ok(RowMappedFSEIndex::new(index, leaf_row_ids_by_node))
     }
 
     /// Builds an index from raw coordinate vectors.
@@ -206,6 +241,51 @@ impl FSEBuilder {
         id
     }
 
+    fn build_row_mapped_node(
+        &self,
+        records: Vec<BuildRecord>,
+        depth: usize,
+        nodes: &mut Vec<PartitionNode>,
+        leaf_row_ids_by_node: &mut Vec<Option<Vec<RowId>>>,
+    ) -> usize {
+        let id = nodes.len();
+        let points = build_record_vectors(&records);
+
+        if self.should_stop_without_split(records.len(), depth) {
+            let node = PartitionNode::from_points(id, &points);
+            nodes.push(node);
+            leaf_row_ids_by_node.push(Some(build_record_row_ids(&records)));
+            return id;
+        }
+
+        let Some(split) = self.accepted_structural_record_split(&records) else {
+            let node = PartitionNode::from_points(id, &points);
+            nodes.push(node);
+            leaf_row_ids_by_node.push(Some(build_record_row_ids(&records)));
+            return id;
+        };
+
+        if self.config.require_positive_split_volume_reduction && !split.was_forced {
+            debug_assert!(
+                accepts_split_quality(&split.metrics),
+                "optional accepted split should improve bounding volume or degenerate extent"
+            );
+        }
+
+        let placeholder = PartitionNode::internal_from_points(id, &points, Vec::new());
+        nodes.push(placeholder);
+        leaf_row_ids_by_node.push(None);
+
+        let left_id =
+            self.build_row_mapped_node(split.left_records, depth + 1, nodes, leaf_row_ids_by_node);
+        let right_id =
+            self.build_row_mapped_node(split.right_records, depth + 1, nodes, leaf_row_ids_by_node);
+
+        nodes[id].children = vec![left_id, right_id];
+
+        id
+    }
+
     fn should_stop_without_split(&self, point_count: usize, depth: usize) -> bool {
         point_count <= self.config.target_leaf_size || depth >= self.config.max_depth
     }
@@ -218,6 +298,7 @@ impl FSEBuilder {
         let split = best_structural_split(points);
         let was_forced = self.should_force_split(points.len());
         let metrics = split.score.metrics;
+        let split_dimension = split.split_dimension();
 
         if self.config.require_positive_split_volume_reduction
             && !was_forced
@@ -230,8 +311,34 @@ impl FSEBuilder {
         Some(AcceptedStructuralSplit {
             left_points: split.left_points,
             right_points: split.right_points,
+            split_dimension,
             metrics,
             was_forced,
+        })
+    }
+
+    fn accepted_structural_record_split(
+        &self,
+        records: &[BuildRecord],
+    ) -> Option<AcceptedStructuralRecordSplit<BuildRecord>> {
+        let points = build_record_vectors(records);
+        let split = self.accepted_structural_split(&points)?;
+        let mut sorted_records = records.to_vec();
+
+        sorted_records.sort_by(|left, right| {
+            left.vector.values[split.split_dimension]
+                .partial_cmp(&right.vector.values[split.split_dimension])
+                .unwrap_or(Ordering::Equal)
+        });
+
+        let right_records = sorted_records.split_off(split.left_points.len());
+        let left_records = sorted_records;
+
+        Some(AcceptedStructuralRecordSplit {
+            left_records,
+            right_records,
+            metrics: split.metrics,
+            was_forced: split.was_forced,
         })
     }
 }
@@ -244,4 +351,30 @@ fn validate_build_points(points: &[Vector]) -> Result<(), BuildInputError> {
     try_compute_centroid(points)?;
 
     Ok(())
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct BuildRecord {
+    row_id: RowId,
+    vector: Vector,
+}
+
+fn build_records_from_encoded_batch(batch: &EncodedRecordBatch) -> Vec<BuildRecord> {
+    batch
+        .row_ids()
+        .iter()
+        .zip(batch.vectors())
+        .map(|(row_id, vector)| BuildRecord {
+            row_id: *row_id,
+            vector: vector.clone(),
+        })
+        .collect()
+}
+
+fn build_record_vectors(records: &[BuildRecord]) -> Vec<Vector> {
+    records.iter().map(|record| record.vector.clone()).collect()
+}
+
+fn build_record_row_ids(records: &[BuildRecord]) -> Vec<RowId> {
+    records.iter().map(|record| record.row_id).collect()
 }

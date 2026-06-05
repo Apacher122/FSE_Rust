@@ -12,7 +12,7 @@ pub mod variance;
 
 pub use builder::{
     BuildCheckedError, BuildConfig, BuildConfigError, BuildInputError, BuildValidationError,
-    FSEBuilder, ValidatedFSEIndex,
+    FSEBuilder, RowMappedFSEIndex, ValidatedFSEIndex,
 };
 pub use metrics::{
     IndexStructureMetrics, SiblingOverlapMetrics, SplitQualityMetrics, bounding_extent_sum,
