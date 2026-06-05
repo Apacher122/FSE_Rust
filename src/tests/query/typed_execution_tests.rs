@@ -3,7 +3,10 @@ use crate::data::{
     FSESchemaDimensionMapping, FSEValue, RowId,
 };
 use crate::encoding::CategoricalDictionaryEncoder;
-use crate::query::{FSEPredicate, FSEPredicateField, TypedQueryPlan, evaluate_typed_query_plan};
+use crate::query::{
+    FSEPredicate, FSEPredicateField, TypedQueryPlan, TypedQueryResultRow,
+    evaluate_typed_query_plan, evaluate_typed_query_plan_rows,
+};
 
 #[test]
 fn typed_query_plan_evaluation_returns_matching_row_ids_in_batch_order() {
@@ -83,6 +86,58 @@ fn typed_query_plan_evaluation_uses_exact_typed_predicate_not_query_region_alone
     assert_eq!(matches, vec![RowId::new(10)]);
     assert_eq!(plan.query_region().min[0], 42.0);
     assert_eq!(plan.query_region().max[0], 42.0);
+}
+
+#[test]
+fn typed_query_plan_row_evaluation_returns_matching_rows_in_batch_order() {
+    let schema = crime_schema();
+    let mapping = crime_mapping(&schema);
+    let batch = crime_batch(&schema);
+    let predicate = FSEPredicate::range(
+        FSEPredicateField::name("latitude"),
+        FSEValue::Float(41.8),
+        FSEValue::Float(41.9),
+    );
+    let plan = TypedQueryPlan::numeric(&predicate, &schema, &mapping)
+        .expect("numeric predicate should produce a plan");
+
+    let rows = evaluate_typed_query_plan_rows(&batch, &plan);
+
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].row_id(), RowId::new(10));
+    assert_eq!(
+        rows[0].record(),
+        batch.record_for_row_id(RowId::new(10)).unwrap()
+    );
+    assert_eq!(rows[1].row_id(), RowId::new(12));
+    assert_eq!(
+        rows[1].record(),
+        batch.record_for_row_id(RowId::new(12)).unwrap()
+    );
+}
+
+#[test]
+fn typed_query_plan_row_evaluation_returns_empty_rows_when_no_records_match() {
+    let schema = crime_schema();
+    let mapping = crime_mapping(&schema);
+    let batch = crime_batch(&schema);
+    let predicate = FSEPredicate::equals(FSEPredicateField::name("case_id"), FSEValue::Integer(99));
+    let plan = TypedQueryPlan::numeric(&predicate, &schema, &mapping)
+        .expect("numeric predicate should produce a plan");
+
+    let rows = evaluate_typed_query_plan_rows(&batch, &plan);
+
+    assert!(rows.is_empty());
+}
+
+#[test]
+fn typed_query_result_row_exposes_row_id_and_record() {
+    let schema = crime_schema();
+    let record = crime_record(&schema, 42, 41.881, "open", 1_735_689_600_000);
+    let row = TypedQueryResultRow::new(RowId::new(10), record.clone());
+
+    assert_eq!(row.row_id(), RowId::new(10));
+    assert_eq!(row.record(), &record);
 }
 
 fn crime_schema() -> FSESchema {

@@ -55,5 +55,7 @@ pub use traversal::{
     QueryTraversalReport, QueryTraversalStats, RetainedLeaf, RetainedLeafCoverage, traverse,
     traverse_with_stats,
 };
-pub use typed_execution::evaluate_typed_query_plan;
+pub use typed_execution::{
+    TypedQueryResultRow, evaluate_typed_query_plan, evaluate_typed_query_plan_rows,
+};
 pub use typed_plan::{TypedQueryPlan, TypedQueryPlanError};
