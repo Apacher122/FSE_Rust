@@ -16,6 +16,9 @@ fn record_batch_accepts_unique_row_ids_and_records() {
     assert!(!batch.is_empty());
     assert_eq!(batch.schema().len(), 2);
     assert_eq!(batch.row_ids(), &[RowId::new(10), RowId::new(11)]);
+    assert_eq!(batch.row_index_for_row_id(RowId::new(10)), Some(0));
+    assert_eq!(batch.row_index_for_row_id(RowId::new(11)), Some(1));
+    assert_eq!(batch.row_index_for_row_id(RowId::new(12)), None);
     assert_eq!(
         batch
             .record_for_row_id(RowId::new(11))

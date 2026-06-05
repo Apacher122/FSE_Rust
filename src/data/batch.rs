@@ -1,6 +1,6 @@
 //! FSE-native record batches.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
@@ -59,6 +59,7 @@ pub struct FSERecordBatch {
     schema: FSESchema,
     row_ids: Vec<RowId>,
     records: Vec<FSERecord>,
+    row_index_by_id: HashMap<RowId, usize>,
 }
 
 impl FSERecordBatch {
@@ -85,10 +86,10 @@ impl FSERecordBatch {
             });
         }
 
-        let mut seen = HashSet::new();
+        let mut row_index_by_id = HashMap::with_capacity(row_ids.len());
 
-        for row_id in &row_ids {
-            if !seen.insert(*row_id) {
+        for (index, row_id) in row_ids.iter().enumerate() {
+            if row_index_by_id.insert(*row_id, index).is_some() {
                 return Err(FSERecordBatchError::DuplicateRowId { row_id: *row_id });
             }
         }
@@ -97,6 +98,7 @@ impl FSERecordBatch {
             schema,
             row_ids,
             records,
+            row_index_by_id,
         })
     }
 
@@ -127,11 +129,13 @@ impl FSERecordBatch {
 
     /// Returns the record for the given row identifier.
     pub fn record_for_row_id(&self, row_id: RowId) -> Option<&FSERecord> {
-        let index = self
-            .row_ids
-            .iter()
-            .position(|candidate| *candidate == row_id)?;
+        let index = self.row_index_for_row_id(row_id)?;
 
         self.records.get(index)
+    }
+
+    /// Returns the batch position for the given row identifier.
+    pub fn row_index_for_row_id(&self, row_id: RowId) -> Option<usize> {
+        self.row_index_by_id.get(&row_id).copied()
     }
 }
