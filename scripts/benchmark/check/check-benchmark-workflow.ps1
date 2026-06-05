@@ -111,6 +111,7 @@ function Test-BenchmarkScriptLayout {
     "benchmark\summarize\summarize-count-only-workload-summary.ps1",
     "benchmark\summarize\summarize-existence-timing-summary.ps1",
     "benchmark\summarize\summarize-materialization-mode-summary.ps1",
+    "benchmark\summarize\summarize-typed-indexed-comparison-summary.ps1",
     "benchmark\summarize\summarize-target-workload-trials.ps1"
   )
 
@@ -139,6 +140,7 @@ function Test-BenchmarkScriptLayout {
     "summarize-count-only-workload-summary.ps1"  = "benchmark\summarize\summarize-count-only-workload-summary.ps1"
     "summarize-existence-timing-summary.ps1"     = "benchmark\summarize\summarize-existence-timing-summary.ps1"
     "summarize-materialization-mode-summary.ps1" = "benchmark\summarize\summarize-materialization-mode-summary.ps1"
+    "summarize-typed-indexed-comparison-summary.ps1" = "benchmark\summarize\summarize-typed-indexed-comparison-summary.ps1"
     "summarize-target-workload-trials.ps1"       = "benchmark\summarize\summarize-target-workload-trials.ps1"
   }
 

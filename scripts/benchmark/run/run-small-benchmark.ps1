@@ -54,12 +54,15 @@ $MaterializationModeSummaryCsvPath = Join-Path $OutputDir "materialization-mode-
 $MaterializationModeSummaryNotesPath = Join-Path $OutputDir "materialization-mode-summary-$Label.txt"
 $ExistenceTimingSummaryCsvPath = Join-Path $OutputDir "existence-timing-summary-$Label.csv"
 $ExistenceTimingSummaryNotesPath = Join-Path $OutputDir "existence-timing-summary-$Label.txt"
+$TypedIndexedComparisonSummaryCsvPath = Join-Path $OutputDir "typed-indexed-comparison-summary-$Label.csv"
+$TypedIndexedComparisonSummaryNotesPath = Join-Path $OutputDir "typed-indexed-comparison-summary-$Label.txt"
 $LowSelectivityGapCsvPath = Join-Path $OutputDir "low-selectivity-gap-$Label.csv"
 $LowGapRegressionNotesPath = Join-Path $OutputDir "low-gap-regression-notes-$Label.txt"
 
 $CountOnlyWorkloadSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-count-only-workload-summary.ps1"
 $MaterializationModeSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-materialization-mode-summary.ps1"
 $ExistenceTimingSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-existence-timing-summary.ps1"
+$TypedIndexedComparisonSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-indexed-comparison-summary.ps1"
 
 
 function Write-BenchmarkSection {
@@ -424,6 +427,24 @@ if ($LASTEXITCODE -ne 0) {
     throw "existence timing summary failed with exit code $LASTEXITCODE"
 }
 
+if (!(Test-Path -LiteralPath $TypedIndexedComparisonSummaryScript)) {
+    throw "required script was not found: $TypedIndexedComparisonSummaryScript"
+}
+
+$TypedIndexedComparisonSummaryArguments = @{
+    DebugOutputPath = $DebugOutputPath
+    OutputCsv       = $TypedIndexedComparisonSummaryCsvPath
+    OutputNotesPath = $TypedIndexedComparisonSummaryNotesPath
+    Dataset         = $Dataset
+    MaxDepth        = $EffectiveMaxDepthText
+}
+
+& $TypedIndexedComparisonSummaryScript @TypedIndexedComparisonSummaryArguments
+
+if ($LASTEXITCODE -ne 0) {
+    throw "typed indexed comparison summary failed with exit code $LASTEXITCODE"
+}
+
 Add-Utf8Text -Path $TextOutputPath -Text "`r`n---`r`n`r`nArtifacts:`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Dataset:                        $Dataset`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Max depth:                      $EffectiveMaxDepth`r`n"
@@ -437,6 +458,8 @@ Add-Utf8Text -Path $TextOutputPath -Text "  Materialization summary CSV:    $Mat
 Add-Utf8Text -Path $TextOutputPath -Text "  Materialization summary notes:  $MaterializationModeSummaryNotesPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Existence timing summary CSV:   $ExistenceTimingSummaryCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Existence timing notes:         $ExistenceTimingSummaryNotesPath`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Typed indexed summary CSV:      $TypedIndexedComparisonSummaryCsvPath`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Typed indexed notes:            $TypedIndexedComparisonSummaryNotesPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Low-selectivity gap CSV:        $LowSelectivityGapCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Low-gap regression notes:       $LowGapRegressionNotesPath`r`n"
 
@@ -453,6 +476,8 @@ Add-Utf8Text -Path $DebugOutputPath -Text "  Materialization summary CSV:    $Ma
 Add-Utf8Text -Path $DebugOutputPath -Text "  Materialization summary notes:  $MaterializationModeSummaryNotesPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Existence timing summary CSV:   $ExistenceTimingSummaryCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Existence timing notes:         $ExistenceTimingSummaryNotesPath`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Typed indexed summary CSV:      $TypedIndexedComparisonSummaryCsvPath`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Typed indexed notes:            $TypedIndexedComparisonSummaryNotesPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Low-selectivity gap CSV:        $LowSelectivityGapCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Low-gap regression notes:       $LowGapRegressionNotesPath`r`n"
 
@@ -470,5 +495,7 @@ Write-Host "  $MaterializationModeSummaryCsvPath"
 Write-Host "  $MaterializationModeSummaryNotesPath"
 Write-Host "  $ExistenceTimingSummaryCsvPath"
 Write-Host "  $ExistenceTimingSummaryNotesPath"
+Write-Host "  $TypedIndexedComparisonSummaryCsvPath"
+Write-Host "  $TypedIndexedComparisonSummaryNotesPath"
 Write-Host "  $LowSelectivityGapCsvPath"
 Write-Host "  $LowGapRegressionNotesPath"
