@@ -22,6 +22,7 @@ pub mod predicate_evaluator;
 pub mod reconstruction;
 pub mod region;
 pub mod traversal;
+pub mod typed_plan;
 
 pub use execution::{
     QueryCountReport, QueryExecutionMode, QueryExecutionOptions, QueryExecutionReport,
@@ -53,3 +54,4 @@ pub use traversal::{
     QueryTraversalReport, QueryTraversalStats, RetainedLeaf, RetainedLeafCoverage, traverse,
     traverse_with_stats,
 };
+pub use typed_plan::{TypedQueryPlan, TypedQueryPlanError};
