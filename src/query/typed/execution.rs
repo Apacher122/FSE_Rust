@@ -9,10 +9,11 @@ use std::fmt;
 use crate::build::RowMappedFSEIndex;
 use crate::data::{FSERecord, FSERecordBatch, RowId};
 
-use super::execution::{
+use super::super::execution::{
     QueryExecutionStats, QueryResultReference, execute_query_references_with_stats,
 };
-use super::{TypedQueryPlan, evaluate_typed_predicate};
+use super::evaluator::evaluate_typed_predicate;
+use super::plan::TypedQueryPlan;
 
 /// Error returned when indexed typed query execution cannot resolve row identity.
 #[derive(Clone, Debug, PartialEq, Eq)]

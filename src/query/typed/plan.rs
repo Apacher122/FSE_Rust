@@ -6,11 +6,12 @@ use std::fmt;
 use crate::data::{FSESchema, FSESchemaDimensionMapping};
 use crate::encoding::CategoricalDictionaryEncoder;
 
-use super::{
-    FSEPredicate, FSEPredicateCompileError, FSEPredicateError, QueryRegion, QueryRegionError,
-    ValidatedFSEPredicate, compile_categorical_equality_predicate_to_query_region,
+use super::super::region::{QueryRegion, QueryRegionError};
+use super::compiler::{
+    FSEPredicateCompileError, compile_categorical_equality_predicate_to_query_region,
     compile_numeric_predicate_to_query_region,
 };
+use super::predicate::{FSEPredicate, FSEPredicateError, ValidatedFSEPredicate};
 
 /// Error returned when typed query planning fails.
 #[derive(Clone, Debug, PartialEq)]
@@ -21,6 +22,14 @@ pub enum TypedQueryPlanError {
     /// Predicate compilation failed.
     Compile(FSEPredicateCompileError),
 
+    /// A categorical predicate had no encoder registered for its field.
+    MissingCategoricalEncoder {
+        /// Schema field index.
+        field: usize,
+        /// Schema field name.
+        name: String,
+    },
+
     /// No plan components were provided for a conjunctive plan.
     EmptyConjunction,
 }
@@ -30,6 +39,12 @@ impl fmt::Display for TypedQueryPlanError {
         match self {
             Self::Predicate(error) => error.fmt(formatter),
             Self::Compile(error) => error.fmt(formatter),
+            Self::MissingCategoricalEncoder { name, .. } => {
+                write!(
+                    formatter,
+                    "categorical predicate for field '{name}' has no registered encoder"
+                )
+            }
             Self::EmptyConjunction => {
                 formatter.write_str("typed query plan conjunction requires at least one plan")
             }
@@ -42,6 +57,7 @@ impl Error for TypedQueryPlanError {
         match self {
             Self::Predicate(error) => Some(error),
             Self::Compile(error) => Some(error),
+            Self::MissingCategoricalEncoder { .. } => None,
             Self::EmptyConjunction => None,
         }
     }

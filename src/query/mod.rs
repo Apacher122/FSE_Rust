@@ -16,14 +16,10 @@
 //! rows.
 
 pub mod execution;
-pub mod predicate;
-pub mod predicate_compiler;
-pub mod predicate_evaluator;
 pub mod reconstruction;
 pub mod region;
 pub mod traversal;
-pub mod typed_execution;
-pub mod typed_plan;
+pub mod typed;
 
 pub use execution::{
     QueryCountReport, QueryExecutionMode, QueryExecutionOptions, QueryExecutionReport,
@@ -40,26 +36,20 @@ pub use execution::{
 pub(crate) use execution::{
     count_retained_matches_without_results, execute_retained_leaf_batch_for_diagnostics,
 };
-pub use predicate::{
-    FSEPredicate, FSEPredicateError, FSEPredicateField, FSEPredicateOperator,
-    ValidatedFSEPredicate, ValidatedFSEPredicateOperator,
-};
-pub use predicate_compiler::{
-    FSEPredicateCompileError, compile_categorical_equality_predicate_to_query_region,
-    compile_numeric_predicate_to_query_region,
-};
-pub use predicate_evaluator::evaluate_typed_predicate;
 pub use reconstruction::{reconstruct_partition, reconstruct_point, reconstruct_row_into};
 pub use region::{QueryRegion, QueryRegionError, evaluate_query};
 pub use traversal::{
     QueryTraversalReport, QueryTraversalStats, RetainedLeaf, RetainedLeafCoverage, traverse,
     traverse_with_stats,
 };
-pub use typed_execution::{
-    IndexedTypedQueryError, IndexedTypedQueryReport, IndexedTypedQueryRowReport,
-    TypedQueryResultRow, evaluate_indexed_typed_query_plan, evaluate_indexed_typed_query_plan_rows,
-    evaluate_indexed_typed_query_plan_rows_with_stats,
-    evaluate_indexed_typed_query_plan_with_stats, evaluate_typed_query_plan,
-    evaluate_typed_query_plan_rows,
+pub use typed::{
+    FSEPredicate, FSEPredicateCompileError, FSEPredicateError, FSEPredicateField,
+    FSEPredicateOperator, IndexedTypedQueryError, IndexedTypedQueryReport,
+    IndexedTypedQueryRowReport, TypedQueryPlan, TypedQueryPlanBuilder, TypedQueryPlanError,
+    TypedQueryResultRow, ValidatedFSEPredicate, ValidatedFSEPredicateOperator,
+    compile_categorical_equality_predicate_to_query_region,
+    compile_numeric_predicate_to_query_region, evaluate_indexed_typed_query_plan,
+    evaluate_indexed_typed_query_plan_rows, evaluate_indexed_typed_query_plan_rows_with_stats,
+    evaluate_indexed_typed_query_plan_with_stats, evaluate_typed_predicate,
+    evaluate_typed_query_plan, evaluate_typed_query_plan_rows,
 };
-pub use typed_plan::{TypedQueryPlan, TypedQueryPlanError};

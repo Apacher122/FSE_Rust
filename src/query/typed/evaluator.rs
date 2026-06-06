@@ -2,7 +2,7 @@
 
 use crate::data::{FSERecord, FSEValue};
 
-use super::{ValidatedFSEPredicate, ValidatedFSEPredicateOperator};
+use super::predicate::{ValidatedFSEPredicate, ValidatedFSEPredicateOperator};
 
 /// Evaluates a validated typed predicate against a typed record.
 ///

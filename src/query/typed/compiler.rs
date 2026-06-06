@@ -7,7 +7,8 @@ use crate::data::{FSEFieldType, FSESchemaDimensionMapping, FSEValue};
 use crate::encoding::CategoricalDictionaryEncoder;
 use crate::math::Scalar;
 
-use super::{QueryRegion, QueryRegionError, ValidatedFSEPredicate, ValidatedFSEPredicateOperator};
+use super::super::region::{QueryRegion, QueryRegionError};
+use super::predicate::{ValidatedFSEPredicate, ValidatedFSEPredicateOperator};
 
 /// Error returned when a typed predicate cannot be compiled into a query region.
 #[derive(Clone, Debug, PartialEq, Eq)]
