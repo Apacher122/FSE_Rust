@@ -15,16 +15,16 @@ use crate::query::{
 
 #[test]
 fn indexed_typed_query_plan_returns_matching_row_ids() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
-    let batch = crime_batch(&schema);
-    let encoder = crime_encoder(&schema);
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
     let encoded = encode_record_batch(&batch, &encoder).expect("valid batch should encode");
     let index = FSEBuilder::new(BuildConfig::new(2, 8))
         .try_build_row_mapped_encoded_batch(&encoded)
         .expect("encoded batch should build a row-mapped index");
     let predicate = FSEPredicate::range(
-        FSEPredicateField::name("latitude"),
+        FSEPredicateField::name("metric"),
         FSEValue::Float(41.8),
         FSEValue::Float(41.9),
     );
@@ -39,20 +39,20 @@ fn indexed_typed_query_plan_returns_matching_row_ids() {
 
 #[test]
 fn indexed_typed_query_plan_supports_categorical_equality() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
-    let batch = crime_batch(&schema);
-    let encoder = crime_encoder(&schema);
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
     let encoded = encode_record_batch(&batch, &encoder).expect("valid batch should encode");
     let index = FSEBuilder::new(BuildConfig::new(2, 8))
         .try_build_row_mapped_encoded_batch(&encoded)
         .expect("encoded batch should build a row-mapped index");
-    let status_encoder = status_encoder();
+    let state_encoder = state_encoder();
     let predicate = FSEPredicate::equals(
-        FSEPredicateField::name("status"),
-        FSEValue::Category("closed".to_string()),
+        FSEPredicateField::name("state"),
+        FSEValue::Category("archived".to_string()),
     );
-    let plan = TypedQueryPlan::categorical_equality(&predicate, &schema, &mapping, &status_encoder)
+    let plan = TypedQueryPlan::categorical_equality(&predicate, &schema, &mapping, &state_encoder)
         .expect("categorical predicate should produce a plan");
 
     let matches = evaluate_indexed_typed_query_plan(&index, &batch, &plan)
@@ -63,16 +63,16 @@ fn indexed_typed_query_plan_supports_categorical_equality() {
 
 #[test]
 fn indexed_typed_query_plan_returns_typed_rows() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
-    let batch = crime_batch(&schema);
-    let encoder = crime_encoder(&schema);
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
     let encoded = encode_record_batch(&batch, &encoder).expect("valid batch should encode");
     let index = FSEBuilder::new(BuildConfig::new(2, 8))
         .try_build_row_mapped_encoded_batch(&encoded)
         .expect("encoded batch should build a row-mapped index");
     let predicate = FSEPredicate::range(
-        FSEPredicateField::name("latitude"),
+        FSEPredicateField::name("metric"),
         FSEValue::Float(41.8),
         FSEValue::Float(41.9),
     );
@@ -97,16 +97,16 @@ fn indexed_typed_query_plan_returns_typed_rows() {
 
 #[test]
 fn indexed_typed_query_plan_reports_geometric_execution_stats() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
-    let batch = crime_batch(&schema);
-    let encoder = crime_encoder(&schema);
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
     let encoded = encode_record_batch(&batch, &encoder).expect("valid batch should encode");
     let index = FSEBuilder::new(BuildConfig::new(2, 8))
         .try_build_row_mapped_encoded_batch(&encoded)
         .expect("encoded batch should build a row-mapped index");
     let predicate = FSEPredicate::range(
-        FSEPredicateField::name("latitude"),
+        FSEPredicateField::name("metric"),
         FSEValue::Float(41.8),
         FSEValue::Float(41.9),
     );
@@ -123,24 +123,24 @@ fn indexed_typed_query_plan_reports_geometric_execution_stats() {
 
 #[test]
 fn indexed_typed_query_plan_reports_missing_record() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
-    let indexed_batch = crime_batch(&schema);
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let indexed_batch = entity_batch(&schema);
     let query_batch = FSERecordBatch::new(
         schema.clone(),
         vec![RowId::new(10), RowId::new(11)],
         vec![
-            crime_record(&schema, 42, 41.881, "open", 1_735_689_600_000),
-            crime_record(&schema, 43, 42.100, "closed", 1_735_689_650_000),
+            entity_record(&schema, 42, 41.881, "active", 1_735_689_600_000),
+            entity_record(&schema, 43, 42.100, "archived", 1_735_689_650_000),
         ],
     );
-    let encoder = crime_encoder(&schema);
+    let encoder = entity_encoder(&schema);
     let encoded = encode_record_batch(&indexed_batch, &encoder).expect("valid batch should encode");
     let index = FSEBuilder::new(BuildConfig::new(2, 8))
         .try_build_row_mapped_encoded_batch(&encoded)
         .expect("encoded batch should build a row-mapped index");
     let predicate = FSEPredicate::range(
-        FSEPredicateField::name("latitude"),
+        FSEPredicateField::name("metric"),
         FSEValue::Float(41.8),
         FSEValue::Float(41.9),
     );
@@ -158,16 +158,16 @@ fn indexed_typed_query_plan_reports_missing_record() {
     );
 }
 
-fn crime_schema() -> FSESchema {
+fn entity_schema() -> FSESchema {
     FSESchema::new(vec![
-        FSEField::new("case_id", FSEFieldType::Integer, false),
-        FSEField::new("latitude", FSEFieldType::Float, false),
-        FSEField::new("status", FSEFieldType::Category, false),
-        FSEField::new("reported_at", FSEFieldType::TimestampMillis, false),
+        FSEField::new("entity_id", FSEFieldType::Integer, false),
+        FSEField::new("metric", FSEFieldType::Float, false),
+        FSEField::new("state", FSEFieldType::Category, false),
+        FSEField::new("observed_at", FSEFieldType::TimestampMillis, false),
     ])
 }
 
-fn crime_mapping(schema: &FSESchema) -> FSESchemaDimensionMapping {
+fn entity_mapping(schema: &FSESchema) -> FSESchemaDimensionMapping {
     FSESchemaDimensionMapping::new(
         schema,
         vec![
@@ -179,48 +179,48 @@ fn crime_mapping(schema: &FSESchema) -> FSESchemaDimensionMapping {
     )
 }
 
-fn crime_encoder(schema: &FSESchema) -> ComposedRecordEncoder {
+fn entity_encoder(schema: &FSESchema) -> ComposedRecordEncoder {
     ComposedRecordEncoder::new(
         schema,
         vec![
             Box::new(IntegerEncoder),
             Box::new(FloatEncoder),
-            Box::new(status_encoder()),
+            Box::new(state_encoder()),
             Box::new(TimestampMillisEncoder),
         ],
     )
 }
 
-fn crime_batch(schema: &FSESchema) -> FSERecordBatch {
+fn entity_batch(schema: &FSESchema) -> FSERecordBatch {
     FSERecordBatch::new(
         schema.clone(),
         vec![RowId::new(10), RowId::new(11), RowId::new(12)],
         vec![
-            crime_record(schema, 42, 41.881, "open", 1_735_689_600_000),
-            crime_record(schema, 43, 42.100, "closed", 1_735_689_650_000),
-            crime_record(schema, 44, 41.850, "open", 1_735_689_700_000),
+            entity_record(schema, 42, 41.881, "active", 1_735_689_600_000),
+            entity_record(schema, 43, 42.100, "archived", 1_735_689_650_000),
+            entity_record(schema, 44, 41.850, "active", 1_735_689_700_000),
         ],
     )
 }
 
-fn crime_record(
+fn entity_record(
     schema: &FSESchema,
-    case_id: i64,
-    latitude: f64,
-    status: &str,
-    reported_at: i64,
+    entity_id: i64,
+    metric: f64,
+    state: &str,
+    observed_at: i64,
 ) -> FSERecord {
     FSERecord::new(
         vec![
-            FSEValue::Integer(case_id),
-            FSEValue::Float(latitude),
-            FSEValue::Category(status.to_string()),
-            FSEValue::TimestampMillis(reported_at),
+            FSEValue::Integer(entity_id),
+            FSEValue::Float(metric),
+            FSEValue::Category(state.to_string()),
+            FSEValue::TimestampMillis(observed_at),
         ],
         schema,
     )
 }
 
-fn status_encoder() -> CategoricalDictionaryEncoder {
-    CategoricalDictionaryEncoder::new(vec!["open".to_string(), "closed".to_string()])
+fn state_encoder() -> CategoricalDictionaryEncoder {
+    CategoricalDictionaryEncoder::new(vec!["active".to_string(), "archived".to_string()])
 }

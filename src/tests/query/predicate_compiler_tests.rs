@@ -11,11 +11,12 @@ use crate::query::{
 
 #[test]
 fn numeric_predicate_compiler_compiles_integer_equality() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
-    let predicate = FSEPredicate::equals(FSEPredicateField::name("case_id"), FSEValue::Integer(42))
-        .validate(&schema)
-        .expect("valid predicate should validate");
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let predicate =
+        FSEPredicate::equals(FSEPredicateField::name("entity_id"), FSEValue::Integer(42))
+            .validate(&schema)
+            .expect("valid predicate should validate");
 
     let region = compile_numeric_predicate_to_query_region(&predicate, &mapping)
         .expect("numeric equality predicate should compile");
@@ -32,10 +33,10 @@ fn numeric_predicate_compiler_compiles_integer_equality() {
 
 #[test]
 fn numeric_predicate_compiler_compiles_float_range() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
     let predicate = FSEPredicate::range(
-        FSEPredicateField::name("latitude"),
+        FSEPredicateField::name("metric"),
         FSEValue::Float(41.0),
         FSEValue::Float(42.0),
     )
@@ -57,10 +58,10 @@ fn numeric_predicate_compiler_compiles_float_range() {
 
 #[test]
 fn numeric_predicate_compiler_compiles_timestamp_range() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
     let predicate = FSEPredicate::range(
-        FSEPredicateField::name("reported_at"),
+        FSEPredicateField::name("observed_at"),
         FSEValue::TimestampMillis(1_735_689_600_000),
         FSEValue::TimestampMillis(1_735_689_700_000),
     )
@@ -76,7 +77,7 @@ fn numeric_predicate_compiler_compiles_timestamp_range() {
 
 #[test]
 fn numeric_predicate_compiler_reports_unmapped_field() {
-    let schema = crime_schema();
+    let schema = entity_schema();
     let mapping = FSESchemaDimensionMapping::new(
         &schema,
         vec![
@@ -85,7 +86,7 @@ fn numeric_predicate_compiler_reports_unmapped_field() {
         ],
     );
     let predicate = FSEPredicate::equals(
-        FSEPredicateField::name("reported_at"),
+        FSEPredicateField::name("observed_at"),
         FSEValue::TimestampMillis(1_735_689_600_000),
     )
     .validate(&schema)
@@ -98,18 +99,18 @@ fn numeric_predicate_compiler_reports_unmapped_field() {
         error,
         FSEPredicateCompileError::FieldNotMapped {
             field: 3,
-            name: "reported_at".to_string(),
+            name: "observed_at".to_string(),
         }
     );
     assert_eq!(
         error.to_string(),
-        "predicate field 'reported_at' has no coordinate mapping"
+        "predicate field 'observed_at' has no coordinate mapping"
     );
 }
 
 #[test]
 fn numeric_predicate_compiler_reports_multiple_field_mappings() {
-    let schema = crime_schema();
+    let schema = entity_schema();
     let mapping = FSESchemaDimensionMapping::new(
         &schema,
         vec![
@@ -119,7 +120,7 @@ fn numeric_predicate_compiler_reports_multiple_field_mappings() {
         ],
     );
     let predicate = FSEPredicate::range(
-        FSEPredicateField::name("latitude"),
+        FSEPredicateField::name("metric"),
         FSEValue::Float(41.0),
         FSEValue::Float(42.0),
     )
@@ -133,23 +134,23 @@ fn numeric_predicate_compiler_reports_multiple_field_mappings() {
         error,
         FSEPredicateCompileError::FieldMappedToMultipleDimensions {
             field: 1,
-            name: "latitude".to_string(),
+            name: "metric".to_string(),
             dimensions: 2,
         }
     );
     assert_eq!(
         error.to_string(),
-        "predicate field 'latitude' maps to 2 coordinate dimensions"
+        "predicate field 'metric' maps to 2 coordinate dimensions"
     );
 }
 
 #[test]
 fn numeric_predicate_compiler_reports_unsupported_field_type() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
     let predicate = FSEPredicate::equals(
-        FSEPredicateField::name("status"),
-        FSEValue::Category("open".to_string()),
+        FSEPredicateField::name("state"),
+        FSEValue::Category("active".to_string()),
     )
     .validate(&schema)
     .expect("valid predicate should validate");
@@ -161,24 +162,24 @@ fn numeric_predicate_compiler_reports_unsupported_field_type() {
         error,
         FSEPredicateCompileError::UnsupportedFieldType {
             field: 2,
-            name: "status".to_string(),
+            name: "state".to_string(),
             field_type: FSEFieldType::Category,
         }
     );
     assert_eq!(
         error.to_string(),
-        "predicate field 'status' with type Category cannot be compiled by the numeric predicate compiler"
+        "predicate field 'state' with type Category cannot be compiled by the numeric predicate compiler"
     );
 }
 
 #[test]
 fn categorical_predicate_compiler_compiles_equality() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
-    let encoder = status_encoder();
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let encoder = state_encoder();
     let predicate = FSEPredicate::equals(
-        FSEPredicateField::name("status"),
-        FSEValue::Category("closed".to_string()),
+        FSEPredicateField::name("state"),
+        FSEValue::Category("archived".to_string()),
     )
     .validate(&schema)
     .expect("valid predicate should validate");
@@ -193,12 +194,13 @@ fn categorical_predicate_compiler_compiles_equality() {
 
 #[test]
 fn categorical_predicate_compiler_reports_unsupported_field_type() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
-    let encoder = status_encoder();
-    let predicate = FSEPredicate::equals(FSEPredicateField::name("case_id"), FSEValue::Integer(42))
-        .validate(&schema)
-        .expect("valid predicate should validate");
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let encoder = state_encoder();
+    let predicate =
+        FSEPredicate::equals(FSEPredicateField::name("entity_id"), FSEValue::Integer(42))
+            .validate(&schema)
+            .expect("valid predicate should validate");
 
     let error =
         compile_categorical_equality_predicate_to_query_region(&predicate, &mapping, &encoder)
@@ -208,23 +210,23 @@ fn categorical_predicate_compiler_reports_unsupported_field_type() {
         error,
         FSEPredicateCompileError::UnsupportedCategoricalFieldType {
             field: 0,
-            name: "case_id".to_string(),
+            name: "entity_id".to_string(),
             field_type: FSEFieldType::Integer,
         }
     );
     assert_eq!(
         error.to_string(),
-        "predicate field 'case_id' with type Integer cannot be compiled by the categorical predicate compiler"
+        "predicate field 'entity_id' with type Integer cannot be compiled by the categorical predicate compiler"
     );
 }
 
 #[test]
 fn categorical_predicate_compiler_reports_unknown_category() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
-    let encoder = status_encoder();
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let encoder = state_encoder();
     let predicate = FSEPredicate::equals(
-        FSEPredicateField::name("status"),
+        FSEPredicateField::name("state"),
         FSEValue::Category("pending".to_string()),
     )
     .validate(&schema)
@@ -238,19 +240,19 @@ fn categorical_predicate_compiler_reports_unknown_category() {
         error,
         FSEPredicateCompileError::UnknownCategory {
             field: 2,
-            name: "status".to_string(),
+            name: "state".to_string(),
             category: "pending".to_string(),
         }
     );
     assert_eq!(
         error.to_string(),
-        "category 'pending' for field 'status' is not in dictionary"
+        "category 'pending' for field 'state' is not in dictionary"
     );
 }
 
 #[test]
 fn categorical_predicate_compiler_reports_unmapped_field() {
-    let schema = crime_schema();
+    let schema = entity_schema();
     let mapping = FSESchemaDimensionMapping::new(
         &schema,
         vec![
@@ -259,10 +261,10 @@ fn categorical_predicate_compiler_reports_unmapped_field() {
             FSEDimensionMapping::new(3, 2),
         ],
     );
-    let encoder = status_encoder();
+    let encoder = state_encoder();
     let predicate = FSEPredicate::equals(
-        FSEPredicateField::name("status"),
-        FSEValue::Category("open".to_string()),
+        FSEPredicateField::name("state"),
+        FSEValue::Category("active".to_string()),
     )
     .validate(&schema)
     .expect("valid predicate should validate");
@@ -275,14 +277,14 @@ fn categorical_predicate_compiler_reports_unmapped_field() {
         error,
         FSEPredicateCompileError::FieldNotMapped {
             field: 2,
-            name: "status".to_string(),
+            name: "state".to_string(),
         }
     );
 }
 
 #[test]
 fn categorical_predicate_compiler_reports_multiple_field_mappings() {
-    let schema = crime_schema();
+    let schema = entity_schema();
     let mapping = FSESchemaDimensionMapping::new(
         &schema,
         vec![
@@ -292,10 +294,10 @@ fn categorical_predicate_compiler_reports_multiple_field_mappings() {
             FSEDimensionMapping::new(2, 3),
         ],
     );
-    let encoder = status_encoder();
+    let encoder = state_encoder();
     let predicate = FSEPredicate::equals(
-        FSEPredicateField::name("status"),
-        FSEValue::Category("open".to_string()),
+        FSEPredicateField::name("state"),
+        FSEValue::Category("active".to_string()),
     )
     .validate(&schema)
     .expect("valid predicate should validate");
@@ -308,22 +310,22 @@ fn categorical_predicate_compiler_reports_multiple_field_mappings() {
         error,
         FSEPredicateCompileError::FieldMappedToMultipleDimensions {
             field: 2,
-            name: "status".to_string(),
+            name: "state".to_string(),
             dimensions: 2,
         }
     );
 }
 
-fn crime_schema() -> FSESchema {
+fn entity_schema() -> FSESchema {
     FSESchema::new(vec![
-        FSEField::new("case_id", FSEFieldType::Integer, false),
-        FSEField::new("latitude", FSEFieldType::Float, false),
-        FSEField::new("status", FSEFieldType::Category, false),
-        FSEField::new("reported_at", FSEFieldType::TimestampMillis, false),
+        FSEField::new("entity_id", FSEFieldType::Integer, false),
+        FSEField::new("metric", FSEFieldType::Float, false),
+        FSEField::new("state", FSEFieldType::Category, false),
+        FSEField::new("observed_at", FSEFieldType::TimestampMillis, false),
     ])
 }
 
-fn crime_mapping(schema: &FSESchema) -> FSESchemaDimensionMapping {
+fn entity_mapping(schema: &FSESchema) -> FSESchemaDimensionMapping {
     FSESchemaDimensionMapping::new(
         schema,
         vec![
@@ -335,6 +337,6 @@ fn crime_mapping(schema: &FSESchema) -> FSESchemaDimensionMapping {
     )
 }
 
-fn status_encoder() -> CategoricalDictionaryEncoder {
-    CategoricalDictionaryEncoder::new(vec!["open".to_string(), "closed".to_string()])
+fn state_encoder() -> CategoricalDictionaryEncoder {
+    CategoricalDictionaryEncoder::new(vec!["active".to_string(), "archived".to_string()])
 }

@@ -10,10 +10,10 @@ use crate::query::{
 
 #[test]
 fn typed_query_plan_builds_numeric_plan() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
     let predicate = FSEPredicate::range(
-        FSEPredicateField::name("latitude"),
+        FSEPredicateField::name("metric"),
         FSEValue::Float(41.0),
         FSEValue::Float(42.0),
     );
@@ -22,7 +22,7 @@ fn typed_query_plan_builds_numeric_plan() {
         .expect("numeric predicate should produce a plan");
 
     assert_eq!(plan.predicate().field(), 1);
-    assert_eq!(plan.predicate().name(), "latitude");
+    assert_eq!(plan.predicate().name(), "metric");
     assert_eq!(
         plan.predicate().operator(),
         &ValidatedFSEPredicateOperator::Range {
@@ -42,22 +42,22 @@ fn typed_query_plan_builds_numeric_plan() {
 
 #[test]
 fn typed_query_plan_builds_categorical_equality_plan() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
-    let encoder = status_encoder();
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let encoder = state_encoder();
     let predicate = FSEPredicate::equals(
-        FSEPredicateField::name("status"),
-        FSEValue::Category("closed".to_string()),
+        FSEPredicateField::name("state"),
+        FSEValue::Category("archived".to_string()),
     );
 
     let plan = TypedQueryPlan::categorical_equality(&predicate, &schema, &mapping, &encoder)
         .expect("categorical equality predicate should produce a plan");
 
     assert_eq!(plan.predicate().field(), 2);
-    assert_eq!(plan.predicate().name(), "status");
+    assert_eq!(plan.predicate().name(), "state");
     assert_eq!(
         plan.predicate().operator(),
-        &ValidatedFSEPredicateOperator::Equal(FSEValue::Category("closed".to_string()))
+        &ValidatedFSEPredicateOperator::Equal(FSEValue::Category("archived".to_string()))
     );
     assert_eq!(
         plan.query_region().min,
@@ -71,8 +71,8 @@ fn typed_query_plan_builds_categorical_equality_plan() {
 
 #[test]
 fn typed_query_plan_reports_predicate_validation_error() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
     let predicate = FSEPredicate::equals(FSEPredicateField::name("missing"), FSEValue::Integer(42));
 
     let error = TypedQueryPlan::numeric(&predicate, &schema, &mapping)
@@ -89,11 +89,11 @@ fn typed_query_plan_reports_predicate_validation_error() {
 
 #[test]
 fn typed_query_plan_reports_numeric_compile_error() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
     let predicate = FSEPredicate::equals(
-        FSEPredicateField::name("status"),
-        FSEValue::Category("open".to_string()),
+        FSEPredicateField::name("state"),
+        FSEValue::Category("active".to_string()),
     );
 
     let error = TypedQueryPlan::numeric(&predicate, &schema, &mapping)
@@ -103,23 +103,23 @@ fn typed_query_plan_reports_numeric_compile_error() {
         error,
         TypedQueryPlanError::Compile(FSEPredicateCompileError::UnsupportedFieldType {
             field: 2,
-            name: "status".to_string(),
+            name: "state".to_string(),
             field_type: FSEFieldType::Category,
         })
     );
     assert_eq!(
         error.to_string(),
-        "predicate field 'status' with type Category cannot be compiled by the numeric predicate compiler"
+        "predicate field 'state' with type Category cannot be compiled by the numeric predicate compiler"
     );
 }
 
 #[test]
 fn typed_query_plan_reports_categorical_compile_error() {
-    let schema = crime_schema();
-    let mapping = crime_mapping(&schema);
-    let encoder = status_encoder();
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let encoder = state_encoder();
     let predicate = FSEPredicate::equals(
-        FSEPredicateField::name("status"),
+        FSEPredicateField::name("state"),
         FSEValue::Category("pending".to_string()),
     );
 
@@ -130,26 +130,26 @@ fn typed_query_plan_reports_categorical_compile_error() {
         error,
         TypedQueryPlanError::Compile(FSEPredicateCompileError::UnknownCategory {
             field: 2,
-            name: "status".to_string(),
+            name: "state".to_string(),
             category: "pending".to_string(),
         })
     );
     assert_eq!(
         error.to_string(),
-        "category 'pending' for field 'status' is not in dictionary"
+        "category 'pending' for field 'state' is not in dictionary"
     );
 }
 
-fn crime_schema() -> FSESchema {
+fn entity_schema() -> FSESchema {
     FSESchema::new(vec![
-        FSEField::new("case_id", FSEFieldType::Integer, false),
-        FSEField::new("latitude", FSEFieldType::Float, false),
-        FSEField::new("status", FSEFieldType::Category, false),
-        FSEField::new("reported_at", FSEFieldType::TimestampMillis, false),
+        FSEField::new("entity_id", FSEFieldType::Integer, false),
+        FSEField::new("metric", FSEFieldType::Float, false),
+        FSEField::new("state", FSEFieldType::Category, false),
+        FSEField::new("observed_at", FSEFieldType::TimestampMillis, false),
     ])
 }
 
-fn crime_mapping(schema: &FSESchema) -> FSESchemaDimensionMapping {
+fn entity_mapping(schema: &FSESchema) -> FSESchemaDimensionMapping {
     FSESchemaDimensionMapping::new(
         schema,
         vec![
@@ -161,6 +161,6 @@ fn crime_mapping(schema: &FSESchema) -> FSESchemaDimensionMapping {
     )
 }
 
-fn status_encoder() -> CategoricalDictionaryEncoder {
-    CategoricalDictionaryEncoder::new(vec!["open".to_string(), "closed".to_string()])
+fn state_encoder() -> CategoricalDictionaryEncoder {
+    CategoricalDictionaryEncoder::new(vec!["active".to_string(), "archived".to_string()])
 }
