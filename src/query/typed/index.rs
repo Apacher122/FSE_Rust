@@ -6,12 +6,15 @@ use std::fmt;
 use crate::build::{BuildInputError, FSEBuilder, RowMappedFSEIndex};
 use crate::data::{FSERecordBatch, RowId};
 use crate::encoding::{FSERecordBatchEncodingError, FSERecordEncoder, encode_record_batch};
+use crate::query::execution::{QueryCountReport, QueryExistenceReport};
 
 use super::execution::{
     IndexedTypedQueryError, IndexedTypedQueryReport, IndexedTypedQueryRowReport,
-    TypedQueryResultRow, evaluate_indexed_typed_query_plan, evaluate_indexed_typed_query_plan_rows,
-    evaluate_indexed_typed_query_plan_rows_with_stats,
-    evaluate_indexed_typed_query_plan_with_stats,
+    TypedQueryResultRow, count_indexed_typed_query_matches,
+    count_indexed_typed_query_matches_with_stats, evaluate_indexed_typed_query_plan,
+    evaluate_indexed_typed_query_plan_rows, evaluate_indexed_typed_query_plan_rows_with_stats,
+    evaluate_indexed_typed_query_plan_with_stats, indexed_typed_query_has_match,
+    indexed_typed_query_has_match_with_stats,
 };
 use super::plan::TypedQueryPlan;
 
@@ -126,5 +129,31 @@ impl TypedQueryIndex {
         plan: &TypedQueryPlan,
     ) -> Result<IndexedTypedQueryRowReport, IndexedTypedQueryError> {
         evaluate_indexed_typed_query_plan_rows_with_stats(&self.index, &self.batch, plan)
+    }
+
+    /// Counts records that satisfy a typed query plan.
+    pub fn count_matches(&self, plan: &TypedQueryPlan) -> Result<usize, IndexedTypedQueryError> {
+        count_indexed_typed_query_matches(&self.index, &self.batch, plan)
+    }
+
+    /// Counts records that satisfy a typed query plan and returns statistics.
+    pub fn count_matches_with_stats(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<QueryCountReport, IndexedTypedQueryError> {
+        count_indexed_typed_query_matches_with_stats(&self.index, &self.batch, plan)
+    }
+
+    /// Returns true when a typed query plan matches at least one record.
+    pub fn has_match(&self, plan: &TypedQueryPlan) -> Result<bool, IndexedTypedQueryError> {
+        indexed_typed_query_has_match(&self.index, &self.batch, plan)
+    }
+
+    /// Returns typed existence with execution statistics.
+    pub fn has_match_with_stats(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<QueryExistenceReport, IndexedTypedQueryError> {
+        indexed_typed_query_has_match_with_stats(&self.index, &self.batch, plan)
     }
 }

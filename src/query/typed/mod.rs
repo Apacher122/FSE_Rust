@@ -16,10 +16,13 @@ pub use compiler::{
 pub use evaluator::evaluate_typed_predicate;
 pub use execution::{
     IndexedTypedQueryError, IndexedTypedQueryReport, IndexedTypedQueryRowReport,
-    TypedQueryResultRow, evaluate_indexed_typed_query_plan, evaluate_indexed_typed_query_plan_rows,
+    TypedQueryResultRow, count_indexed_typed_query_matches,
+    count_indexed_typed_query_matches_with_stats, count_typed_query_matches,
+    evaluate_indexed_typed_query_plan, evaluate_indexed_typed_query_plan_rows,
     evaluate_indexed_typed_query_plan_rows_with_stats,
     evaluate_indexed_typed_query_plan_with_stats, evaluate_typed_query_plan,
-    evaluate_typed_query_plan_rows,
+    evaluate_typed_query_plan_rows, indexed_typed_query_has_match,
+    indexed_typed_query_has_match_with_stats, typed_query_has_match,
 };
 pub use index::{TypedQueryIndex, TypedQueryIndexBuildError};
 pub use plan::{TypedQueryPlan, TypedQueryPlanError};

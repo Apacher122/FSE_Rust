@@ -8,9 +8,11 @@ use std::fmt;
 
 use crate::build::RowMappedFSEIndex;
 use crate::data::{FSERecord, FSERecordBatch, RowId};
+use crate::math::Scalar;
 
 use super::super::execution::{
-    QueryExecutionStats, QueryResultReference, execute_query_references_with_stats,
+    QueryCountReport, QueryExecutionStats, QueryExistenceReport, QueryResultReference,
+    execute_query_references_with_stats,
 };
 use super::evaluator::evaluate_typed_predicate;
 use super::plan::TypedQueryPlan;
@@ -134,6 +136,36 @@ pub fn evaluate_typed_query_plan(batch: &FSERecordBatch, plan: &TypedQueryPlan) 
     matches
 }
 
+/// Counts records that satisfy a typed query plan.
+///
+/// # Returns
+///
+/// Returns the number of batch records accepted by the validated predicates
+/// stored in the plan.
+pub fn count_typed_query_matches(batch: &FSERecordBatch, plan: &TypedQueryPlan) -> usize {
+    if plan.is_unsatisfiable() {
+        return 0;
+    }
+
+    batch
+        .records()
+        .iter()
+        .filter(|record| record_matches_plan(record, plan))
+        .count()
+}
+
+/// Returns true when a typed query plan matches at least one record.
+pub fn typed_query_has_match(batch: &FSERecordBatch, plan: &TypedQueryPlan) -> bool {
+    if plan.is_unsatisfiable() {
+        return false;
+    }
+
+    batch
+        .records()
+        .iter()
+        .any(|record| record_matches_plan(record, plan))
+}
+
 /// Evaluates a typed query plan against a record batch and returns result rows.
 ///
 /// # Returns
@@ -206,6 +238,111 @@ pub fn evaluate_indexed_typed_query_plan_with_stats(
     stats.matched_records = row_ids.len();
 
     Ok(IndexedTypedQueryReport { row_ids, stats })
+}
+
+/// Counts records that satisfy an indexed typed query plan.
+pub fn count_indexed_typed_query_matches(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+) -> Result<usize, IndexedTypedQueryError> {
+    Ok(count_indexed_typed_query_matches_with_stats(index, batch, plan)?.matched_records)
+}
+
+/// Counts records that satisfy an indexed typed query plan and returns statistics.
+///
+/// # Runtime Role
+///
+/// The query region in the plan is evaluated by the FSE hierarchy. Each
+/// retained row reference is resolved to a typed record and checked against the
+/// validated predicates stored in the plan.
+pub fn count_indexed_typed_query_matches_with_stats(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+) -> Result<QueryCountReport, IndexedTypedQueryError> {
+    if plan.is_unsatisfiable() {
+        return Ok(QueryCountReport {
+            matched_records: 0,
+            stats: unsatisfiable_plan_stats(index),
+        });
+    }
+
+    let reference_report = execute_query_references_with_stats(index.index(), plan.query_region());
+    let mut matched_records = 0;
+
+    for reference in reference_report.matches {
+        let row_id = row_id_for_reference(index, reference)?;
+        let record = record_for_row_id(batch, row_id)?;
+
+        if record_matches_plan(record, plan) {
+            matched_records += 1;
+        }
+    }
+
+    let mut stats = reference_report.stats;
+    stats.matched_records = matched_records;
+
+    Ok(QueryCountReport {
+        matched_records,
+        stats,
+    })
+}
+
+/// Returns true when an indexed typed query plan matches at least one record.
+pub fn indexed_typed_query_has_match(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+) -> Result<bool, IndexedTypedQueryError> {
+    Ok(indexed_typed_query_has_match_with_stats(index, batch, plan)?.has_match)
+}
+
+/// Returns indexed typed existence with execution statistics.
+///
+/// # Runtime Role
+///
+/// The report records the boolean result and the number of typed candidate
+/// records inspected before the result was established.
+pub fn indexed_typed_query_has_match_with_stats(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+) -> Result<QueryExistenceReport, IndexedTypedQueryError> {
+    if plan.is_unsatisfiable() {
+        return Ok(QueryExistenceReport {
+            has_match: false,
+            inspected_records: 0,
+            stats: unsatisfiable_plan_stats(index),
+        });
+    }
+
+    let reference_report = execute_query_references_with_stats(index.index(), plan.query_region());
+    let mut inspected_records = 0;
+    let mut has_match = false;
+
+    for reference in reference_report.matches {
+        inspected_records += 1;
+
+        let row_id = row_id_for_reference(index, reference)?;
+        let record = record_for_row_id(batch, row_id)?;
+
+        if record_matches_plan(record, plan) {
+            has_match = true;
+            break;
+        }
+    }
+
+    let mut stats = reference_report.stats;
+    stats.reconstructed_records = inspected_records;
+    stats.matched_records = usize::from(has_match);
+    stats.candidate_ratio = candidate_ratio(inspected_records, stats.total_records);
+
+    Ok(QueryExistenceReport {
+        has_match,
+        inspected_records,
+        stats,
+    })
 }
 
 /// Evaluates a typed query plan through a row-mapped FSE index and returns rows.
@@ -286,4 +423,12 @@ fn record_matches_plan(record: &FSERecord, plan: &TypedQueryPlan) -> bool {
     plan.predicates()
         .iter()
         .all(|predicate| evaluate_typed_predicate(record, predicate))
+}
+
+fn candidate_ratio(inspected_records: usize, total_records: usize) -> Scalar {
+    if total_records == 0 {
+        return 0.0;
+    }
+
+    inspected_records as Scalar / total_records as Scalar
 }

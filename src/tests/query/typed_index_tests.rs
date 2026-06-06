@@ -55,6 +55,62 @@ fn typed_query_index_returns_rows_with_stats() {
 }
 
 #[test]
+fn typed_query_index_counts_matches_with_stats() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index = TypedQueryIndex::try_build(batch.clone(), &encoder, &builder())
+        .expect("valid input should build");
+    let plan = score_and_class_plan(&schema, &mapping);
+
+    let count = query_index
+        .count_matches(&plan)
+        .expect("typed indexed count should execute");
+    let report = query_index
+        .count_matches_with_stats(&plan)
+        .expect("typed indexed count should execute");
+
+    assert_eq!(count, 2);
+    assert_eq!(report.matched_records, 2);
+    assert_eq!(report.stats.total_records, batch.len());
+    assert_eq!(report.stats.matched_records, 2);
+}
+
+#[test]
+fn typed_query_index_reports_exact_existence() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index = TypedQueryIndex::try_build(batch.clone(), &encoder, &builder())
+        .expect("valid input should build");
+    let matching_plan = score_and_class_plan(&schema, &mapping);
+    let missing_plan = score_range_plan(&schema, &mapping, 90.0, 100.0);
+
+    assert!(
+        query_index
+            .has_match(&matching_plan)
+            .expect("typed indexed existence should execute")
+    );
+    assert!(
+        !query_index
+            .has_match(&missing_plan)
+            .expect("typed indexed existence should execute")
+    );
+
+    let report = query_index
+        .has_match_with_stats(&matching_plan)
+        .expect("typed indexed existence should execute");
+
+    assert!(report.has_match);
+    assert!(report.inspected_records > 0);
+    assert_eq!(report.stats.total_records, batch.len());
+    assert_eq!(report.stats.reconstructed_records, report.inspected_records);
+    assert_eq!(report.stats.matched_records, 1);
+}
+
+#[test]
 fn typed_query_index_returns_index_and_batch_references() {
     let schema = entity_schema();
     let batch = entity_batch(&schema);
@@ -141,6 +197,38 @@ fn typed_query_index_reports_missing_records_from_existing_parts() {
     );
 }
 
+#[test]
+fn typed_query_index_count_reports_missing_records_from_existing_parts() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let indexed_batch = entity_batch(&schema);
+    let query_batch = FSERecordBatch::new(
+        schema.clone(),
+        vec![RowId::new(100), RowId::new(101), RowId::new(102)],
+        vec![
+            entity_record(&schema, 1, 12.5, "alpha", 1_000),
+            entity_record(&schema, 2, 12.5, "beta", 1_100),
+            entity_record(&schema, 3, 25.0, "alpha", 1_200),
+        ],
+    );
+    let encoder = entity_encoder(&schema);
+    let query_index = TypedQueryIndex::try_build(indexed_batch, &encoder, &builder())
+        .expect("valid input should build");
+    let query_index = TypedQueryIndex::from_parts(query_batch, query_index.index().clone());
+    let plan = score_and_class_plan(&schema, &mapping);
+
+    let error = query_index
+        .count_matches(&plan)
+        .expect_err("missing row id should be reported");
+
+    assert_eq!(
+        error,
+        IndexedTypedQueryError::MissingRecord {
+            row_id: RowId::new(103),
+        }
+    );
+}
+
 fn score_and_class_plan(
     schema: &FSESchema,
     mapping: &FSESchemaDimensionMapping,
@@ -158,6 +246,22 @@ fn score_and_class_plan(
         ))
         .build()
         .expect("valid predicates should produce a plan")
+}
+
+fn score_range_plan(
+    schema: &FSESchema,
+    mapping: &FSESchemaDimensionMapping,
+    min: f64,
+    max: f64,
+) -> crate::query::TypedQueryPlan {
+    TypedQueryPlanBuilder::new(schema, mapping)
+        .with_predicate(FSEPredicate::range(
+            FSEPredicateField::name("score"),
+            FSEValue::Float(min),
+            FSEValue::Float(max),
+        ))
+        .build()
+        .expect("valid predicate should produce a plan")
 }
 
 fn entity_schema() -> FSESchema {
