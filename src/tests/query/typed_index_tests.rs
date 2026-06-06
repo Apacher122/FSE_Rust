@@ -55,6 +55,55 @@ fn typed_query_index_returns_rows_with_stats() {
 }
 
 #[test]
+fn typed_query_index_visits_matching_row_ids() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let plan = score_and_class_plan(&schema, &mapping);
+    let mut matches = Vec::new();
+
+    let stats = query_index
+        .visit_row_ids(&plan, |row_id| {
+            matches.push(row_id);
+        })
+        .expect("typed indexed visitor should execute");
+
+    assert_eq!(matches, vec![RowId::new(100), RowId::new(103)]);
+    assert_eq!(stats.total_records, 4);
+    assert_eq!(stats.matched_records, 2);
+}
+
+#[test]
+fn typed_query_index_visits_matching_records() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index = TypedQueryIndex::try_build(batch.clone(), &encoder, &builder())
+        .expect("valid input should build");
+    let plan = score_and_class_plan(&schema, &mapping);
+    let mut matches = Vec::new();
+
+    let stats = query_index
+        .visit_rows(&plan, |row_id, record| {
+            matches.push((row_id, record.clone()));
+        })
+        .expect("typed indexed visitor should execute");
+
+    assert_eq!(matches.len(), 2);
+    assert_eq!(matches[0].0, RowId::new(100));
+    assert_eq!(
+        &matches[0].1,
+        batch.record_for_row_id(RowId::new(100)).unwrap()
+    );
+    assert_eq!(matches[1].0, RowId::new(103));
+    assert_eq!(stats.matched_records, 2);
+}
+
+#[test]
 fn typed_query_index_counts_matches_with_stats() {
     let schema = entity_schema();
     let mapping = entity_mapping(&schema);
@@ -108,6 +157,38 @@ fn typed_query_index_reports_exact_existence() {
     assert_eq!(report.stats.total_records, batch.len());
     assert_eq!(report.stats.reconstructed_records, report.inspected_records);
     assert_eq!(report.stats.matched_records, 1);
+}
+
+#[test]
+fn typed_query_index_visitor_reports_missing_records_from_existing_parts() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let indexed_batch = entity_batch(&schema);
+    let query_batch = FSERecordBatch::new(
+        schema.clone(),
+        vec![RowId::new(100), RowId::new(101), RowId::new(102)],
+        vec![
+            entity_record(&schema, 1, 12.5, "alpha", 1_000),
+            entity_record(&schema, 2, 12.5, "beta", 1_100),
+            entity_record(&schema, 3, 25.0, "alpha", 1_200),
+        ],
+    );
+    let encoder = entity_encoder(&schema);
+    let query_index = TypedQueryIndex::try_build(indexed_batch, &encoder, &builder())
+        .expect("valid input should build");
+    let query_index = TypedQueryIndex::from_parts(query_batch, query_index.index().clone());
+    let plan = score_and_class_plan(&schema, &mapping);
+
+    let error = query_index
+        .visit_row_ids(&plan, |_row_id| {})
+        .expect_err("missing row id should be reported");
+
+    assert_eq!(
+        error,
+        IndexedTypedQueryError::MissingRecord {
+            row_id: RowId::new(103),
+        }
+    );
 }
 
 #[test]

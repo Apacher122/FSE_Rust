@@ -4,9 +4,9 @@ use std::error::Error;
 use std::fmt;
 
 use crate::build::{BuildInputError, FSEBuilder, RowMappedFSEIndex};
-use crate::data::{FSERecordBatch, RowId};
+use crate::data::{FSERecord, FSERecordBatch, RowId};
 use crate::encoding::{FSERecordBatchEncodingError, FSERecordEncoder, encode_record_batch};
-use crate::query::execution::{QueryCountReport, QueryExistenceReport};
+use crate::query::execution::{QueryCountReport, QueryExecutionStats, QueryExistenceReport};
 
 use super::execution::{
     IndexedTypedQueryError, IndexedTypedQueryReport, IndexedTypedQueryRowReport,
@@ -14,7 +14,8 @@ use super::execution::{
     count_indexed_typed_query_matches_with_stats, evaluate_indexed_typed_query_plan,
     evaluate_indexed_typed_query_plan_rows, evaluate_indexed_typed_query_plan_rows_with_stats,
     evaluate_indexed_typed_query_plan_with_stats, indexed_typed_query_has_match,
-    indexed_typed_query_has_match_with_stats,
+    indexed_typed_query_has_match_with_stats, visit_indexed_typed_query_row_ids,
+    visit_indexed_typed_query_rows,
 };
 use super::plan::TypedQueryPlan;
 
@@ -155,5 +156,29 @@ impl TypedQueryIndex {
         plan: &TypedQueryPlan,
     ) -> Result<QueryExistenceReport, IndexedTypedQueryError> {
         indexed_typed_query_has_match_with_stats(&self.index, &self.batch, plan)
+    }
+
+    /// Visits matching row identifiers for a typed query plan.
+    pub fn visit_row_ids<F>(
+        &self,
+        plan: &TypedQueryPlan,
+        visitor: F,
+    ) -> Result<QueryExecutionStats, IndexedTypedQueryError>
+    where
+        F: FnMut(RowId),
+    {
+        visit_indexed_typed_query_row_ids(&self.index, &self.batch, plan, visitor)
+    }
+
+    /// Visits matching typed records for a typed query plan.
+    pub fn visit_rows<F>(
+        &self,
+        plan: &TypedQueryPlan,
+        visitor: F,
+    ) -> Result<QueryExecutionStats, IndexedTypedQueryError>
+    where
+        F: FnMut(RowId, &FSERecord),
+    {
+        visit_indexed_typed_query_rows(&self.index, &self.batch, plan, visitor)
     }
 }

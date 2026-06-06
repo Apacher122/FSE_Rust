@@ -261,30 +261,10 @@ pub fn count_indexed_typed_query_matches_with_stats(
     batch: &FSERecordBatch,
     plan: &TypedQueryPlan,
 ) -> Result<QueryCountReport, IndexedTypedQueryError> {
-    if plan.is_unsatisfiable() {
-        return Ok(QueryCountReport {
-            matched_records: 0,
-            stats: unsatisfiable_plan_stats(index),
-        });
-    }
-
-    let reference_report = execute_query_references_with_stats(index.index(), plan.query_region());
-    let mut matched_records = 0;
-
-    for reference in reference_report.matches {
-        let row_id = row_id_for_reference(index, reference)?;
-        let record = record_for_row_id(batch, row_id)?;
-
-        if record_matches_plan(record, plan) {
-            matched_records += 1;
-        }
-    }
-
-    let mut stats = reference_report.stats;
-    stats.matched_records = matched_records;
+    let stats = visit_indexed_typed_query_rows(index, batch, plan, |_row_id, _record| {})?;
 
     Ok(QueryCountReport {
-        matched_records,
+        matched_records: stats.matched_records,
         stats,
     })
 }
@@ -343,6 +323,64 @@ pub fn indexed_typed_query_has_match_with_stats(
         inspected_records,
         stats,
     })
+}
+
+/// Visits matching row identifiers for an indexed typed query plan.
+///
+/// # Runtime Role
+///
+/// The visitor is called once for each typed record accepted by the validated
+/// predicates stored in the plan.
+pub fn visit_indexed_typed_query_row_ids<F>(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    mut visitor: F,
+) -> Result<QueryExecutionStats, IndexedTypedQueryError>
+where
+    F: FnMut(RowId),
+{
+    visit_indexed_typed_query_rows(index, batch, plan, |row_id, _record| {
+        visitor(row_id);
+    })
+}
+
+/// Visits matching typed records for an indexed typed query plan.
+///
+/// # Runtime Role
+///
+/// The visitor receives the logical row identifier and the record stored in the
+/// indexed batch for each accepted typed match.
+pub fn visit_indexed_typed_query_rows<F>(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    mut visitor: F,
+) -> Result<QueryExecutionStats, IndexedTypedQueryError>
+where
+    F: FnMut(RowId, &FSERecord),
+{
+    if plan.is_unsatisfiable() {
+        return Ok(unsatisfiable_plan_stats(index));
+    }
+
+    let reference_report = execute_query_references_with_stats(index.index(), plan.query_region());
+    let mut matched_records = 0;
+
+    for reference in reference_report.matches {
+        let row_id = row_id_for_reference(index, reference)?;
+        let record = record_for_row_id(batch, row_id)?;
+
+        if record_matches_plan(record, plan) {
+            matched_records += 1;
+            visitor(row_id, record);
+        }
+    }
+
+    let mut stats = reference_report.stats;
+    stats.matched_records = matched_records;
+
+    Ok(stats)
 }
 
 /// Evaluates a typed query plan through a row-mapped FSE index and returns rows.

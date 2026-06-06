@@ -55,4 +55,5 @@ pub use typed::{
     evaluate_indexed_typed_query_plan_with_stats, evaluate_typed_predicate,
     evaluate_typed_query_plan, evaluate_typed_query_plan_rows, indexed_typed_query_has_match,
     indexed_typed_query_has_match_with_stats, typed_query_has_match,
+    visit_indexed_typed_query_row_ids, visit_indexed_typed_query_rows,
 };
