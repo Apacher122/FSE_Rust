@@ -5,12 +5,11 @@ use crate::benchmark::reports::timing::{
     RepeatedComparisonTimingReport, RepeatedTimingConfig, TimingReport, duration_ratio,
     measure_elapsed, measure_repeated_comparison_interleaved,
 };
-use crate::build::RowMappedFSEIndex;
-use crate::data::{FSERecordBatch, RowId};
+use crate::data::RowId;
 use crate::math::Scalar;
 use crate::query::{
-    IndexedTypedQueryError, QueryExecutionStats, TypedQueryPlan,
-    evaluate_indexed_typed_query_plan_with_stats, evaluate_typed_query_plan,
+    IndexedTypedQueryError, QueryExecutionStats, TypedQueryIndex, TypedQueryPlan,
+    evaluate_typed_query_plan,
 };
 
 /// Comparison report for typed batch scan and indexed typed execution.
@@ -18,7 +17,7 @@ use crate::query::{
 /// # Runtime Role
 ///
 /// `TypedQueryComparisonReport` records exactness, timing, and retained-work
-/// metrics for a typed query plan executed through the row-mapped FSE index.
+/// metrics for a typed query plan executed through a typed query index.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedQueryComparisonReport {
     /// Number of records matched by typed batch scan.
@@ -62,11 +61,10 @@ pub struct TypedQueryComparisonReport {
 /// This function provides the default typed comparison used before CSV or CLI
 /// benchmark integration. It uses the default repeated timing configuration.
 pub fn compare_typed_query_execution(
-    index: &RowMappedFSEIndex,
-    batch: &FSERecordBatch,
+    query_index: &TypedQueryIndex,
     plan: &TypedQueryPlan,
 ) -> Result<TypedQueryComparisonReport, IndexedTypedQueryError> {
-    compare_typed_query_execution_repeated(index, batch, plan, &RepeatedTimingConfig::default())
+    compare_typed_query_execution_repeated(query_index, plan, &RepeatedTimingConfig::default())
 }
 
 /// Compares indexed typed execution against typed batch scan with repeated timing.
@@ -76,18 +74,17 @@ pub fn compare_typed_query_execution(
 /// Panics when indexed typed execution returns a different exact row-id set
 /// than typed batch scan.
 pub fn compare_typed_query_execution_repeated(
-    index: &RowMappedFSEIndex,
-    batch: &FSERecordBatch,
+    query_index: &TypedQueryIndex,
     plan: &TypedQueryPlan,
     timing_config: &RepeatedTimingConfig,
 ) -> Result<TypedQueryComparisonReport, IndexedTypedQueryError> {
     let (baseline_row_ids, baseline_elapsed) = measure_elapsed(|| {
-        let row_ids = evaluate_typed_query_plan(batch, plan);
+        let row_ids = evaluate_typed_query_plan(query_index.batch(), plan);
         std::hint::black_box(row_ids.len());
         row_ids
     });
     let (indexed_report, indexed_elapsed) = measure_elapsed(|| {
-        let report = evaluate_indexed_typed_query_plan_with_stats(index, batch, plan)?;
+        let report = query_index.query_row_ids_with_stats(plan)?;
         std::hint::black_box(report.row_ids.len());
         Ok::<_, IndexedTypedQueryError>(report)
     });
@@ -98,17 +95,18 @@ pub fn compare_typed_query_execution_repeated(
     let repeated_timing = measure_repeated_comparison_interleaved(
         timing_config,
         || {
-            let row_ids = evaluate_typed_query_plan(batch, plan);
+            let row_ids = evaluate_typed_query_plan(query_index.batch(), plan);
             std::hint::black_box(row_ids.len());
         },
         || {
-            let report = evaluate_indexed_typed_query_plan_with_stats(index, batch, plan)
+            let report = query_index
+                .query_row_ids_with_stats(plan)
                 .expect("indexed typed query should match the validated single-run comparison");
             std::hint::black_box(report.row_ids.len());
         },
     );
 
-    let evaluated_records = batch.len();
+    let evaluated_records = query_index.batch().len();
     let reconstructed_records = indexed_report.stats.reconstructed_records;
     let avoided_record_evaluations = evaluated_records.saturating_sub(reconstructed_records);
     let record_evaluation_avoidance_ratio =

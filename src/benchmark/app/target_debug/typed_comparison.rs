@@ -11,13 +11,13 @@ use crate::benchmark::reports::{
     TypedQueryComparisonReport, compare_typed_query_execution_repeated,
 };
 use crate::benchmark::workloads::QueryWorkloadCase;
-use crate::build::{FSEBuilder, RowMappedFSEIndex};
+use crate::build::FSEBuilder;
 use crate::data::{
     FSEDimensionMapping, FSEField, FSEFieldType, FSERecord, FSERecordBatch, FSESchema,
     FSESchemaDimensionMapping, FSEValue, RowId,
 };
-use crate::encoding::{ComposedRecordEncoder, FloatEncoder, encode_record_batch};
-use crate::query::{FSEPredicate, FSEPredicateField, TypedQueryPlan};
+use crate::encoding::{ComposedRecordEncoder, FloatEncoder};
+use crate::query::{FSEPredicate, FSEPredicateField, TypedQueryIndex, TypedQueryPlan};
 
 const X_FIELD_NAME: &str = "x";
 const Y_FIELD_NAME: &str = "y";
@@ -25,8 +25,7 @@ const Y_FIELD_NAME: &str = "y";
 struct TypedBenchmarkContext {
     schema: FSESchema,
     mapping: FSESchemaDimensionMapping,
-    batch: FSERecordBatch,
-    index: RowMappedFSEIndex,
+    query_index: TypedQueryIndex,
 }
 
 impl BenchmarkApplicationRenderer {
@@ -138,8 +137,7 @@ fn typed_comparison_report(
     let plan = typed_x_range_plan(typed_context, workload);
 
     compare_typed_query_execution_repeated(
-        &typed_context.index,
-        &typed_context.batch,
+        &typed_context.query_index,
         &plan,
         &context.timing_config,
     )
@@ -166,17 +164,14 @@ impl TypedBenchmarkContext {
         let mapping = typed_benchmark_mapping(&schema);
         let batch = typed_benchmark_batch(&schema, context);
         let encoder = typed_benchmark_encoder(&schema);
-        let encoded = encode_record_batch(&batch, &encoder)
-            .expect("typed benchmark records should encode into coordinate vectors");
-        let index = FSEBuilder::new(context.suite_config.build_config())
-            .try_build_row_mapped_encoded_batch(&encoded)
-            .expect("typed benchmark encoded batch should build a row-mapped index");
+        let builder = FSEBuilder::new(context.suite_config.build_config());
+        let query_index = TypedQueryIndex::try_build(batch, &encoder, &builder)
+            .expect("typed benchmark records should build a typed query index");
 
         Self {
             schema,
             mapping,
-            batch,
-            index,
+            query_index,
         }
     }
 }
