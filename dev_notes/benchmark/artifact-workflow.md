@@ -23,6 +23,7 @@ benchmark_artifacts/
     count-only-workload-history.csv
     materialization-mode-history.csv
     target-workload-history.csv
+    index-footprint-history.csv
   runs/
     <label>/
       benchmark-output-<label>.txt
@@ -396,6 +397,7 @@ weakest-workload-history.csv
 count-only-workload-history.csv
 materialization-mode-history.csv
 target-workload-history.csv
+index-footprint-history.csv
 ```
 
 The history files are intentionally named for the question they answer:
@@ -418,6 +420,9 @@ materialization-mode-history.csv:
 
 target-workload-history.csv:
   how the selected boundary workload changed across baselines
+
+index-footprint-history.csv:
+  how logical index scalar footprint changed across validated runs
 ```
 
 Each summary history row starts with run metadata:
@@ -438,6 +443,36 @@ source_csv
 The remaining columns are copied from the source summary CSV.
 
 Do not edit history rows manually to make a benchmark look cleaner. If a run should not count, leave the raw artifact alone and document the decision in benchmark notes.
+
+## Index footprint history
+
+The review runner writes one deduplicated footprint row per validated review run to:
+
+```text
+benchmark_artifacts/history/index-footprint-history.csv
+```
+
+The source is the normal summary CSV for the run. Because the summary CSV has one row per baseline, the history writer keeps the unique index-footprint row instead of repeating identical footprint values for every baseline.
+
+The footprint history keeps these groups of fields:
+
+```text
+run metadata
+dataset and benchmark configuration
+index shape
+leaf cardinality
+index density and volume
+encoded coordinate scalar count
+residual scalar count
+centroid scalar count
+bounds scalar count
+structural metadata scalar count
+total counted index scalar count
+encoded-baseline comparison ratios
+index validation fields
+```
+
+Footprint history values are logical scalar counts. They do not measure allocator overhead, byte layout, compression ratio, cache behavior, file size, or memory-mapped persistence size.
 
 ## Flat benchmark artifact cleanup workflow
 

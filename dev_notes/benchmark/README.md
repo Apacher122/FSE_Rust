@@ -33,6 +33,7 @@ The benchmark workflow currently separates:
     row-view query execution
     count-only query execution
     existence query execution
+    index footprint reporting
     debug-only retained execution diagnostics
 
 Owned-result timing answers materialized row-return performance.
@@ -46,6 +47,8 @@ Row-view timing answers borrowed exact row-view delivery without building owned 
 Count-only timing answers exact-cardinality performance.
 
 Existence timing answers exact non-empty-result performance and inspected-record behavior.
+
+Index footprint reporting answers how many coordinate-like scalars are represented by residuals, centroids, bounds, and the total counted FSE index footprint.
 
 Debug-only retained diagnostics explain implementation costs but should not be treated as public API benchmark evidence.
 
@@ -68,12 +71,15 @@ The benchmark workflow now has:
     row-view materialization summary evidence
     repeated materialization mode trial summaries
     per-workload CSV metrics
+    index footprint metrics
+    index footprint comparison metrics
     count-only workload summary artifacts
     count-only comparison artifacts
     target workload diagnostics
     small and large dataset review workflows
     review artifact validation gates
     organized artifact management
+    benchmark history ledgers, including index footprint history
 
 ## Primary review files
 
@@ -238,6 +244,7 @@ Current benchmark interpretation:
     FSE pruning is doing its job on the target workloads
     small boundary workload is near the fixed-cost floor under owned-result execution
     large target confirms result materialization dominates retained execution
+    logical index footprint reporting is available for tracking structural metadata cost
     count-only query mode is a valid separate output contract
     existence query mode is a valid separate output contract with timing-summary benchmark evidence
     reference visitor is a valid exact reference-delivery output contract with small and large materialization evidence
@@ -250,3 +257,11 @@ Current row-view decision:
     repeated small and large materialization trials preserved exact agreement
     row-view did not beat reference-visitor on any matched large workload
     row-view should not be expanded into batch or reference-list APIs for performance without new evidence
+
+Current footprint interpretation:
+
+    footprint metrics are logical scalar counts, not byte-level memory measurements
+    encoded coordinate scalar count is the current baseline for footprint comparison
+    structural metadata scalars are counted separately from residual scalars
+    index-footprint-history.csv is the cross-run ledger for these fields
+    footprint reporting does not prove storage replacement by itself

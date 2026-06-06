@@ -169,6 +169,7 @@ A reporting/tooling commit should be kept when:
 validation passes
 expected artifacts are generated
 new artifact fields are populated
+new footprint fields are populated when footprint reporting changes
 existing artifact fields remain usable
 scripts still run successfully
 comparison artifacts remain parseable
@@ -180,11 +181,53 @@ A reporting/tooling commit should be fixed or reverted when:
 ```text
 required artifacts are missing
 CSV files are malformed
+footprint fields are missing after a footprint-reporting change
 review scripts fail
 manifest states are wrong
 existing comparison workflows break
 validation no longer runs
 ```
+
+## Footprint reporting rules
+
+Index footprint reporting measures logical coordinate-like scalar counts for the constructed FSE index.
+
+Footprint reporting fields should be interpreted as:
+
+```text
+encoded coordinate scalar count:
+  scalar count in the encoded coordinate baseline
+
+residual scalar count:
+  scalar count in retained residual storage
+
+centroid scalar count:
+  scalar count in partition centroids
+
+bounds scalar count:
+  scalar count in partition bounding regions
+
+structural metadata scalar count:
+  centroid scalar count plus bounds scalar count
+
+total counted index scalar count:
+  residual scalar count plus structural metadata scalar count
+```
+
+Footprint comparison fields use the encoded coordinate scalar count as the baseline. They are valid for tracking structural overhead across runs.
+
+Do not use footprint reporting by itself as proof of:
+
+```text
+byte-level memory use
+allocator overhead
+compressed file size
+persistent storage size
+cache behavior
+replacement of external indexes
+```
+
+Those claims need separate artifacts once persistence, byte accounting, or external-index comparison exists.
 
 ## Query behavior commits
 
@@ -488,7 +531,7 @@ is |E(Q, F)| greater than zero
 
 Existence timing should not be treated as count-only timing.
 
-The existence API is public. Its benchmark evidence currently stays in existence timing summary artifacts and debug review output. Durable previous/current comparison tracking is deferred until repeated-trial evidence shows that the boolean output contract needs review tracking separate from count-only.
+The existence API is public. Its benchmark evidence currently stays in existence timing summary artifacts and debug review output. Durable previous/current comparison tracking is deferred until repeated-trial evidence shows that the Boolean output contract needs review tracking separate from count-only.
 
 Acceptance requirements for existence evidence:
 

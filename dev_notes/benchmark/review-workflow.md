@@ -20,6 +20,7 @@ It should answer:
     did existence timing or inspected-record behavior change
     did target workload behavior change
     did structural counters change
+    did logical index footprint counters change
     did artifact generation succeed
     are comparisons available or skipped
     are skipped comparisons explained
@@ -290,6 +291,8 @@ The benchmark output should show:
     baseline list
     timing iterations
     index shape
+    index scalar footprint
+    index footprint comparison against encoded coordinates
     leaf policy
     max depth
     validation state
@@ -298,6 +301,8 @@ The benchmark output should show:
 The debug output should show:
 
     index validation
+    index scalar footprint
+    index footprint comparison against encoded coordinates
     sibling overlap metrics
     target retained leaf details
     target stage timing estimate
@@ -589,9 +594,12 @@ History CSVs:
     count-only-workload-history.csv
     materialization-mode-history.csv
     target-workload-history.csv
+    index-footprint-history.csv
     ```
 
 The per-run artifacts remain the raw evidence. History CSVs are append-only ledgers for inspection across runs. A history row is not a replacement for the raw artifact named in its `source_csv` column.
+
+`index-footprint-history.csv` is generated from the normal summary CSV. It stores one deduplicated index-footprint row per validated review run because the index footprint is the same across baseline rows for a given run.
 
 Every summary history row includes:
 
@@ -651,6 +659,7 @@ Keep a reporting-only commit when:
 
     validation passes
     expected artifacts are generated
+    new footprint fields are populated when the commit changes footprint reporting
     manifests are accurate
     CSVs are parseable
     notes are readable
@@ -661,6 +670,7 @@ Fix or revert a reporting-only commit when:
 
     required artifacts are missing
     CSVs are malformed
+    footprint fields are missing after a footprint-reporting change
     review scripts fail
     manifests are misleading
     comparison artifacts silently skip required inputs

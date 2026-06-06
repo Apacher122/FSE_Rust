@@ -462,7 +462,7 @@ The exact existence query API answers whether the paper's exact execution result
 query_has_match(Q, F) = |E(Q, F)| > 0
 ```
 
-This is a boolean output contract over the same `Geometry -> Reconstruction -> Logic` execution semantics.
+This is a Boolean output contract over the same `Geometry -> Reconstruction -> Logic` execution semantics.
 
 Commit 338 added workload-level debug timing for existence execution. Commit 341 added inspected-record reporting for the existence path.
 
@@ -710,6 +710,61 @@ the run should be used as the baseline before later builder, traversal, reconstr
 do not treat this as proof that a new optimization improved performance because this commit records a baseline after correctness hardening
 ```
 
+## Index footprint measurement conclusion
+
+Index footprint metrics track the logical scalar cost of the constructed FSE index.
+
+The footprint counters measure:
+
+```text
+encoded coordinate scalars
+residual scalars
+centroid scalars
+bounds scalars
+structural metadata scalars
+total counted index scalars
+```
+
+The comparison metrics use encoded coordinate scalar count as the baseline.
+
+The first validated footprint comparison reporting run used:
+
+```text
+label: run007-r01-footprint-comparison-reporting-small
+dataset: small
+trials: 5
+iterations: 10000
+artifact validation: completed
+history update: completed
+```
+
+The run reported:
+
+```text
+encoded baseline scalar count: 120
+residual scalar count: 120
+centroid scalar count: 46
+bounds scalar count: 92
+structural metadata scalar count: 138
+total counted index scalar count: 258
+scalar delta from encoded baseline: 138
+index-to-encoded baseline scalar ratio: 2.150000
+structural metadata share of index: 0.534884
+index exceeds encoded baseline: true
+structural metadata dominates residuals: true
+```
+
+Interpretation:
+
+```text
+the current prototype stores more logical scalars than the encoded coordinate baseline
+the excess scalar count is structural geometry metadata
+this is expected for the current in-memory reference implementation
+these metrics expose the cost that future metadata-replacement work must justify
+```
+
+This footprint evidence does not prove byte-level storage efficiency, compression ratio, or replacement of external indexes. Those claims require later artifacts that compare persisted FSE layout against raw data plus conventional index metadata.
+
 ## Future optimization direction
 
 The next meaningful optimization direction is a result representation or query API decision.
@@ -760,6 +815,7 @@ count-only query mode is a valid separate output contract
 existence query mode is a valid separate exact non-empty-result output contract
 reference visitor is a valid separate exact reference-delivery output contract
 row-view is a valid borrowed row-delivery output contract but not the current performance direction
+logical footprint reporting is available for structural metadata cost tracking
 future traversal or boundary-specific optimizations need new evidence before being prioritized
 ```
 
@@ -771,6 +827,7 @@ debug-only retained diagnostics as public API timing
 full-selectivity count-only speedups as traversal improvements
 small tiny-query behavior as large-scale behavior
 timing movement from reporting-only commits
+logical scalar footprint as byte-level storage evidence
 ```
 
 Current useful evidence sources:
@@ -783,5 +840,6 @@ count-only workload comparison
 existence timing summary
 reference visitor materialization summary
 repeated materialization trial summaries
+index footprint history
 debug diagnostics for explanation only
 ```
