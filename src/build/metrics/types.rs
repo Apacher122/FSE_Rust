@@ -176,6 +176,49 @@ impl IndexFootprintMetrics {
     }
 }
 
+/// Comparison between an FSE footprint and an encoded coordinate baseline.
+///
+/// # Runtime Role
+///
+/// `IndexFootprintComparisonMetrics` derives storage-footprint interpretation
+/// from [`IndexFootprintMetrics`]. The baseline is the scalar count required
+/// to store the encoded coordinate matrix for the represented records.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct IndexFootprintComparisonMetrics {
+    /// Scalar count for the encoded coordinate baseline.
+    pub encoded_baseline_scalar_count: usize,
+
+    /// Total scalar count stored by the measured FSE index.
+    pub index_scalar_count: usize,
+
+    /// Signed scalar difference between the FSE index and encoded baseline.
+    pub scalar_delta_from_baseline: i128,
+
+    /// Number of scalar residual values stored by the FSE index.
+    pub residual_scalar_count: usize,
+
+    /// Number of scalar geometric metadata values stored by the FSE index.
+    pub structural_metadata_scalar_count: usize,
+
+    /// FSE index scalar count divided by encoded baseline scalar count.
+    pub index_to_encoded_baseline_scalar_ratio: Scalar,
+
+    /// Residual scalar count divided by encoded baseline scalar count.
+    pub residual_to_encoded_baseline_scalar_ratio: Scalar,
+
+    /// Structural metadata scalar count divided by encoded baseline scalar count.
+    pub structural_metadata_to_encoded_baseline_scalar_ratio: Scalar,
+
+    /// Structural metadata scalar count divided by total FSE index scalar count.
+    pub structural_metadata_share_of_index: Scalar,
+
+    /// Whether the FSE scalar count is greater than the encoded baseline count.
+    pub index_exceeds_encoded_baseline: bool,
+
+    /// Whether structural metadata is greater than residual storage.
+    pub structural_metadata_dominates_residuals: bool,
+}
+
 /// Sibling-overlap metrics for an FSE hierarchy.
 ///
 /// # Runtime Role

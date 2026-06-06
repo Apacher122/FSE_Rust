@@ -1,8 +1,10 @@
 use crate::build::{
-    IndexFootprintMetrics, IndexStructureMetrics, SiblingOverlapMetrics, SplitQualityMetrics,
-    bounding_extent_sum, index_density, index_footprint_metrics, index_structure_metrics,
-    partition_density, sibling_overlap_extent_sum, sibling_overlap_metrics, split_quality_metrics,
-    split_quality_metrics_for_axis, split_quality_metrics_from_bounds,
+    IndexFootprintComparisonMetrics, IndexFootprintMetrics, IndexStructureMetrics,
+    SiblingOverlapMetrics, SplitQualityMetrics, bounding_extent_sum, footprint_comparison_metrics,
+    index_density, index_footprint_comparison_metrics, index_footprint_metrics,
+    index_structure_metrics, partition_density, sibling_overlap_extent_sum,
+    sibling_overlap_metrics, split_quality_metrics, split_quality_metrics_for_axis,
+    split_quality_metrics_from_bounds,
 };
 use crate::math::{BoundingBox, ResidualBlock, Vector};
 use crate::storage::{FSEIndex, PartitionNode};
@@ -199,6 +201,68 @@ fn index_footprint_metrics_count_internal_metadata_and_leaf_residuals() {
     assert_eq!(metrics.residual_to_encoded_scalar_ratio, 1.0);
     assert_eq!(metrics.structural_to_encoded_scalar_ratio, 2.25);
     assert_eq!(metrics.index_to_encoded_scalar_ratio, 3.25);
+}
+
+#[test]
+fn index_footprint_comparison_metrics_compare_index_to_encoded_baseline() {
+    let index = internal_plus_two_leaf_index();
+
+    let metrics = index_footprint_comparison_metrics(&index);
+
+    assert_eq!(
+        metrics,
+        IndexFootprintComparisonMetrics {
+            encoded_baseline_scalar_count: 8,
+            index_scalar_count: 26,
+            scalar_delta_from_baseline: 18,
+            residual_scalar_count: 8,
+            structural_metadata_scalar_count: 18,
+            index_to_encoded_baseline_scalar_ratio: 3.25,
+            residual_to_encoded_baseline_scalar_ratio: 1.0,
+            structural_metadata_to_encoded_baseline_scalar_ratio: 2.25,
+            structural_metadata_share_of_index: 18.0 / 26.0,
+            index_exceeds_encoded_baseline: true,
+            structural_metadata_dominates_residuals: true,
+        }
+    );
+}
+
+#[test]
+fn footprint_comparison_metrics_handles_baseline_parity() {
+    let footprint = IndexFootprintMetrics {
+        dimensions: 2,
+        record_count: 2,
+        node_count: 1,
+        leaf_count: 1,
+        encoded_coordinate_scalar_count: 4,
+        residual_scalar_count: 4,
+        centroid_scalar_count: 0,
+        bounds_scalar_count: 0,
+        structural_metadata_scalar_count: 0,
+        total_index_scalar_count: 4,
+        residual_to_encoded_scalar_ratio: 1.0,
+        structural_to_encoded_scalar_ratio: 0.0,
+        index_to_encoded_scalar_ratio: 1.0,
+    };
+
+    let metrics = footprint_comparison_metrics(&footprint);
+
+    assert_eq!(
+        metrics,
+        IndexFootprintComparisonMetrics {
+            encoded_baseline_scalar_count: 4,
+            index_scalar_count: 4,
+            scalar_delta_from_baseline: 0,
+            residual_scalar_count: 4,
+            structural_metadata_scalar_count: 0,
+            index_to_encoded_baseline_scalar_ratio: 1.0,
+            residual_to_encoded_baseline_scalar_ratio: 1.0,
+            structural_metadata_to_encoded_baseline_scalar_ratio: 0.0,
+            structural_metadata_share_of_index: 0.0,
+            index_exceeds_encoded_baseline: false,
+            structural_metadata_dominates_residuals: false,
+        }
+    );
 }
 
 #[test]
