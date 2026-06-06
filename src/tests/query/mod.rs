@@ -20,6 +20,7 @@ mod query_tests;
 mod reference_tests;
 mod traversal_classification_tests;
 mod typed_execution_tests;
+mod typed_index_parity_tests;
 mod typed_index_tests;
 mod typed_indexed_execution_tests;
 mod typed_plan_builder_tests;
