@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use crate::build::{IndexStructureMetrics, IndexValidationReport};
+use crate::build::{IndexFootprintMetrics, IndexStructureMetrics, IndexValidationReport};
 use crate::query::QueryExecutionMode;
 
 /// Header information printed before benchmark reports.
@@ -45,6 +45,9 @@ pub struct BenchmarkRunOverview {
 
     /// Structural metrics for the constructed FSE index.
     pub index_structure: IndexStructureMetrics,
+
+    /// Logical scalar footprint metrics for the constructed FSE index.
+    pub index_footprint: IndexFootprintMetrics,
 
     /// Validation report for the constructed FSE index.
     pub validation: IndexValidationReport,
@@ -116,6 +119,48 @@ pub fn render_benchmark_overview(overview: &BenchmarkRunOverview) -> String {
         output,
         "Zero-volume leaves: {}",
         overview.index_structure.zero_volume_leaf_count
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Encoded coordinate scalars: {}",
+        overview.index_footprint.encoded_coordinate_scalar_count
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Residual scalars: {}",
+        overview.index_footprint.residual_scalar_count
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Centroid scalars: {}",
+        overview.index_footprint.centroid_scalar_count
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Bounds scalars: {}",
+        overview.index_footprint.bounds_scalar_count
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Structural metadata scalars: {}",
+        overview.index_footprint.structural_metadata_scalar_count
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Total counted index scalars: {}",
+        overview.index_footprint.total_index_scalar_count
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Index-to-encoded scalar ratio: {:.2}",
+        overview.index_footprint.index_to_encoded_scalar_ratio
     )
     .unwrap();
     writeln!(

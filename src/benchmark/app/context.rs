@@ -11,7 +11,8 @@ use crate::benchmark::runner::{
 };
 use crate::benchmark::workloads::QueryWorkloadCase;
 use crate::build::{
-    BuildValidationError, FSEBuilder, IndexValidationReport, index_structure_metrics,
+    BuildValidationError, FSEBuilder, IndexValidationReport, index_footprint_metrics,
+    index_structure_metrics,
 };
 use crate::math::Vector;
 use crate::storage::FSEIndex;
@@ -164,6 +165,7 @@ impl BenchmarkApplicationContext {
             fse_execution_mode: self.suite_config.fse_execution_mode,
             fse_parallel_min_retained_leaves: self.suite_config.fse_parallel_min_retained_leaves,
             index_structure: index_structure_metrics(&self.index),
+            index_footprint: index_footprint_metrics(&self.index),
             validation: self.validation.clone(),
         }
     }

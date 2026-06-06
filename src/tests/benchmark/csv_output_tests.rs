@@ -29,6 +29,15 @@ fn test_metadata() -> BenchmarkCsvMetadata {
         index_average_leaf_volume: 15.0,
         index_density: 0.5,
         index_zero_volume_leaf_count: 1,
+        index_encoded_coordinate_scalar_count: 8,
+        index_residual_scalar_count: 8,
+        index_centroid_scalar_count: 6,
+        index_bounds_scalar_count: 12,
+        index_structural_metadata_scalar_count: 18,
+        index_total_scalar_count: 26,
+        index_residual_to_encoded_scalar_ratio: 1.0,
+        index_structural_to_encoded_scalar_ratio: 2.25,
+        index_to_encoded_scalar_ratio: 3.25,
         index_valid: true,
         node_identifier_consistency_valid: true,
         partition_dimensional_metadata_valid: true,
@@ -136,13 +145,19 @@ fn benchmark_csv_output_writer_writes_configured_outputs() {
     assert!(summary_csv.contains("baseline_name,baseline_label,comparison_label"));
     assert!(summary_csv.contains("target_leaf_size,max_leaf_size,max_depth"));
     assert!(summary_csv.contains("index_leaf_count,index_internal_node_count"));
+    assert!(summary_csv.contains("index_encoded_coordinate_scalar_count"));
+    assert!(summary_csv.contains("index_to_encoded_scalar_ratio"));
     assert!(summary_csv.contains("parallel,2,8,7,60,4,8,7.500000"));
     assert!(workloads_csv.contains("baseline_name,baseline_label,comparison_label,workload_name"));
     assert!(workloads_csv.contains("target_leaf_size,max_leaf_size,max_depth"));
     assert!(workloads_csv.contains("index_leaf_count,index_internal_node_count"));
+    assert!(workloads_csv.contains("index_encoded_coordinate_scalar_count"));
+    assert!(workloads_csv.contains("index_to_encoded_scalar_ratio"));
     assert!(workloads_csv.contains("parallel,2,8,7,60,4,8,7.500000"));
     assert!(low_selectivity_gap_csv.contains("baseline_name,baseline_label,comparison_label"));
     assert!(low_selectivity_gap_csv.contains("low_weighted_candidate_ratio"));
+    assert!(low_selectivity_gap_csv.contains("index_encoded_coordinate_scalar_count"));
+    assert!(low_selectivity_gap_csv.contains("index_to_encoded_scalar_ratio"));
     assert!(low_selectivity_gap_csv.contains("parallel,2,8,7,60,4,8,7.500000"));
 
     let _ = fs::remove_file(summary_path);

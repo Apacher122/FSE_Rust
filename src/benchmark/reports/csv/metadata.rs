@@ -73,6 +73,33 @@ pub struct BenchmarkCsvMetadata {
     /// Number of zero-volume leaves.
     pub index_zero_volume_leaf_count: usize,
 
+    /// Number of scalar coordinates in the encoded input.
+    pub index_encoded_coordinate_scalar_count: usize,
+
+    /// Number of scalar residual values stored across all nodes.
+    pub index_residual_scalar_count: usize,
+
+    /// Number of scalar centroid values stored across all nodes.
+    pub index_centroid_scalar_count: usize,
+
+    /// Number of scalar bounding values stored across all nodes.
+    pub index_bounds_scalar_count: usize,
+
+    /// Number of scalar centroid and bounds values stored across all nodes.
+    pub index_structural_metadata_scalar_count: usize,
+
+    /// Total scalar footprint counted for the constructed index.
+    pub index_total_scalar_count: usize,
+
+    /// Residual scalar count divided by encoded coordinate scalar count.
+    pub index_residual_to_encoded_scalar_ratio: Scalar,
+
+    /// Structural metadata scalar count divided by encoded coordinate scalar count.
+    pub index_structural_to_encoded_scalar_ratio: Scalar,
+
+    /// Total counted index scalar count divided by encoded coordinate scalar count.
+    pub index_to_encoded_scalar_ratio: Scalar,
+
     /// Whether all index validation checks passed.
     pub index_valid: bool,
 
@@ -125,6 +152,23 @@ impl BenchmarkCsvMetadata {
             index_average_leaf_volume: overview.index_structure.average_leaf_volume,
             index_density: overview.index_structure.index_density,
             index_zero_volume_leaf_count: overview.index_structure.zero_volume_leaf_count,
+            index_encoded_coordinate_scalar_count: overview
+                .index_footprint
+                .encoded_coordinate_scalar_count,
+            index_residual_scalar_count: overview.index_footprint.residual_scalar_count,
+            index_centroid_scalar_count: overview.index_footprint.centroid_scalar_count,
+            index_bounds_scalar_count: overview.index_footprint.bounds_scalar_count,
+            index_structural_metadata_scalar_count: overview
+                .index_footprint
+                .structural_metadata_scalar_count,
+            index_total_scalar_count: overview.index_footprint.total_index_scalar_count,
+            index_residual_to_encoded_scalar_ratio: overview
+                .index_footprint
+                .residual_to_encoded_scalar_ratio,
+            index_structural_to_encoded_scalar_ratio: overview
+                .index_footprint
+                .structural_to_encoded_scalar_ratio,
+            index_to_encoded_scalar_ratio: overview.index_footprint.index_to_encoded_scalar_ratio,
             index_valid: overview.validation.is_valid(),
             node_identifier_consistency_valid: overview
                 .validation
@@ -166,6 +210,15 @@ pub(super) fn metadata_header_fields() -> Vec<&'static str> {
         "index_average_leaf_volume",
         "index_density",
         "index_zero_volume_leaf_count",
+        "index_encoded_coordinate_scalar_count",
+        "index_residual_scalar_count",
+        "index_centroid_scalar_count",
+        "index_bounds_scalar_count",
+        "index_structural_metadata_scalar_count",
+        "index_total_scalar_count",
+        "index_residual_to_encoded_scalar_ratio",
+        "index_structural_to_encoded_scalar_ratio",
+        "index_to_encoded_scalar_ratio",
         "index_valid",
         "node_identifier_consistency_valid",
         "partition_dimensional_metadata_valid",
@@ -200,6 +253,15 @@ pub(super) fn metadata_value_fields(metadata: &BenchmarkCsvMetadata) -> Vec<Stri
         format_scalar(metadata.index_average_leaf_volume),
         format_scalar(metadata.index_density),
         metadata.index_zero_volume_leaf_count.to_string(),
+        metadata.index_encoded_coordinate_scalar_count.to_string(),
+        metadata.index_residual_scalar_count.to_string(),
+        metadata.index_centroid_scalar_count.to_string(),
+        metadata.index_bounds_scalar_count.to_string(),
+        metadata.index_structural_metadata_scalar_count.to_string(),
+        metadata.index_total_scalar_count.to_string(),
+        format_scalar(metadata.index_residual_to_encoded_scalar_ratio),
+        format_scalar(metadata.index_structural_to_encoded_scalar_ratio),
+        format_scalar(metadata.index_to_encoded_scalar_ratio),
         metadata.index_valid.to_string(),
         metadata.node_identifier_consistency_valid.to_string(),
         metadata.partition_dimensional_metadata_valid.to_string(),

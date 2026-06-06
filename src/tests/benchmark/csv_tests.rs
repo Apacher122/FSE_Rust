@@ -7,7 +7,7 @@ use crate::benchmark::{
     write_multi_baseline_aggregate_summary_csv_with_metadata,
     write_multi_baseline_workload_report_csv_with_metadata,
 };
-use crate::build::{IndexStructureMetrics, IndexValidationReport};
+use crate::build::{IndexFootprintMetrics, IndexStructureMetrics, IndexValidationReport};
 use crate::query::QueryExecutionMode;
 use crate::tests::support::small_benchmark_fixture;
 use std::fs;
@@ -35,6 +35,15 @@ fn test_metadata() -> BenchmarkCsvMetadata {
         index_average_leaf_volume: 15.0,
         index_density: 0.5,
         index_zero_volume_leaf_count: 1,
+        index_encoded_coordinate_scalar_count: 8,
+        index_residual_scalar_count: 8,
+        index_centroid_scalar_count: 6,
+        index_bounds_scalar_count: 12,
+        index_structural_metadata_scalar_count: 18,
+        index_total_scalar_count: 26,
+        index_residual_to_encoded_scalar_ratio: 1.0,
+        index_structural_to_encoded_scalar_ratio: 2.25,
+        index_to_encoded_scalar_ratio: 3.25,
         index_valid: true,
         node_identifier_consistency_valid: true,
         partition_dimensional_metadata_valid: true,
@@ -93,6 +102,21 @@ fn csv_metadata_can_be_built_from_benchmark_overview() {
             index_density: 0.5,
             zero_volume_leaf_count: 1,
         },
+        index_footprint: IndexFootprintMetrics {
+            dimensions: 2,
+            record_count: 4,
+            node_count: 3,
+            leaf_count: 2,
+            encoded_coordinate_scalar_count: 8,
+            residual_scalar_count: 8,
+            centroid_scalar_count: 6,
+            bounds_scalar_count: 12,
+            structural_metadata_scalar_count: 18,
+            total_index_scalar_count: 26,
+            residual_to_encoded_scalar_ratio: 1.0,
+            structural_to_encoded_scalar_ratio: 2.25,
+            index_to_encoded_scalar_ratio: 3.25,
+        },
         validation: IndexValidationReport {
             node_identifier_consistency_valid: true,
             partition_dimensional_metadata_valid: true,
@@ -127,6 +151,15 @@ fn csv_metadata_can_be_built_from_benchmark_overview() {
     assert_eq!(metadata.index_average_leaf_volume, 15.0);
     assert_eq!(metadata.index_density, 0.5);
     assert_eq!(metadata.index_zero_volume_leaf_count, 1);
+    assert_eq!(metadata.index_encoded_coordinate_scalar_count, 8);
+    assert_eq!(metadata.index_residual_scalar_count, 8);
+    assert_eq!(metadata.index_centroid_scalar_count, 6);
+    assert_eq!(metadata.index_bounds_scalar_count, 12);
+    assert_eq!(metadata.index_structural_metadata_scalar_count, 18);
+    assert_eq!(metadata.index_total_scalar_count, 26);
+    assert_eq!(metadata.index_residual_to_encoded_scalar_ratio, 1.0);
+    assert_eq!(metadata.index_structural_to_encoded_scalar_ratio, 2.25);
+    assert_eq!(metadata.index_to_encoded_scalar_ratio, 3.25);
     assert!(metadata.index_valid);
     assert!(metadata.node_identifier_consistency_valid);
     assert!(metadata.partition_dimensional_metadata_valid);
@@ -256,6 +289,9 @@ fn csv_export_with_metadata_includes_metadata_header() {
     assert!(csv.contains("target_leaf_size,max_leaf_size,max_depth"));
     assert!(csv.contains("index_leaf_count,index_internal_node_count"));
     assert!(csv.contains("index_density,index_zero_volume_leaf_count"));
+    assert!(csv.contains("index_encoded_coordinate_scalar_count,index_residual_scalar_count"));
+    assert!(csv.contains("index_structural_metadata_scalar_count,index_total_scalar_count"));
+    assert!(csv.contains("index_to_encoded_scalar_ratio"));
     assert!(csv.contains(
         "node_identifier_consistency_valid,partition_dimensional_metadata_valid,leaf_cardinality_valid,leaf_reconstruction_metadata_valid,leaf_record_bounds_valid,leaf_ownership_cardinality_valid"
     ));
@@ -272,7 +308,7 @@ fn csv_export_with_metadata_includes_metadata_values() {
 
     assert_eq!(rows.len(), 2);
     assert!(rows[1].starts_with(
-        "60,15,6,\"flat_scan, kd_tree\",3,4,8,8,parallel,2,8,7,60,4,8,7.500000,120.000000,15.000000,0.500000,1,true,true,true,true,true,true,true,true,true"
+        "60,15,6,\"flat_scan, kd_tree\",3,4,8,8,parallel,2,8,7,60,4,8,7.500000,120.000000,15.000000,0.500000,1,8,8,6,12,18,26,1.000000,2.250000,3.250000,true,true,true,true,true,true,true,true,true"
     ));
 }
 
@@ -293,6 +329,7 @@ fn csv_export_with_metadata_writes_summary_file() {
     assert!(written.contains("dataset_records,index_nodes,run_workload_count"));
     assert!(written.contains("target_leaf_size,max_leaf_size,max_depth"));
     assert!(written.contains("index_leaf_count,index_internal_node_count"));
+    assert!(written.contains("index_encoded_coordinate_scalar_count,index_residual_scalar_count"));
     assert!(written.contains("parallel,2,8,7,60,4,8,7.500000"));
     assert!(written.contains("flat_scan,Flat Scan,Flat Scan vs FSE,1"));
 
@@ -457,6 +494,7 @@ fn workload_csv_export_with_metadata_includes_metadata_header() {
     assert!(csv.starts_with("dataset_records,index_nodes,run_workload_count,selected_baselines"));
     assert!(csv.contains("target_leaf_size,max_leaf_size,max_depth"));
     assert!(csv.contains("index_density,index_zero_volume_leaf_count"));
+    assert!(csv.contains("index_encoded_coordinate_scalar_count,index_residual_scalar_count"));
     assert!(csv.contains(
         "node_identifier_consistency_valid,partition_dimensional_metadata_valid,leaf_cardinality_valid,leaf_reconstruction_metadata_valid,leaf_record_bounds_valid,leaf_ownership_cardinality_valid"
     ));
@@ -484,7 +522,7 @@ fn workload_csv_export_with_metadata_includes_execution_mode_values() {
 
     assert!(rows.len() > 1);
     assert!(rows[1].starts_with(
-        "60,15,6,\"flat_scan, kd_tree\",3,4,8,8,parallel,2,8,7,60,4,8,7.500000,120.000000,15.000000,0.500000,1,true,true,true,true,true,true,true,true,true"
+        "60,15,6,\"flat_scan, kd_tree\",3,4,8,8,parallel,2,8,7,60,4,8,7.500000,120.000000,15.000000,0.500000,1,8,8,6,12,18,26,1.000000,2.250000,3.250000,true,true,true,true,true,true,true,true,true"
     ));
 }
 
@@ -516,6 +554,7 @@ fn workload_csv_export_writes_metadata_file() {
     assert!(written.contains("workload_name"));
     assert!(written.contains("target_leaf_size,max_leaf_size,max_depth"));
     assert!(written.contains("index_leaf_count,index_internal_node_count"));
+    assert!(written.contains("index_encoded_coordinate_scalar_count,index_residual_scalar_count"));
     assert!(written.contains("parallel,2,8,7,60,4,8,7.500000"));
     assert!(written.contains("flat_scan,Flat Scan,Flat Scan vs FSE"));
 

@@ -6,7 +6,7 @@ use crate::benchmark::{
     BenchmarkSuiteReport, MultiBaselineAggregateSummary, render_benchmark_overview,
     render_multi_baseline_summary, render_named_baseline_suite_report, render_suite_report,
 };
-use crate::build::{IndexStructureMetrics, IndexValidationReport};
+use crate::build::{IndexFootprintMetrics, IndexStructureMetrics, IndexValidationReport};
 use crate::query::QueryExecutionMode;
 
 #[test]
@@ -27,6 +27,13 @@ fn benchmark_overview_render_includes_run_metadata() {
     assert!(output.contains("Total leaf volume: 120.00"));
     assert!(output.contains("Index density: 0.50"));
     assert!(output.contains("Zero-volume leaves: 1"));
+    assert!(output.contains("Encoded coordinate scalars: 8"));
+    assert!(output.contains("Residual scalars: 8"));
+    assert!(output.contains("Centroid scalars: 6"));
+    assert!(output.contains("Bounds scalars: 12"));
+    assert!(output.contains("Structural metadata scalars: 18"));
+    assert!(output.contains("Total counted index scalars: 26"));
+    assert!(output.contains("Index-to-encoded scalar ratio: 3.25"));
     assert!(output.contains("FSE execution: parallel"));
     assert!(output.contains("FSE parallel min leaves: 2"));
     assert!(output.contains("Index validation: true"));
@@ -202,6 +209,21 @@ fn test_overview(
             average_leaf_volume: 15.0,
             index_density: 0.5,
             zero_volume_leaf_count: 1,
+        },
+        index_footprint: IndexFootprintMetrics {
+            dimensions: 2,
+            record_count: 4,
+            node_count: 3,
+            leaf_count: 2,
+            encoded_coordinate_scalar_count: 8,
+            residual_scalar_count: 8,
+            centroid_scalar_count: 6,
+            bounds_scalar_count: 12,
+            structural_metadata_scalar_count: 18,
+            total_index_scalar_count: 26,
+            residual_to_encoded_scalar_ratio: 1.0,
+            structural_to_encoded_scalar_ratio: 2.25,
+            index_to_encoded_scalar_ratio: 3.25,
         },
         validation: IndexValidationReport {
             node_identifier_consistency_valid: true,
