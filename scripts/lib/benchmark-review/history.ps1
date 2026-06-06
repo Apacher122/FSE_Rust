@@ -242,6 +242,130 @@ function Add-BenchmarkSourceCsvToHistory {
   Add-BenchmarkHistoryRows -Path $HistoryCsv -Header $Header -Rows $HistoryRows
 }
 
+function Get-BenchmarkFootprintHistoryColumns {
+  return @(
+    "dataset_records",
+    "index_nodes",
+    "run_workload_count",
+    "selected_baselines",
+    "timing_iterations",
+    "target_leaf_size",
+    "max_leaf_size",
+    "max_depth",
+    "fse_execution_mode",
+    "fse_parallel_min_retained_leaves",
+    "index_leaf_count",
+    "index_internal_node_count",
+    "index_total_leaf_cardinality",
+    "index_min_leaf_cardinality",
+    "index_max_leaf_cardinality",
+    "index_average_leaf_cardinality",
+    "index_total_leaf_volume",
+    "index_average_leaf_volume",
+    "index_density",
+    "index_zero_volume_leaf_count",
+    "index_encoded_coordinate_scalar_count",
+    "index_residual_scalar_count",
+    "index_centroid_scalar_count",
+    "index_bounds_scalar_count",
+    "index_structural_metadata_scalar_count",
+    "index_total_scalar_count",
+    "index_residual_to_encoded_scalar_ratio",
+    "index_structural_to_encoded_scalar_ratio",
+    "index_to_encoded_scalar_ratio",
+    "index_valid",
+    "node_identifier_consistency_valid",
+    "partition_dimensional_metadata_valid",
+    "leaf_cardinality_valid",
+    "leaf_reconstruction_metadata_valid",
+    "leaf_record_bounds_valid",
+    "leaf_ownership_cardinality_valid",
+    "hierarchy_topology_valid",
+    "parent_child_bounds_valid"
+  )
+}
+
+function Assert-BenchmarkHistoryRequiredColumns {
+  param(
+    [object]$Row,
+    [string[]]$Columns,
+    [string]$SourceCsv
+  )
+
+  foreach ($Column in $Columns) {
+    if ($null -eq $Row.PSObject.Properties[$Column]) {
+      throw "benchmark history source CSV is missing required column '$Column': $SourceCsv"
+    }
+  }
+}
+
+function Add-BenchmarkFootprintSummaryToHistory {
+  param(
+    [object]$Context,
+    [string]$SourceCsv,
+    [string]$HistoryCsv
+  )
+
+  if ([string]::IsNullOrWhiteSpace($SourceCsv)) {
+    return
+  }
+
+  $ResolvedSourceCsv = Resolve-BenchmarkHistorySourceCsv `
+    -Context $Context `
+    -SourceCsv $SourceCsv
+
+  if (!(Test-Path -LiteralPath $ResolvedSourceCsv)) {
+    return
+  }
+
+  $SourceRows = @(Import-Csv -LiteralPath $ResolvedSourceCsv)
+
+  if ($SourceRows.Count -eq 0) {
+    return
+  }
+
+  $SourceColumns = Get-BenchmarkFootprintHistoryColumns
+  $Metadata = New-BenchmarkHistoryMetadata -Context $Context -SourceCsv $ResolvedSourceCsv
+  $MetadataColumns = @($Metadata.Keys)
+  $Header = @($MetadataColumns + $SourceColumns)
+  $SeenRows = @{}
+
+  $HistoryRows = @(
+    foreach ($SourceRow in $SourceRows) {
+      Assert-BenchmarkHistoryRequiredColumns `
+        -Row $SourceRow `
+        -Columns $SourceColumns `
+        -SourceCsv $ResolvedSourceCsv
+
+      $SourceValues = @(
+        foreach ($Column in $SourceColumns) {
+          Get-BenchmarkHistoryRowValue -Row $SourceRow -ColumnName $Column
+        }
+      )
+      $SourceKey = Join-CsvFields -Fields $SourceValues
+
+      if ($SeenRows.ContainsKey($SourceKey)) {
+        continue
+      }
+
+      $SeenRows[$SourceKey] = $true
+      $HistoryRow = [ordered]@{}
+
+      foreach ($Column in $MetadataColumns) {
+        $HistoryRow[$Column] = $Metadata[$Column]
+      }
+
+      foreach ($Index in 0..($SourceColumns.Count - 1)) {
+        $HistoryRow[$SourceColumns[$Index]] = $SourceValues[$Index]
+      }
+
+      [PSCustomObject]$HistoryRow
+    }
+  )
+
+  Add-BenchmarkHistoryRows -Path $HistoryCsv -Header $Header -Rows $HistoryRows
+}
+
 function Add-BenchmarkRunToHistory {
   param(
     [object]$Context
@@ -317,4 +441,9 @@ function Update-BenchmarkReviewHistory {
     -Context $Context `
     -SourceCsv $Context.CurrentTargetSummaryCsv `
     -HistoryCsv (Join-Path $Context.HistoryDir "target-workload-history.csv")
+
+  Add-BenchmarkFootprintSummaryToHistory `
+    -Context $Context `
+    -SourceCsv (Join-Path $Context.OutputDir "summary-$($Context.Label).csv") `
+    -HistoryCsv (Join-Path $Context.HistoryDir "index-footprint-history.csv")
 }
