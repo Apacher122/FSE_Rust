@@ -120,6 +120,62 @@ impl IndexStructureMetrics {
     }
 }
 
+/// Logical scalar footprint metrics for an FSE index.
+///
+/// # Runtime Role
+///
+/// `IndexFootprintMetrics` counts coordinate-like scalar values stored in the
+/// index representation. The counts distinguish encoded input coordinates,
+/// residual values, and the geometric metadata used by query traversal.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct IndexFootprintMetrics {
+    /// Dimensionality of the represented coordinate space.
+    pub dimensions: usize,
+
+    /// Number of logical records represented by the index.
+    pub record_count: usize,
+
+    /// Number of partition nodes in the index.
+    pub node_count: usize,
+
+    /// Number of leaf partitions in the index.
+    pub leaf_count: usize,
+
+    /// Number of scalar coordinates in the encoded input.
+    pub encoded_coordinate_scalar_count: usize,
+
+    /// Number of scalar residual values stored across all nodes.
+    pub residual_scalar_count: usize,
+
+    /// Number of scalar centroid values stored across all nodes.
+    pub centroid_scalar_count: usize,
+
+    /// Number of scalar bounding values stored across all nodes.
+    pub bounds_scalar_count: usize,
+
+    /// Number of scalar centroid and bounds values stored across all nodes.
+    pub structural_metadata_scalar_count: usize,
+
+    /// Total scalar footprint counted by these metrics.
+    pub total_index_scalar_count: usize,
+
+    /// Residual scalar count divided by encoded coordinate scalar count.
+    pub residual_to_encoded_scalar_ratio: Scalar,
+
+    /// Structural metadata scalar count divided by encoded coordinate scalar count.
+    pub structural_to_encoded_scalar_ratio: Scalar,
+
+    /// Total counted index scalar count divided by encoded coordinate scalar count.
+    pub index_to_encoded_scalar_ratio: Scalar,
+}
+
+impl IndexFootprintMetrics {
+    /// Returns true when the footprint has no represented records.
+    pub fn is_empty(&self) -> bool {
+        self.record_count == 0
+    }
+}
+
 /// Sibling-overlap metrics for an FSE hierarchy.
 ///
 /// # Runtime Role

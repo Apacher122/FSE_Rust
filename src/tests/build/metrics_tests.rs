@@ -1,8 +1,8 @@
 use crate::build::{
-    IndexStructureMetrics, SiblingOverlapMetrics, SplitQualityMetrics, bounding_extent_sum,
-    index_density, index_structure_metrics, partition_density, sibling_overlap_extent_sum,
-    sibling_overlap_metrics, split_quality_metrics, split_quality_metrics_for_axis,
-    split_quality_metrics_from_bounds,
+    IndexFootprintMetrics, IndexStructureMetrics, SiblingOverlapMetrics, SplitQualityMetrics,
+    bounding_extent_sum, index_density, index_footprint_metrics, index_structure_metrics,
+    partition_density, sibling_overlap_extent_sum, sibling_overlap_metrics, split_quality_metrics,
+    split_quality_metrics_for_axis, split_quality_metrics_from_bounds,
 };
 use crate::math::{BoundingBox, ResidualBlock, Vector};
 use crate::storage::{FSEIndex, PartitionNode};
@@ -143,6 +143,62 @@ fn index_structure_metrics_handles_single_leaf_index() {
     assert_eq!(metrics.index_density, 0.5);
     assert_eq!(metrics.zero_volume_leaf_count, 0);
     assert!(!metrics.is_empty());
+}
+
+#[test]
+fn index_footprint_metrics_count_single_leaf_scalars() {
+    let leaf = PartitionNode::new(
+        0,
+        vec![1.0, 1.0],
+        BoundingBox::new(vec![0.0, 0.0], vec![2.0, 2.0]),
+        ResidualBlock::new(vec![vec![0.0, 1.0], vec![0.0, 1.0]]),
+        Vec::new(),
+        true,
+    );
+    let index = FSEIndex::new(vec![leaf], 0);
+
+    let metrics = index_footprint_metrics(&index);
+
+    assert_eq!(
+        metrics,
+        IndexFootprintMetrics {
+            dimensions: 2,
+            record_count: 2,
+            node_count: 1,
+            leaf_count: 1,
+            encoded_coordinate_scalar_count: 4,
+            residual_scalar_count: 4,
+            centroid_scalar_count: 2,
+            bounds_scalar_count: 4,
+            structural_metadata_scalar_count: 6,
+            total_index_scalar_count: 10,
+            residual_to_encoded_scalar_ratio: 1.0,
+            structural_to_encoded_scalar_ratio: 1.5,
+            index_to_encoded_scalar_ratio: 2.5,
+        }
+    );
+    assert!(!metrics.is_empty());
+}
+
+#[test]
+fn index_footprint_metrics_count_internal_metadata_and_leaf_residuals() {
+    let index = internal_plus_two_leaf_index();
+
+    let metrics = index_footprint_metrics(&index);
+
+    assert_eq!(metrics.dimensions, 2);
+    assert_eq!(metrics.record_count, 4);
+    assert_eq!(metrics.node_count, 3);
+    assert_eq!(metrics.leaf_count, 2);
+    assert_eq!(metrics.encoded_coordinate_scalar_count, 8);
+    assert_eq!(metrics.residual_scalar_count, 8);
+    assert_eq!(metrics.centroid_scalar_count, 6);
+    assert_eq!(metrics.bounds_scalar_count, 12);
+    assert_eq!(metrics.structural_metadata_scalar_count, 18);
+    assert_eq!(metrics.total_index_scalar_count, 26);
+    assert_eq!(metrics.residual_to_encoded_scalar_ratio, 1.0);
+    assert_eq!(metrics.structural_to_encoded_scalar_ratio, 2.25);
+    assert_eq!(metrics.index_to_encoded_scalar_ratio, 3.25);
 }
 
 #[test]
