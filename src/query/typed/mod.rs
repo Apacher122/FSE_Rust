@@ -4,6 +4,7 @@ pub mod builder;
 pub mod compiler;
 pub mod evaluator;
 pub mod execution;
+pub mod index;
 pub mod plan;
 pub mod predicate;
 
@@ -20,6 +21,7 @@ pub use execution::{
     evaluate_indexed_typed_query_plan_with_stats, evaluate_typed_query_plan,
     evaluate_typed_query_plan_rows,
 };
+pub use index::{TypedQueryIndex, TypedQueryIndexBuildError};
 pub use plan::{TypedQueryPlan, TypedQueryPlanError};
 pub use predicate::{
     FSEPredicate, FSEPredicateError, FSEPredicateField, FSEPredicateOperator,

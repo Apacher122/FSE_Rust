@@ -45,9 +45,9 @@ pub use traversal::{
 pub use typed::{
     FSEPredicate, FSEPredicateCompileError, FSEPredicateError, FSEPredicateField,
     FSEPredicateOperator, IndexedTypedQueryError, IndexedTypedQueryReport,
-    IndexedTypedQueryRowReport, TypedQueryPlan, TypedQueryPlanBuilder, TypedQueryPlanError,
-    TypedQueryResultRow, ValidatedFSEPredicate, ValidatedFSEPredicateOperator,
-    compile_categorical_equality_predicate_to_query_region,
+    IndexedTypedQueryRowReport, TypedQueryIndex, TypedQueryIndexBuildError, TypedQueryPlan,
+    TypedQueryPlanBuilder, TypedQueryPlanError, TypedQueryResultRow, ValidatedFSEPredicate,
+    ValidatedFSEPredicateOperator, compile_categorical_equality_predicate_to_query_region,
     compile_numeric_predicate_to_query_region, evaluate_indexed_typed_query_plan,
     evaluate_indexed_typed_query_plan_rows, evaluate_indexed_typed_query_plan_rows_with_stats,
     evaluate_indexed_typed_query_plan_with_stats, evaluate_typed_predicate,
