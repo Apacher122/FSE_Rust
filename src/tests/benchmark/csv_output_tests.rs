@@ -38,6 +38,15 @@ fn test_metadata() -> BenchmarkCsvMetadata {
         index_residual_to_encoded_scalar_ratio: 1.0,
         index_structural_to_encoded_scalar_ratio: 2.25,
         index_to_encoded_scalar_ratio: 3.25,
+        index_encoded_baseline_scalar_count: 8,
+        index_comparison_scalar_count: 26,
+        index_scalar_delta_from_encoded_baseline: 18,
+        index_to_encoded_baseline_scalar_ratio: 3.25,
+        index_residual_to_encoded_baseline_scalar_ratio: 1.0,
+        index_structural_metadata_to_encoded_baseline_scalar_ratio: 2.25,
+        index_structural_metadata_share_of_index: 18.0 / 26.0,
+        index_exceeds_encoded_baseline: true,
+        index_structural_metadata_dominates_residuals: true,
         index_valid: true,
         node_identifier_consistency_valid: true,
         partition_dimensional_metadata_valid: true,
@@ -147,17 +156,23 @@ fn benchmark_csv_output_writer_writes_configured_outputs() {
     assert!(summary_csv.contains("index_leaf_count,index_internal_node_count"));
     assert!(summary_csv.contains("index_encoded_coordinate_scalar_count"));
     assert!(summary_csv.contains("index_to_encoded_scalar_ratio"));
+    assert!(summary_csv.contains("index_scalar_delta_from_encoded_baseline"));
+    assert!(summary_csv.contains("index_structural_metadata_share_of_index"));
     assert!(summary_csv.contains("parallel,2,8,7,60,4,8,7.500000"));
     assert!(workloads_csv.contains("baseline_name,baseline_label,comparison_label,workload_name"));
     assert!(workloads_csv.contains("target_leaf_size,max_leaf_size,max_depth"));
     assert!(workloads_csv.contains("index_leaf_count,index_internal_node_count"));
     assert!(workloads_csv.contains("index_encoded_coordinate_scalar_count"));
     assert!(workloads_csv.contains("index_to_encoded_scalar_ratio"));
+    assert!(workloads_csv.contains("index_scalar_delta_from_encoded_baseline"));
+    assert!(workloads_csv.contains("index_structural_metadata_share_of_index"));
     assert!(workloads_csv.contains("parallel,2,8,7,60,4,8,7.500000"));
     assert!(low_selectivity_gap_csv.contains("baseline_name,baseline_label,comparison_label"));
     assert!(low_selectivity_gap_csv.contains("low_weighted_candidate_ratio"));
     assert!(low_selectivity_gap_csv.contains("index_encoded_coordinate_scalar_count"));
     assert!(low_selectivity_gap_csv.contains("index_to_encoded_scalar_ratio"));
+    assert!(low_selectivity_gap_csv.contains("index_scalar_delta_from_encoded_baseline"));
+    assert!(low_selectivity_gap_csv.contains("index_structural_metadata_share_of_index"));
     assert!(low_selectivity_gap_csv.contains("parallel,2,8,7,60,4,8,7.500000"));
 
     let _ = fs::remove_file(summary_path);

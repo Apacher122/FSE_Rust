@@ -2,7 +2,10 @@
 
 use std::fmt::Write;
 
-use crate::build::{IndexFootprintMetrics, IndexStructureMetrics, IndexValidationReport};
+use crate::build::{
+    IndexFootprintComparisonMetrics, IndexFootprintMetrics, IndexStructureMetrics,
+    IndexValidationReport,
+};
 use crate::query::QueryExecutionMode;
 
 /// Header information printed before benchmark reports.
@@ -48,6 +51,9 @@ pub struct BenchmarkRunOverview {
 
     /// Logical scalar footprint metrics for the constructed FSE index.
     pub index_footprint: IndexFootprintMetrics,
+
+    /// Footprint comparison metrics for the constructed FSE index.
+    pub index_footprint_comparison: IndexFootprintComparisonMetrics,
 
     /// Validation report for the constructed FSE index.
     pub validation: IndexValidationReport,
@@ -161,6 +167,54 @@ pub fn render_benchmark_overview(overview: &BenchmarkRunOverview) -> String {
         output,
         "Index-to-encoded scalar ratio: {:.2}",
         overview.index_footprint.index_to_encoded_scalar_ratio
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Encoded baseline scalars: {}",
+        overview
+            .index_footprint_comparison
+            .encoded_baseline_scalar_count
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Scalar delta from encoded baseline: {}",
+        overview
+            .index_footprint_comparison
+            .scalar_delta_from_baseline
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Index-to-encoded baseline scalar ratio: {:.2}",
+        overview
+            .index_footprint_comparison
+            .index_to_encoded_baseline_scalar_ratio
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Structural metadata share of index: {:.2}",
+        overview
+            .index_footprint_comparison
+            .structural_metadata_share_of_index
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Index exceeds encoded baseline: {}",
+        overview
+            .index_footprint_comparison
+            .index_exceeds_encoded_baseline
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Structural metadata dominates residuals: {}",
+        overview
+            .index_footprint_comparison
+            .structural_metadata_dominates_residuals
     )
     .unwrap();
     writeln!(

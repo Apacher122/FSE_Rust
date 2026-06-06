@@ -7,7 +7,10 @@ use crate::benchmark::{
     write_multi_baseline_aggregate_summary_csv_with_metadata,
     write_multi_baseline_workload_report_csv_with_metadata,
 };
-use crate::build::{IndexFootprintMetrics, IndexStructureMetrics, IndexValidationReport};
+use crate::build::{
+    IndexFootprintComparisonMetrics, IndexFootprintMetrics, IndexStructureMetrics,
+    IndexValidationReport,
+};
 use crate::query::QueryExecutionMode;
 use crate::tests::support::small_benchmark_fixture;
 use std::fs;
@@ -44,6 +47,15 @@ fn test_metadata() -> BenchmarkCsvMetadata {
         index_residual_to_encoded_scalar_ratio: 1.0,
         index_structural_to_encoded_scalar_ratio: 2.25,
         index_to_encoded_scalar_ratio: 3.25,
+        index_encoded_baseline_scalar_count: 8,
+        index_comparison_scalar_count: 26,
+        index_scalar_delta_from_encoded_baseline: 18,
+        index_to_encoded_baseline_scalar_ratio: 3.25,
+        index_residual_to_encoded_baseline_scalar_ratio: 1.0,
+        index_structural_metadata_to_encoded_baseline_scalar_ratio: 2.25,
+        index_structural_metadata_share_of_index: 18.0 / 26.0,
+        index_exceeds_encoded_baseline: true,
+        index_structural_metadata_dominates_residuals: true,
         index_valid: true,
         node_identifier_consistency_valid: true,
         partition_dimensional_metadata_valid: true,
@@ -117,6 +129,19 @@ fn csv_metadata_can_be_built_from_benchmark_overview() {
             structural_to_encoded_scalar_ratio: 2.25,
             index_to_encoded_scalar_ratio: 3.25,
         },
+        index_footprint_comparison: IndexFootprintComparisonMetrics {
+            encoded_baseline_scalar_count: 8,
+            index_scalar_count: 26,
+            scalar_delta_from_baseline: 18,
+            residual_scalar_count: 8,
+            structural_metadata_scalar_count: 18,
+            index_to_encoded_baseline_scalar_ratio: 3.25,
+            residual_to_encoded_baseline_scalar_ratio: 1.0,
+            structural_metadata_to_encoded_baseline_scalar_ratio: 2.25,
+            structural_metadata_share_of_index: 18.0 / 26.0,
+            index_exceeds_encoded_baseline: true,
+            structural_metadata_dominates_residuals: true,
+        },
         validation: IndexValidationReport {
             node_identifier_consistency_valid: true,
             partition_dimensional_metadata_valid: true,
@@ -160,6 +185,24 @@ fn csv_metadata_can_be_built_from_benchmark_overview() {
     assert_eq!(metadata.index_residual_to_encoded_scalar_ratio, 1.0);
     assert_eq!(metadata.index_structural_to_encoded_scalar_ratio, 2.25);
     assert_eq!(metadata.index_to_encoded_scalar_ratio, 3.25);
+    assert_eq!(metadata.index_encoded_baseline_scalar_count, 8);
+    assert_eq!(metadata.index_comparison_scalar_count, 26);
+    assert_eq!(metadata.index_scalar_delta_from_encoded_baseline, 18);
+    assert_eq!(metadata.index_to_encoded_baseline_scalar_ratio, 3.25);
+    assert_eq!(
+        metadata.index_residual_to_encoded_baseline_scalar_ratio,
+        1.0
+    );
+    assert_eq!(
+        metadata.index_structural_metadata_to_encoded_baseline_scalar_ratio,
+        2.25
+    );
+    assert_eq!(
+        metadata.index_structural_metadata_share_of_index,
+        18.0 / 26.0
+    );
+    assert!(metadata.index_exceeds_encoded_baseline);
+    assert!(metadata.index_structural_metadata_dominates_residuals);
     assert!(metadata.index_valid);
     assert!(metadata.node_identifier_consistency_valid);
     assert!(metadata.partition_dimensional_metadata_valid);
@@ -292,6 +335,10 @@ fn csv_export_with_metadata_includes_metadata_header() {
     assert!(csv.contains("index_encoded_coordinate_scalar_count,index_residual_scalar_count"));
     assert!(csv.contains("index_structural_metadata_scalar_count,index_total_scalar_count"));
     assert!(csv.contains("index_to_encoded_scalar_ratio"));
+    assert!(csv.contains("index_encoded_baseline_scalar_count,index_comparison_scalar_count"));
+    assert!(csv.contains("index_scalar_delta_from_encoded_baseline"));
+    assert!(csv.contains("index_structural_metadata_share_of_index"));
+    assert!(csv.contains("index_exceeds_encoded_baseline"));
     assert!(csv.contains(
         "node_identifier_consistency_valid,partition_dimensional_metadata_valid,leaf_cardinality_valid,leaf_reconstruction_metadata_valid,leaf_record_bounds_valid,leaf_ownership_cardinality_valid"
     ));
@@ -308,7 +355,7 @@ fn csv_export_with_metadata_includes_metadata_values() {
 
     assert_eq!(rows.len(), 2);
     assert!(rows[1].starts_with(
-        "60,15,6,\"flat_scan, kd_tree\",3,4,8,8,parallel,2,8,7,60,4,8,7.500000,120.000000,15.000000,0.500000,1,8,8,6,12,18,26,1.000000,2.250000,3.250000,true,true,true,true,true,true,true,true,true"
+        "60,15,6,\"flat_scan, kd_tree\",3,4,8,8,parallel,2,8,7,60,4,8,7.500000,120.000000,15.000000,0.500000,1,8,8,6,12,18,26,1.000000,2.250000,3.250000,8,26,18,3.250000,1.000000,2.250000,0.692308,true,true,true,true,true,true,true,true,true,true,true"
     ));
 }
 
@@ -330,6 +377,7 @@ fn csv_export_with_metadata_writes_summary_file() {
     assert!(written.contains("target_leaf_size,max_leaf_size,max_depth"));
     assert!(written.contains("index_leaf_count,index_internal_node_count"));
     assert!(written.contains("index_encoded_coordinate_scalar_count,index_residual_scalar_count"));
+    assert!(written.contains("index_scalar_delta_from_encoded_baseline"));
     assert!(written.contains("parallel,2,8,7,60,4,8,7.500000"));
     assert!(written.contains("flat_scan,Flat Scan,Flat Scan vs FSE,1"));
 
@@ -495,6 +543,7 @@ fn workload_csv_export_with_metadata_includes_metadata_header() {
     assert!(csv.contains("target_leaf_size,max_leaf_size,max_depth"));
     assert!(csv.contains("index_density,index_zero_volume_leaf_count"));
     assert!(csv.contains("index_encoded_coordinate_scalar_count,index_residual_scalar_count"));
+    assert!(csv.contains("index_scalar_delta_from_encoded_baseline"));
     assert!(csv.contains(
         "node_identifier_consistency_valid,partition_dimensional_metadata_valid,leaf_cardinality_valid,leaf_reconstruction_metadata_valid,leaf_record_bounds_valid,leaf_ownership_cardinality_valid"
     ));
@@ -522,7 +571,7 @@ fn workload_csv_export_with_metadata_includes_execution_mode_values() {
 
     assert!(rows.len() > 1);
     assert!(rows[1].starts_with(
-        "60,15,6,\"flat_scan, kd_tree\",3,4,8,8,parallel,2,8,7,60,4,8,7.500000,120.000000,15.000000,0.500000,1,8,8,6,12,18,26,1.000000,2.250000,3.250000,true,true,true,true,true,true,true,true,true"
+        "60,15,6,\"flat_scan, kd_tree\",3,4,8,8,parallel,2,8,7,60,4,8,7.500000,120.000000,15.000000,0.500000,1,8,8,6,12,18,26,1.000000,2.250000,3.250000,8,26,18,3.250000,1.000000,2.250000,0.692308,true,true,true,true,true,true,true,true,true,true,true"
     ));
 }
 
@@ -555,6 +604,7 @@ fn workload_csv_export_writes_metadata_file() {
     assert!(written.contains("target_leaf_size,max_leaf_size,max_depth"));
     assert!(written.contains("index_leaf_count,index_internal_node_count"));
     assert!(written.contains("index_encoded_coordinate_scalar_count,index_residual_scalar_count"));
+    assert!(written.contains("index_scalar_delta_from_encoded_baseline"));
     assert!(written.contains("parallel,2,8,7,60,4,8,7.500000"));
     assert!(written.contains("flat_scan,Flat Scan,Flat Scan vs FSE"));
 

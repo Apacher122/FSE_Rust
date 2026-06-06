@@ -100,6 +100,33 @@ pub struct BenchmarkCsvMetadata {
     /// Total counted index scalar count divided by encoded coordinate scalar count.
     pub index_to_encoded_scalar_ratio: Scalar,
 
+    /// Scalar count for the encoded coordinate baseline.
+    pub index_encoded_baseline_scalar_count: usize,
+
+    /// Total scalar count stored by the measured FSE index.
+    pub index_comparison_scalar_count: usize,
+
+    /// Signed scalar difference between the FSE index and encoded baseline.
+    pub index_scalar_delta_from_encoded_baseline: i128,
+
+    /// FSE index scalar count divided by encoded baseline scalar count.
+    pub index_to_encoded_baseline_scalar_ratio: Scalar,
+
+    /// Residual scalar count divided by encoded baseline scalar count.
+    pub index_residual_to_encoded_baseline_scalar_ratio: Scalar,
+
+    /// Structural metadata scalar count divided by encoded baseline scalar count.
+    pub index_structural_metadata_to_encoded_baseline_scalar_ratio: Scalar,
+
+    /// Structural metadata scalar count divided by total FSE index scalar count.
+    pub index_structural_metadata_share_of_index: Scalar,
+
+    /// Whether the FSE scalar count is greater than the encoded baseline count.
+    pub index_exceeds_encoded_baseline: bool,
+
+    /// Whether structural metadata is greater than residual storage.
+    pub index_structural_metadata_dominates_residuals: bool,
+
     /// Whether all index validation checks passed.
     pub index_valid: bool,
 
@@ -169,6 +196,31 @@ impl BenchmarkCsvMetadata {
                 .index_footprint
                 .structural_to_encoded_scalar_ratio,
             index_to_encoded_scalar_ratio: overview.index_footprint.index_to_encoded_scalar_ratio,
+            index_encoded_baseline_scalar_count: overview
+                .index_footprint_comparison
+                .encoded_baseline_scalar_count,
+            index_comparison_scalar_count: overview.index_footprint_comparison.index_scalar_count,
+            index_scalar_delta_from_encoded_baseline: overview
+                .index_footprint_comparison
+                .scalar_delta_from_baseline,
+            index_to_encoded_baseline_scalar_ratio: overview
+                .index_footprint_comparison
+                .index_to_encoded_baseline_scalar_ratio,
+            index_residual_to_encoded_baseline_scalar_ratio: overview
+                .index_footprint_comparison
+                .residual_to_encoded_baseline_scalar_ratio,
+            index_structural_metadata_to_encoded_baseline_scalar_ratio: overview
+                .index_footprint_comparison
+                .structural_metadata_to_encoded_baseline_scalar_ratio,
+            index_structural_metadata_share_of_index: overview
+                .index_footprint_comparison
+                .structural_metadata_share_of_index,
+            index_exceeds_encoded_baseline: overview
+                .index_footprint_comparison
+                .index_exceeds_encoded_baseline,
+            index_structural_metadata_dominates_residuals: overview
+                .index_footprint_comparison
+                .structural_metadata_dominates_residuals,
             index_valid: overview.validation.is_valid(),
             node_identifier_consistency_valid: overview
                 .validation
@@ -219,6 +271,15 @@ pub(super) fn metadata_header_fields() -> Vec<&'static str> {
         "index_residual_to_encoded_scalar_ratio",
         "index_structural_to_encoded_scalar_ratio",
         "index_to_encoded_scalar_ratio",
+        "index_encoded_baseline_scalar_count",
+        "index_comparison_scalar_count",
+        "index_scalar_delta_from_encoded_baseline",
+        "index_to_encoded_baseline_scalar_ratio",
+        "index_residual_to_encoded_baseline_scalar_ratio",
+        "index_structural_metadata_to_encoded_baseline_scalar_ratio",
+        "index_structural_metadata_share_of_index",
+        "index_exceeds_encoded_baseline",
+        "index_structural_metadata_dominates_residuals",
         "index_valid",
         "node_identifier_consistency_valid",
         "partition_dimensional_metadata_valid",
@@ -262,6 +323,19 @@ pub(super) fn metadata_value_fields(metadata: &BenchmarkCsvMetadata) -> Vec<Stri
         format_scalar(metadata.index_residual_to_encoded_scalar_ratio),
         format_scalar(metadata.index_structural_to_encoded_scalar_ratio),
         format_scalar(metadata.index_to_encoded_scalar_ratio),
+        metadata.index_encoded_baseline_scalar_count.to_string(),
+        metadata.index_comparison_scalar_count.to_string(),
+        metadata
+            .index_scalar_delta_from_encoded_baseline
+            .to_string(),
+        format_scalar(metadata.index_to_encoded_baseline_scalar_ratio),
+        format_scalar(metadata.index_residual_to_encoded_baseline_scalar_ratio),
+        format_scalar(metadata.index_structural_metadata_to_encoded_baseline_scalar_ratio),
+        format_scalar(metadata.index_structural_metadata_share_of_index),
+        metadata.index_exceeds_encoded_baseline.to_string(),
+        metadata
+            .index_structural_metadata_dominates_residuals
+            .to_string(),
         metadata.index_valid.to_string(),
         metadata.node_identifier_consistency_valid.to_string(),
         metadata.partition_dimensional_metadata_valid.to_string(),

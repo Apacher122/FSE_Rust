@@ -6,7 +6,10 @@ use crate::benchmark::{
     BenchmarkSuiteReport, MultiBaselineAggregateSummary, render_benchmark_overview,
     render_multi_baseline_summary, render_named_baseline_suite_report, render_suite_report,
 };
-use crate::build::{IndexFootprintMetrics, IndexStructureMetrics, IndexValidationReport};
+use crate::build::{
+    IndexFootprintComparisonMetrics, IndexFootprintMetrics, IndexStructureMetrics,
+    IndexValidationReport,
+};
 use crate::query::QueryExecutionMode;
 
 #[test]
@@ -34,6 +37,12 @@ fn benchmark_overview_render_includes_run_metadata() {
     assert!(output.contains("Structural metadata scalars: 18"));
     assert!(output.contains("Total counted index scalars: 26"));
     assert!(output.contains("Index-to-encoded scalar ratio: 3.25"));
+    assert!(output.contains("Encoded baseline scalars: 8"));
+    assert!(output.contains("Scalar delta from encoded baseline: 18"));
+    assert!(output.contains("Index-to-encoded baseline scalar ratio: 3.25"));
+    assert!(output.contains("Structural metadata share of index: 0.69"));
+    assert!(output.contains("Index exceeds encoded baseline: true"));
+    assert!(output.contains("Structural metadata dominates residuals: true"));
     assert!(output.contains("FSE execution: parallel"));
     assert!(output.contains("FSE parallel min leaves: 2"));
     assert!(output.contains("Index validation: true"));
@@ -224,6 +233,19 @@ fn test_overview(
             residual_to_encoded_scalar_ratio: 1.0,
             structural_to_encoded_scalar_ratio: 2.25,
             index_to_encoded_scalar_ratio: 3.25,
+        },
+        index_footprint_comparison: IndexFootprintComparisonMetrics {
+            encoded_baseline_scalar_count: 8,
+            index_scalar_count: 26,
+            scalar_delta_from_baseline: 18,
+            residual_scalar_count: 8,
+            structural_metadata_scalar_count: 18,
+            index_to_encoded_baseline_scalar_ratio: 3.25,
+            residual_to_encoded_baseline_scalar_ratio: 1.0,
+            structural_metadata_to_encoded_baseline_scalar_ratio: 2.25,
+            structural_metadata_share_of_index: 18.0 / 26.0,
+            index_exceeds_encoded_baseline: true,
+            structural_metadata_dominates_residuals: true,
         },
         validation: IndexValidationReport {
             node_identifier_consistency_valid: true,
