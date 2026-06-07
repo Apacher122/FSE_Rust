@@ -24,6 +24,7 @@ benchmark_artifacts/
     materialization-mode-history.csv
     target-workload-history.csv
     index-footprint-history.csv
+    baseline-footprint-history.csv
   runs/
     <label>/
       benchmark-output-<label>.txt
@@ -398,6 +399,7 @@ count-only-workload-history.csv
 materialization-mode-history.csv
 target-workload-history.csv
 index-footprint-history.csv
+baseline-footprint-history.csv
 ```
 
 The history files are intentionally named for the question they answer:
@@ -423,6 +425,9 @@ target-workload-history.csv:
 
 index-footprint-history.csv:
   how logical index scalar footprint changed across validated runs
+
+baseline-footprint-history.csv:
+  how logical baseline scalar footprint changed across validated runs
 ```
 
 Each summary history row starts with run metadata:
@@ -473,6 +478,35 @@ index validation fields
 ```
 
 Footprint history values are logical scalar counts. They do not measure allocator overhead, byte layout, compression ratio, cache behavior, file size, or memory-mapped persistence size.
+
+## Baseline footprint history
+
+The review runner writes one footprint row per baseline per validated review run to:
+
+```text
+benchmark_artifacts/history/baseline-footprint-history.csv
+```
+
+The source is the normal summary CSV for the run. Because the summary CSV has one row per baseline, the history writer preserves baseline identity fields and baseline footprint fields instead of collapsing the rows into one index-level record.
+
+The baseline footprint history keeps these groups of fields:
+
+```text
+run metadata
+dataset and benchmark configuration
+index scalar comparison fields
+index validation fields
+baseline identity
+baseline node counts
+baseline point-coordinate scalar count
+baseline routing metadata scalar count
+baseline bounds metadata scalar count
+baseline structural metadata scalar count
+baseline total counted scalar count
+baseline point and structural ratios
+```
+
+Baseline footprint history values are logical scalar counts. They do not measure allocator overhead, byte layout, compression ratio, cache behavior, file size, or memory-mapped persistence size.
 
 ## Flat benchmark artifact cleanup workflow
 

@@ -584,6 +584,7 @@ if ($UpdateHistory) {
   Add-ReviewLine "materialization mode history: $(Join-Path $HistoryDir "materialization-mode-history.csv")"
   Add-ReviewLine "target workload history: $(Join-Path $HistoryDir "target-workload-history.csv")"
   Add-ReviewLine "index footprint history: $(Join-Path $HistoryDir "index-footprint-history.csv")"
+  Add-ReviewLine "baseline footprint history: $(Join-Path $HistoryDir "baseline-footprint-history.csv")"
 }
 
 Copy-BenchmarkReviewNotesToOrganizedRun `

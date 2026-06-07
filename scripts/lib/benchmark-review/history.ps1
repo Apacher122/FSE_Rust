@@ -294,6 +294,58 @@ function Get-BenchmarkFootprintHistoryColumns {
   )
 }
 
+function Get-BenchmarkBaselineFootprintHistoryColumns {
+  return @(
+    "dataset_records",
+    "index_nodes",
+    "run_workload_count",
+    "selected_baselines",
+    "timing_iterations",
+    "target_leaf_size",
+    "max_leaf_size",
+    "max_depth",
+    "fse_execution_mode",
+    "fse_parallel_min_retained_leaves",
+    "index_encoded_coordinate_scalar_count",
+    "index_residual_scalar_count",
+    "index_centroid_scalar_count",
+    "index_bounds_scalar_count",
+    "index_structural_metadata_scalar_count",
+    "index_total_scalar_count",
+    "index_encoded_baseline_scalar_count",
+    "index_comparison_scalar_count",
+    "index_scalar_delta_from_encoded_baseline",
+    "index_to_encoded_baseline_scalar_ratio",
+    "index_residual_to_encoded_baseline_scalar_ratio",
+    "index_structural_metadata_to_encoded_baseline_scalar_ratio",
+    "index_structural_metadata_share_of_index",
+    "index_exceeds_encoded_baseline",
+    "index_structural_metadata_dominates_residuals",
+    "index_valid",
+    "node_identifier_consistency_valid",
+    "partition_dimensional_metadata_valid",
+    "leaf_cardinality_valid",
+    "leaf_reconstruction_metadata_valid",
+    "leaf_record_bounds_valid",
+    "leaf_ownership_cardinality_valid",
+    "hierarchy_topology_valid",
+    "parent_child_bounds_valid",
+    "baseline_name",
+    "baseline_label",
+    "comparison_label",
+    "baseline_footprint_node_count",
+    "baseline_footprint_leaf_count",
+    "baseline_footprint_internal_node_count",
+    "baseline_point_coordinate_scalar_count",
+    "baseline_routing_metadata_scalar_count",
+    "baseline_bounds_metadata_scalar_count",
+    "baseline_structural_metadata_scalar_count",
+    "baseline_total_scalar_count",
+    "baseline_total_to_point_scalar_ratio",
+    "baseline_structural_to_point_scalar_ratio"
+  )
+}
+
 function Assert-BenchmarkHistoryRequiredColumns {
   param(
     [object]$Row,
@@ -334,6 +386,73 @@ function Add-BenchmarkFootprintSummaryToHistory {
   }
 
   $SourceColumns = Get-BenchmarkFootprintHistoryColumns
+  $Metadata = New-BenchmarkHistoryMetadata -Context $Context -SourceCsv $ResolvedSourceCsv
+  $MetadataColumns = @($Metadata.Keys)
+  $Header = @($MetadataColumns + $SourceColumns)
+  $SeenRows = @{}
+
+  $HistoryRows = @(
+    foreach ($SourceRow in $SourceRows) {
+      Assert-BenchmarkHistoryRequiredColumns `
+        -Row $SourceRow `
+        -Columns $SourceColumns `
+        -SourceCsv $ResolvedSourceCsv
+
+      $SourceValues = @(
+        foreach ($Column in $SourceColumns) {
+          Get-BenchmarkHistoryRowValue -Row $SourceRow -ColumnName $Column
+        }
+      )
+      $SourceKey = Join-CsvFields -Fields $SourceValues
+
+      if ($SeenRows.ContainsKey($SourceKey)) {
+        continue
+      }
+
+      $SeenRows[$SourceKey] = $true
+      $HistoryRow = [ordered]@{}
+
+      foreach ($Column in $MetadataColumns) {
+        $HistoryRow[$Column] = $Metadata[$Column]
+      }
+
+      foreach ($Index in 0..($SourceColumns.Count - 1)) {
+        $HistoryRow[$SourceColumns[$Index]] = $SourceValues[$Index]
+      }
+
+      [PSCustomObject]$HistoryRow
+    }
+  )
+
+  Add-BenchmarkHistoryRows -Path $HistoryCsv -Header $Header -Rows $HistoryRows
+}
+
+function Add-BenchmarkBaselineFootprintSummaryToHistory {
+  param(
+    [object]$Context,
+    [string]$SourceCsv,
+    [string]$HistoryCsv
+  )
+
+  if ([string]::IsNullOrWhiteSpace($SourceCsv)) {
+    return
+  }
+
+  $ResolvedSourceCsv = Resolve-BenchmarkHistorySourceCsv `
+    -Context $Context `
+    -SourceCsv $SourceCsv
+
+  if (!(Test-Path -LiteralPath $ResolvedSourceCsv)) {
+    return
+  }
+
+  $SourceRows = @(Import-Csv -LiteralPath $ResolvedSourceCsv)
+
+  if ($SourceRows.Count -eq 0) {
+    return
+  }
+
+  $SourceColumns = Get-BenchmarkBaselineFootprintHistoryColumns
   $Metadata = New-BenchmarkHistoryMetadata -Context $Context -SourceCsv $ResolvedSourceCsv
   $MetadataColumns = @($Metadata.Keys)
   $Header = @($MetadataColumns + $SourceColumns)
@@ -455,4 +574,9 @@ function Update-BenchmarkReviewHistory {
     -Context $Context `
     -SourceCsv (Join-Path $Context.OutputDir "summary-$($Context.Label).csv") `
     -HistoryCsv (Join-Path $Context.HistoryDir "index-footprint-history.csv")
+
+  Add-BenchmarkBaselineFootprintSummaryToHistory `
+    -Context $Context `
+    -SourceCsv (Join-Path $Context.OutputDir "summary-$($Context.Label).csv") `
+    -HistoryCsv (Join-Path $Context.HistoryDir "baseline-footprint-history.csv")
 }

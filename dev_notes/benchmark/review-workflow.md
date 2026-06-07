@@ -595,11 +595,14 @@ History CSVs:
     materialization-mode-history.csv
     target-workload-history.csv
     index-footprint-history.csv
+    baseline-footprint-history.csv
     ```
 
 The per-run artifacts remain the raw evidence. History CSVs are append-only ledgers for inspection across runs. A history row is not a replacement for the raw artifact named in its `source_csv` column.
 
 `index-footprint-history.csv` is generated from the normal summary CSV. It stores one deduplicated index-footprint row per validated review run because the index footprint is the same across baseline rows for a given run.
+
+`baseline-footprint-history.csv` is generated from the normal summary CSV. It stores one row per baseline per validated review run because each baseline has its own logical scalar footprint.
 
 Every summary history row includes:
 

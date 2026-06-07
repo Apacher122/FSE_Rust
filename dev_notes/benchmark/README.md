@@ -72,6 +72,7 @@ The benchmark workflow now has:
     repeated materialization mode trial summaries
     per-workload CSV metrics
     index footprint metrics
+    baseline footprint metrics
     index footprint comparison metrics
     count-only workload summary artifacts
     count-only comparison artifacts
@@ -79,7 +80,7 @@ The benchmark workflow now has:
     small and large dataset review workflows
     review artifact validation gates
     organized artifact management
-    benchmark history ledgers, including index footprint history
+    benchmark history ledgers, including index footprint and baseline footprint history
 
 ## Primary review files
 
@@ -245,6 +246,7 @@ Current benchmark interpretation:
     small boundary workload is near the fixed-cost floor under owned-result execution
     large target confirms result materialization dominates retained execution
     logical index footprint reporting is available for tracking structural metadata cost
+    logical baseline footprint reporting is available for comparing baseline structural metadata cost
     count-only query mode is a valid separate output contract
     existence query mode is a valid separate output contract with timing-summary benchmark evidence
     reference visitor is a valid exact reference-delivery output contract with small and large materialization evidence
@@ -264,4 +266,5 @@ Current footprint interpretation:
     encoded coordinate scalar count is the current baseline for footprint comparison
     structural metadata scalars are counted separately from residual scalars
     index-footprint-history.csv is the cross-run ledger for these fields
+    baseline-footprint-history.csv is the cross-run ledger for per-baseline footprint fields
     footprint reporting does not prove storage replacement by itself
