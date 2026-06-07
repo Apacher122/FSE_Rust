@@ -190,7 +190,7 @@ validation no longer runs
 
 ## Footprint reporting rules
 
-Index footprint reporting measures logical coordinate-like scalar counts for the constructed FSE index.
+Index footprint reporting measures logical coordinate-like scalar counts for the constructed FSE index. It also derives scalar payload byte estimates from those counts and the scalar width.
 
 Footprint reporting fields should be interpreted as:
 
@@ -212,6 +212,27 @@ structural metadata scalar count:
 
 total counted index scalar count:
   residual scalar count plus structural metadata scalar count
+
+scalar size bytes:
+  byte width of one scalar value
+
+encoded coordinate estimated bytes:
+  encoded coordinate scalar count times scalar size bytes
+
+residual estimated bytes:
+  residual scalar count times scalar size bytes
+
+centroid estimated bytes:
+  centroid scalar count times scalar size bytes
+
+bounds estimated bytes:
+  bounds scalar count times scalar size bytes
+
+structural metadata estimated bytes:
+  structural metadata scalar count times scalar size bytes
+
+total index estimated bytes:
+  total counted index scalar count times scalar size bytes
 ```
 
 Footprint comparison fields use the encoded coordinate scalar count as the baseline. They are valid for tracking structural overhead across runs.
@@ -219,7 +240,7 @@ Footprint comparison fields use the encoded coordinate scalar count as the basel
 Do not use footprint reporting by itself as proof of:
 
 ```text
-byte-level memory use
+actual memory use
 allocator overhead
 compressed file size
 persistent storage size
@@ -227,7 +248,7 @@ cache behavior
 replacement of external indexes
 ```
 
-Those claims need separate artifacts once persistence, byte accounting, or external-index comparison exists.
+Those claims need separate artifacts once persistence, direct memory accounting, or external-index comparison exists.
 
 ## Query behavior commits
 

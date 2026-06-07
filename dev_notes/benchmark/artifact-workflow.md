@@ -424,10 +424,10 @@ target-workload-history.csv:
   how the selected boundary workload changed across baselines
 
 index-footprint-history.csv:
-  how logical index scalar footprint changed across validated runs
+  how logical index scalar footprint and scalar payload byte estimates changed across validated runs
 
 baseline-footprint-history.csv:
-  how logical baseline scalar footprint changed across validated runs
+  how logical baseline scalar footprint and shared index byte estimates changed across validated runs
 ```
 
 Each summary history row starts with run metadata:
@@ -473,11 +473,12 @@ centroid scalar count
 bounds scalar count
 structural metadata scalar count
 total counted index scalar count
+scalar payload byte estimate fields
 encoded-baseline comparison ratios
 index validation fields
 ```
 
-Footprint history values are logical scalar counts. They do not measure allocator overhead, byte layout, compression ratio, cache behavior, file size, or memory-mapped persistence size.
+Footprint history values include logical scalar counts and scalar payload byte estimates. Byte estimate fields multiply scalar counts by scalar width. They do not measure allocator overhead, physical layout overhead, compression ratio, cache behavior, file size, or memory-mapped persistence size.
 
 ## Baseline footprint history
 
@@ -495,6 +496,7 @@ The baseline footprint history keeps these groups of fields:
 run metadata
 dataset and benchmark configuration
 index scalar comparison fields
+index scalar payload byte estimate fields
 index validation fields
 baseline identity
 baseline node counts
@@ -506,7 +508,7 @@ baseline total counted scalar count
 baseline point and structural ratios
 ```
 
-Baseline footprint history values are logical scalar counts. They do not measure allocator overhead, byte layout, compression ratio, cache behavior, file size, or memory-mapped persistence size.
+Baseline footprint history values include baseline logical scalar counts and the shared FSE index scalar payload byte estimates for the run. Byte estimate fields multiply scalar counts by scalar width. They do not measure allocator overhead, physical layout overhead, compression ratio, cache behavior, file size, or memory-mapped persistence size.
 
 ## Flat benchmark artifact cleanup workflow
 

@@ -821,6 +821,51 @@ This evidence is still logical scalar accounting. It does not measure byte layou
 allocator overhead, disk footprint, cache behavior, compression ratio, or persisted
 format size.
 
+## Footprint byte estimate history conclusion
+
+Footprint byte estimate history tracks scalar payload byte estimates derived from
+the footprint scalar counters. It complements scalar-count history by preserving
+the byte width used by the current numeric kernel.
+
+The first validated footprint byte history run used:
+
+```text
+label: run005-r01-footprint-byte-history-small
+dataset: small
+trials: 5
+iterations: 10000
+artifact validation: completed
+history update: completed
+```
+
+The index footprint history row recorded:
+
+```text
+scalar size bytes: 4
+encoded coordinate estimated bytes: 480
+residual estimated bytes: 480
+centroid estimated bytes: 184
+bounds estimated bytes: 368
+structural metadata estimated bytes: 552
+total index estimated bytes: 1032
+```
+
+The baseline footprint history preserved the same FSE index byte estimates across
+the `flat_scan`, `kd_tree`, and `r_tree` rows.
+
+Interpretation:
+
+```text
+byte estimate history is working as a cross-run ledger
+the estimates are scalar payload estimates derived from scalar counts
+the current small FSE index reports 1032 estimated scalar payload bytes
+the estimates do not include allocator overhead or persisted layout overhead
+```
+
+This evidence does not prove memory footprint, compressed storage footprint,
+cache behavior, or replacement of external index storage. Those claims require
+direct memory, persistence, or external-index artifacts.
+
 ## Future optimization direction
 
 The next meaningful optimization direction is a result representation or query API decision.
@@ -872,6 +917,7 @@ existence query mode is a valid separate exact non-empty-result output contract
 reference visitor is a valid separate exact reference-delivery output contract
 row-view is a valid borrowed row-delivery output contract but not the current performance direction
 logical footprint reporting is available for structural metadata cost tracking
+scalar payload byte estimate history is available for footprint trend tracking
 future traversal or boundary-specific optimizations need new evidence before being prioritized
 ```
 
@@ -883,7 +929,7 @@ debug-only retained diagnostics as public API timing
 full-selectivity count-only speedups as traversal improvements
 small tiny-query behavior as large-scale behavior
 timing movement from reporting-only commits
-logical scalar footprint as byte-level storage evidence
+scalar payload byte estimates as actual memory or persisted storage evidence
 ```
 
 Current useful evidence sources:

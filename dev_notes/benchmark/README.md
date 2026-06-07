@@ -48,7 +48,7 @@ Count-only timing answers exact-cardinality performance.
 
 Existence timing answers exact non-empty-result performance and inspected-record behavior.
 
-Index footprint reporting answers how many coordinate-like scalars are represented by residuals, centroids, bounds, and the total counted FSE index footprint.
+Index footprint reporting answers how many coordinate-like scalars are represented by residuals, centroids, bounds, and the total counted FSE index footprint. It also reports scalar payload byte estimates derived from the scalar counts and the configured scalar width.
 
 Debug-only retained diagnostics explain implementation costs but should not be treated as public API benchmark evidence.
 
@@ -246,6 +246,7 @@ Current benchmark interpretation:
     small boundary workload is near the fixed-cost floor under owned-result execution
     large target confirms result materialization dominates retained execution
     logical index footprint reporting is available for tracking structural metadata cost
+    scalar payload byte estimates are available for index footprint tracking
     logical baseline footprint reporting is available for comparing baseline structural metadata cost
     count-only query mode is a valid separate output contract
     existence query mode is a valid separate output contract with timing-summary benchmark evidence
@@ -262,9 +263,11 @@ Current row-view decision:
 
 Current footprint interpretation:
 
-    footprint metrics are logical scalar counts, not byte-level memory measurements
+    footprint metrics include logical scalar counts and scalar payload byte estimates
+    byte estimates are derived from scalar counts and scalar size
+    byte estimates do not measure allocator overhead, persisted layout size, compression ratio, or cache behavior
     encoded coordinate scalar count is the current baseline for footprint comparison
     structural metadata scalars are counted separately from residual scalars
-    index-footprint-history.csv is the cross-run ledger for these fields
-    baseline-footprint-history.csv is the cross-run ledger for per-baseline footprint fields
+    index-footprint-history.csv is the cross-run ledger for index scalar and byte estimate fields
+    baseline-footprint-history.csv is the cross-run ledger for per-baseline footprint fields and shared index byte estimates
     footprint reporting does not prove storage replacement by itself
