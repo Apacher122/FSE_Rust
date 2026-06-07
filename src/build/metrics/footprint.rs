@@ -1,9 +1,13 @@
 //! Logical index footprint metrics.
 
+use std::mem::size_of;
+
 use crate::math::Scalar;
 use crate::storage::FSEIndex;
 
-use super::types::{IndexFootprintComparisonMetrics, IndexFootprintMetrics};
+use super::types::{
+    IndexFootprintByteEstimates, IndexFootprintComparisonMetrics, IndexFootprintMetrics,
+};
 
 /// Computes logical scalar footprint metrics for an FSE index.
 ///
@@ -70,6 +74,18 @@ pub fn index_footprint_comparison_metrics(index: &FSEIndex) -> IndexFootprintCom
     footprint_comparison_metrics(&footprint)
 }
 
+/// Computes byte estimates for an FSE index footprint.
+///
+/// # Runtime Role
+///
+/// The estimates scale logical scalar counts by `size_of::<Scalar>()`. This keeps
+/// byte accounting tied to the scalar representation used by the current build.
+pub fn index_footprint_byte_estimates(index: &FSEIndex) -> IndexFootprintByteEstimates {
+    let footprint = index_footprint_metrics(index);
+
+    footprint_byte_estimates(&footprint)
+}
+
 /// Computes footprint comparison metrics from an existing footprint report.
 pub fn footprint_comparison_metrics(
     footprint: &IndexFootprintMetrics,
@@ -105,6 +121,28 @@ pub fn footprint_comparison_metrics(
     }
 }
 
+/// Computes byte estimates from an existing footprint report.
+pub fn footprint_byte_estimates(footprint: &IndexFootprintMetrics) -> IndexFootprintByteEstimates {
+    let scalar_size_bytes = size_of::<Scalar>();
+    let encoded_coordinate_bytes =
+        scalar_byte_count(footprint.encoded_coordinate_scalar_count, scalar_size_bytes);
+    let residual_bytes = scalar_byte_count(footprint.residual_scalar_count, scalar_size_bytes);
+    let centroid_bytes = scalar_byte_count(footprint.centroid_scalar_count, scalar_size_bytes);
+    let bounds_bytes = scalar_byte_count(footprint.bounds_scalar_count, scalar_size_bytes);
+    let structural_metadata_bytes = centroid_bytes + bounds_bytes;
+    let total_index_bytes = residual_bytes + structural_metadata_bytes;
+
+    IndexFootprintByteEstimates {
+        scalar_size_bytes,
+        encoded_coordinate_bytes,
+        residual_bytes,
+        centroid_bytes,
+        bounds_bytes,
+        structural_metadata_bytes,
+        total_index_bytes,
+    }
+}
+
 fn ratio(numerator: usize, denominator: usize) -> Scalar {
     if denominator == 0 {
         return 0.0;
@@ -115,4 +153,8 @@ fn ratio(numerator: usize, denominator: usize) -> Scalar {
 
 fn scalar_delta(value: usize, baseline: usize) -> i128 {
     value as i128 - baseline as i128
+}
+
+fn scalar_byte_count(scalar_count: usize, scalar_size_bytes: usize) -> usize {
+    scalar_count * scalar_size_bytes
 }

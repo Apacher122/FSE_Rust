@@ -12,7 +12,8 @@ mod types;
 
 pub use density::{index_density, index_structure_metrics, partition_density};
 pub use footprint::{
-    footprint_comparison_metrics, index_footprint_comparison_metrics, index_footprint_metrics,
+    footprint_byte_estimates, footprint_comparison_metrics, index_footprint_byte_estimates,
+    index_footprint_comparison_metrics, index_footprint_metrics,
 };
 pub(crate) use overlap::bounds_overlap_extent_sum_prevalidated;
 pub use overlap::{sibling_overlap_extent_sum, sibling_overlap_metrics};
@@ -21,6 +22,6 @@ pub use split_quality::{
     split_quality_metrics_from_bounds,
 };
 pub use types::{
-    IndexFootprintComparisonMetrics, IndexFootprintMetrics, IndexStructureMetrics,
-    SiblingOverlapMetrics, SplitQualityMetrics,
+    IndexFootprintByteEstimates, IndexFootprintComparisonMetrics, IndexFootprintMetrics,
+    IndexStructureMetrics, SiblingOverlapMetrics, SplitQualityMetrics,
 };

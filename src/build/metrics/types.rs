@@ -176,6 +176,38 @@ impl IndexFootprintMetrics {
     }
 }
 
+/// Byte estimates derived from logical scalar footprint metrics.
+///
+/// # Runtime Role
+///
+/// `IndexFootprintByteEstimates` converts scalar counts into scalar payload byte
+/// counts using the active [`Scalar`] representation. These estimates provide a
+/// stable accounting layer for benchmark reporting before a persisted storage
+/// format exists.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct IndexFootprintByteEstimates {
+    /// Number of bytes used by one scalar value.
+    pub scalar_size_bytes: usize,
+
+    /// Estimated bytes for the encoded coordinate baseline.
+    pub encoded_coordinate_bytes: usize,
+
+    /// Estimated bytes for residual scalar payloads.
+    pub residual_bytes: usize,
+
+    /// Estimated bytes for partition centroid scalar payloads.
+    pub centroid_bytes: usize,
+
+    /// Estimated bytes for partition bound scalar payloads.
+    pub bounds_bytes: usize,
+
+    /// Estimated bytes for centroid and bounds scalar payloads.
+    pub structural_metadata_bytes: usize,
+
+    /// Estimated bytes for residuals and structural metadata.
+    pub total_index_bytes: usize,
+}
+
 /// Comparison between an FSE footprint and an encoded coordinate baseline.
 ///
 /// # Runtime Role

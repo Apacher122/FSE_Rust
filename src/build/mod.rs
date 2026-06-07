@@ -15,9 +15,10 @@ pub use builder::{
     FSEBuilder, RowMappedFSEIndex, ValidatedFSEIndex,
 };
 pub use metrics::{
-    IndexFootprintComparisonMetrics, IndexFootprintMetrics, IndexStructureMetrics,
-    SiblingOverlapMetrics, SplitQualityMetrics, bounding_extent_sum, footprint_comparison_metrics,
-    index_density, index_footprint_comparison_metrics, index_footprint_metrics,
+    IndexFootprintByteEstimates, IndexFootprintComparisonMetrics, IndexFootprintMetrics,
+    IndexStructureMetrics, SiblingOverlapMetrics, SplitQualityMetrics, bounding_extent_sum,
+    footprint_byte_estimates, footprint_comparison_metrics, index_density,
+    index_footprint_byte_estimates, index_footprint_comparison_metrics, index_footprint_metrics,
     index_structure_metrics, partition_density, sibling_overlap_extent_sum,
     sibling_overlap_metrics, split_quality_metrics, split_quality_metrics_for_axis,
     split_quality_metrics_from_bounds,

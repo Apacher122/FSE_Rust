@@ -1,12 +1,15 @@
+use std::mem::size_of;
+
 use crate::build::{
-    IndexFootprintComparisonMetrics, IndexFootprintMetrics, IndexStructureMetrics,
-    SiblingOverlapMetrics, SplitQualityMetrics, bounding_extent_sum, footprint_comparison_metrics,
-    index_density, index_footprint_comparison_metrics, index_footprint_metrics,
+    IndexFootprintByteEstimates, IndexFootprintComparisonMetrics, IndexFootprintMetrics,
+    IndexStructureMetrics, SiblingOverlapMetrics, SplitQualityMetrics, bounding_extent_sum,
+    footprint_byte_estimates, footprint_comparison_metrics, index_density,
+    index_footprint_byte_estimates, index_footprint_comparison_metrics, index_footprint_metrics,
     index_structure_metrics, partition_density, sibling_overlap_extent_sum,
     sibling_overlap_metrics, split_quality_metrics, split_quality_metrics_for_axis,
     split_quality_metrics_from_bounds,
 };
-use crate::math::{BoundingBox, ResidualBlock, Vector};
+use crate::math::{BoundingBox, ResidualBlock, Scalar, Vector};
 use crate::storage::{FSEIndex, PartitionNode};
 
 #[test]
@@ -228,6 +231,27 @@ fn index_footprint_comparison_metrics_compare_index_to_encoded_baseline() {
 }
 
 #[test]
+fn index_footprint_byte_estimates_scale_scalar_counts_by_scalar_size() {
+    let index = internal_plus_two_leaf_index();
+
+    let estimates = index_footprint_byte_estimates(&index);
+    let scalar_size_bytes = size_of::<Scalar>();
+
+    assert_eq!(
+        estimates,
+        IndexFootprintByteEstimates {
+            scalar_size_bytes,
+            encoded_coordinate_bytes: 8 * scalar_size_bytes,
+            residual_bytes: 8 * scalar_size_bytes,
+            centroid_bytes: 6 * scalar_size_bytes,
+            bounds_bytes: 12 * scalar_size_bytes,
+            structural_metadata_bytes: 18 * scalar_size_bytes,
+            total_index_bytes: 26 * scalar_size_bytes,
+        }
+    );
+}
+
+#[test]
 fn footprint_comparison_metrics_handles_baseline_parity() {
     let footprint = IndexFootprintMetrics {
         dimensions: 2,
@@ -263,6 +287,36 @@ fn footprint_comparison_metrics_handles_baseline_parity() {
             structural_metadata_dominates_residuals: false,
         }
     );
+}
+
+#[test]
+fn footprint_byte_estimates_can_be_computed_from_existing_footprint_metrics() {
+    let footprint = IndexFootprintMetrics {
+        dimensions: 2,
+        record_count: 2,
+        node_count: 1,
+        leaf_count: 1,
+        encoded_coordinate_scalar_count: 4,
+        residual_scalar_count: 4,
+        centroid_scalar_count: 2,
+        bounds_scalar_count: 4,
+        structural_metadata_scalar_count: 6,
+        total_index_scalar_count: 10,
+        residual_to_encoded_scalar_ratio: 1.0,
+        structural_to_encoded_scalar_ratio: 1.5,
+        index_to_encoded_scalar_ratio: 2.5,
+    };
+
+    let estimates = footprint_byte_estimates(&footprint);
+    let scalar_size_bytes = size_of::<Scalar>();
+
+    assert_eq!(estimates.scalar_size_bytes, scalar_size_bytes);
+    assert_eq!(estimates.encoded_coordinate_bytes, 4 * scalar_size_bytes);
+    assert_eq!(estimates.residual_bytes, 4 * scalar_size_bytes);
+    assert_eq!(estimates.centroid_bytes, 2 * scalar_size_bytes);
+    assert_eq!(estimates.bounds_bytes, 4 * scalar_size_bytes);
+    assert_eq!(estimates.structural_metadata_bytes, 6 * scalar_size_bytes);
+    assert_eq!(estimates.total_index_bytes, 10 * scalar_size_bytes);
 }
 
 #[test]
