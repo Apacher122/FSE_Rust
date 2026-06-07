@@ -16,6 +16,7 @@
 //! | Bounded support region $B_k$ | [`math::BoundingBox`] |
 //! | Residual encoding $\Delta_k(x) = x - \mu_k$ | [`math::ResidualBlock`] |
 //! | FSE hierarchy $\mathcal{F}$ | [`storage::FSEIndex`] |
+//! | Archive manifest metadata | [`persistence::FSEArchiveManifest`] |
 //! | Query region $Q$ | [`query::QueryRegion`] |
 //! | Geometric selection $\sigma_G$ / $RT(Q)$ | [`query::traverse`] |
 //! | Reconstruction operator $\Phi_k(\Delta) = \mu_k + \Delta$ | [`query::reconstruct_row_into`] |
@@ -61,6 +62,7 @@ pub mod build;
 pub mod data;
 pub mod encoding;
 pub mod math;
+pub mod persistence;
 pub mod query;
 pub mod storage;
 

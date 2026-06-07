@@ -3,6 +3,7 @@ mod build;
 mod data;
 mod encoding;
 mod math;
+mod persistence;
 mod query;
 mod storage;
 mod support;
