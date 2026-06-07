@@ -765,6 +765,62 @@ these metrics expose the cost that future metadata-replacement work must justify
 
 This footprint evidence does not prove byte-level storage efficiency, compression ratio, or replacement of external indexes. Those claims require later artifacts that compare persisted FSE layout against raw data plus conventional index metadata.
 
+## Baseline footprint history conclusion
+
+Baseline footprint history tracks logical scalar footprint by selected baseline.
+It complements index footprint history by preserving one row per baseline instead
+of one deduplicated row per FSE index.
+
+The first validated baseline footprint history run used:
+
+```text
+label: run008-r01-baseline-footprint-history-small
+dataset: small
+trials: 1
+iterations: 1000
+artifact validation: completed
+history update: completed
+```
+
+The run appended three baseline rows:
+
+```text
+flat_scan
+kd_tree
+r_tree
+```
+
+The recorded logical scalar totals were:
+
+```text
+FSE index total scalar count: 258
+encoded coordinate baseline scalar count: 120
+flat_scan baseline total scalar count: 120
+kd_tree baseline total scalar count: 180
+r_tree baseline total scalar count: 140
+```
+
+The recorded baseline structural metadata counts were:
+
+```text
+flat_scan: 0
+kd_tree: 60
+r_tree: 20
+```
+
+Interpretation:
+
+```text
+baseline footprint history is working as a cross-run ledger
+the current small FSE index footprint is larger than each selected baseline footprint
+the current prototype should not claim structural metadata replacement from this run
+the ledger provides the measurement surface for future storage, split, and persistence work
+```
+
+This evidence is still logical scalar accounting. It does not measure byte layout,
+allocator overhead, disk footprint, cache behavior, compression ratio, or persisted
+format size.
+
 ## Future optimization direction
 
 The next meaningful optimization direction is a result representation or query API decision.
@@ -841,5 +897,6 @@ existence timing summary
 reference visitor materialization summary
 repeated materialization trial summaries
 index footprint history
+baseline footprint history
 debug diagnostics for explanation only
 ```
