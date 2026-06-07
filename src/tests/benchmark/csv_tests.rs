@@ -1,9 +1,9 @@
 use crate::benchmark::{
-    BaselineAggregateSummary, BaselineKind, BaselineRegistry, BenchmarkCsvMetadata,
-    BenchmarkRunOverview, MultiBaselineAggregateSummary, multi_baseline_aggregate_summary_to_csv,
-    multi_baseline_aggregate_summary_to_csv_with_metadata, multi_baseline_workload_report_to_csv,
-    multi_baseline_workload_report_to_csv_with_metadata, run_multi_baseline_benchmark_suite,
-    write_multi_baseline_aggregate_summary_csv,
+    BaselineAggregateSummary, BaselineFootprintMetrics, BaselineKind, BaselineRegistry,
+    BenchmarkCsvMetadata, BenchmarkRunOverview, MultiBaselineAggregateSummary,
+    multi_baseline_aggregate_summary_to_csv, multi_baseline_aggregate_summary_to_csv_with_metadata,
+    multi_baseline_workload_report_to_csv, multi_baseline_workload_report_to_csv_with_metadata,
+    run_multi_baseline_benchmark_suite, write_multi_baseline_aggregate_summary_csv,
     write_multi_baseline_aggregate_summary_csv_with_metadata,
     write_multi_baseline_workload_report_csv_with_metadata,
 };
@@ -75,6 +75,7 @@ fn single_summary() -> MultiBaselineAggregateSummary {
             baseline_name: "flat_scan".to_string(),
             baseline_label: "Flat Scan".to_string(),
             comparison_label: "Flat Scan vs FSE".to_string(),
+            baseline_footprint: BaselineFootprintMetrics::flat_scan(60, 2),
             workload_count: 1,
             total_baseline_evaluated_records: 100,
             total_fse_reconstructed_records: 25,
@@ -220,7 +221,9 @@ fn csv_export_includes_header() {
 
     let csv = multi_baseline_aggregate_summary_to_csv(&summary);
 
-    assert!(csv.starts_with("baseline_name,baseline_label,comparison_label,workload_count"));
+    assert!(csv.starts_with(
+        "baseline_name,baseline_label,comparison_label,baseline_footprint_node_count"
+    ));
 }
 
 #[test]
@@ -232,6 +235,7 @@ fn csv_export_includes_one_row_per_baseline_summary() {
                 baseline_name: "flat_scan".to_string(),
                 baseline_label: "Flat Scan".to_string(),
                 comparison_label: "Flat Scan vs FSE".to_string(),
+                baseline_footprint: BaselineFootprintMetrics::flat_scan(60, 2),
                 workload_count: 3,
                 total_baseline_evaluated_records: 300,
                 total_fse_reconstructed_records: 75,
@@ -247,6 +251,7 @@ fn csv_export_includes_one_row_per_baseline_summary() {
                 baseline_name: "kd_tree".to_string(),
                 baseline_label: "KD-Tree".to_string(),
                 comparison_label: "KD-Tree vs FSE".to_string(),
+                baseline_footprint: BaselineFootprintMetrics::kd_tree(60, 2, 60, 32),
                 workload_count: 3,
                 total_baseline_evaluated_records: 120,
                 total_fse_reconstructed_records: 75,
@@ -264,8 +269,12 @@ fn csv_export_includes_one_row_per_baseline_summary() {
     let rows: Vec<&str> = csv.lines().collect();
 
     assert_eq!(rows.len(), 3);
-    assert!(rows[1].starts_with("flat_scan,Flat Scan,Flat Scan vs FSE,3"));
-    assert!(rows[2].starts_with("kd_tree,KD-Tree,KD-Tree vs FSE,3"));
+    assert!(rows[1].starts_with(
+        "flat_scan,Flat Scan,Flat Scan vs FSE,0,0,0,120,0,0,0,120,1.000000,0.000000,3"
+    ));
+    assert!(rows[2].starts_with(
+        "kd_tree,KD-Tree,KD-Tree vs FSE,60,32,28,120,60,0,60,180,1.500000,0.500000,3"
+    ));
 }
 
 #[test]
@@ -288,6 +297,7 @@ fn csv_export_escapes_fields_that_need_quotes() {
             baseline_name: "custom_baseline".to_string(),
             baseline_label: "Custom, Baseline".to_string(),
             comparison_label: "Custom \"Baseline\" vs FSE".to_string(),
+            baseline_footprint: BaselineFootprintMetrics::flat_scan(60, 2),
             workload_count: 1,
             total_baseline_evaluated_records: 10,
             total_fse_reconstructed_records: 5,
@@ -316,7 +326,11 @@ fn csv_export_writes_summary_file() {
 
     let written = fs::read_to_string(&path).unwrap();
 
-    assert!(written.contains("flat_scan,Flat Scan,Flat Scan vs FSE,1"));
+    assert!(
+        written.contains(
+            "flat_scan,Flat Scan,Flat Scan vs FSE,0,0,0,120,0,0,0,120,1.000000,0.000000,1"
+        )
+    );
 
     let _ = fs::remove_file(path);
 }
@@ -379,7 +393,11 @@ fn csv_export_with_metadata_writes_summary_file() {
     assert!(written.contains("index_encoded_coordinate_scalar_count,index_residual_scalar_count"));
     assert!(written.contains("index_scalar_delta_from_encoded_baseline"));
     assert!(written.contains("parallel,2,8,7,60,4,8,7.500000"));
-    assert!(written.contains("flat_scan,Flat Scan,Flat Scan vs FSE,1"));
+    assert!(
+        written.contains(
+            "flat_scan,Flat Scan,Flat Scan vs FSE,0,0,0,120,0,0,0,120,1.000000,0.000000,1"
+        )
+    );
 
     let _ = fs::remove_file(path);
 }
@@ -401,7 +419,9 @@ fn workload_csv_export_includes_header() {
 
     let csv = multi_baseline_workload_report_to_csv(&report);
 
-    assert!(csv.starts_with("baseline_name,baseline_label,comparison_label,workload_name"));
+    assert!(csv.starts_with(
+        "baseline_name,baseline_label,comparison_label,baseline_footprint_node_count"
+    ));
     assert!(csv.contains("count_only_average_elapsed_ns"));
     assert!(csv.contains("estimated_owned_result_overhead_ns"));
     assert!(csv.contains("count_only_speedup_ratio"));
@@ -547,7 +567,9 @@ fn workload_csv_export_with_metadata_includes_metadata_header() {
     assert!(csv.contains(
         "node_identifier_consistency_valid,partition_dimensional_metadata_valid,leaf_cardinality_valid,leaf_reconstruction_metadata_valid,leaf_record_bounds_valid,leaf_ownership_cardinality_valid"
     ));
-    assert!(csv.contains("baseline_name,baseline_label,comparison_label,workload_name"));
+    assert!(
+        csv.contains("baseline_name,baseline_label,comparison_label,baseline_footprint_node_count")
+    );
 }
 
 #[test]

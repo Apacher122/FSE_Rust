@@ -2,9 +2,10 @@ use std::time::Duration;
 
 use crate::benchmark::reports::output::format_duration_ascii;
 use crate::benchmark::{
-    AggregateWorkloadMetrics, BaselineAggregateSummary, BaselineKind, BenchmarkRunOverview,
-    BenchmarkSuiteReport, MultiBaselineAggregateSummary, render_benchmark_overview,
-    render_multi_baseline_summary, render_named_baseline_suite_report, render_suite_report,
+    AggregateWorkloadMetrics, BaselineAggregateSummary, BaselineFootprintMetrics, BaselineKind,
+    BenchmarkRunOverview, BenchmarkSuiteReport, MultiBaselineAggregateSummary,
+    render_benchmark_overview, render_multi_baseline_summary, render_named_baseline_suite_report,
+    render_suite_report,
 };
 use crate::build::{
     IndexFootprintComparisonMetrics, IndexFootprintMetrics, IndexStructureMetrics,
@@ -144,6 +145,7 @@ fn multi_baseline_summary_render_includes_baseline_rows() {
             baseline_name: "flat_scan".to_string(),
             baseline_label: "Flat Scan".to_string(),
             comparison_label: "Flat Scan vs FSE".to_string(),
+            baseline_footprint: BaselineFootprintMetrics::flat_scan(60, 2),
             workload_count: 3,
             total_baseline_evaluated_records: 300,
             total_fse_reconstructed_records: 75,
@@ -161,6 +163,8 @@ fn multi_baseline_summary_render_includes_baseline_rows() {
     assert!(output.contains("Multi-baseline aggregate summary"));
     assert!(output.contains("Baseline: Flat Scan"));
     assert!(output.contains("Comparison: Flat Scan vs FSE"));
+    assert!(output.contains("baseline total scalars: 120"));
+    assert!(output.contains("baseline structural metadata scalars: 0"));
     assert!(output.contains("Highest weighted timing ratio: Flat Scan (1.25)"));
 }
 
@@ -172,6 +176,7 @@ fn multi_baseline_summary_render_uses_ascii_duration_units() {
             baseline_name: "flat_scan".to_string(),
             baseline_label: "Flat Scan".to_string(),
             comparison_label: "Flat Scan vs FSE".to_string(),
+            baseline_footprint: BaselineFootprintMetrics::flat_scan(60, 2),
             workload_count: 1,
             total_baseline_evaluated_records: 60,
             total_fse_reconstructed_records: 10,

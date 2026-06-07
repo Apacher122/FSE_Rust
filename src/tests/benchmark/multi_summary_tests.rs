@@ -125,6 +125,34 @@ fn multi_baseline_summary_copies_aggregate_metrics() {
 }
 
 #[test]
+fn multi_baseline_summary_copies_baseline_footprint_metrics() {
+    let fixture = small_benchmark_fixture();
+    let baseline_kinds = [BaselineKind::KdTree];
+
+    let report = run_multi_baseline_benchmark_suite(
+        &fixture.index,
+        &fixture.points,
+        &fixture.workloads,
+        &fixture.timing_config,
+        &fixture.registry,
+        &baseline_kinds,
+    );
+
+    let summary = summarize_multi_baseline_aggregates(&report);
+
+    let source_footprint = report.baseline_reports[0].report.comparisons[0]
+        .comparison
+        .baseline_footprint;
+    let baseline_summary = &summary.baseline_summaries[0];
+
+    assert_eq!(baseline_summary.baseline_footprint, source_footprint);
+    assert_eq!(
+        baseline_summary.baseline_footprint.baseline_kind,
+        BaselineKind::KdTree
+    );
+}
+
+#[test]
 fn multi_baseline_summary_reports_highest_weighted_timing_ratio() {
     let fixture = small_benchmark_fixture();
 

@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::benchmark::{BaselineKind, MultiBaselineBenchmarkSuiteReport};
+use crate::benchmark::{BaselineFootprintMetrics, BaselineKind, MultiBaselineBenchmarkSuiteReport};
 use crate::math::Scalar;
 
 /// Compact aggregate summary for one baseline suite.
@@ -24,6 +24,9 @@ pub struct BaselineAggregateSummary {
 
     /// Human-readable comparison label.
     pub comparison_label: String,
+
+    /// Logical scalar footprint metrics for the baseline structure.
+    pub baseline_footprint: BaselineFootprintMetrics,
 
     /// Number of workloads included in the baseline suite.
     pub workload_count: usize,
@@ -102,11 +105,19 @@ pub fn summarize_multi_baseline_aggregates(
                 .map(|labels| labels.comparison_label)
                 .unwrap_or_else(|| format!("{} vs FSE", baseline_label));
 
+            let baseline_footprint = baseline_report
+                .report
+                .comparisons
+                .first()
+                .map(|summary| summary.comparison.baseline_footprint)
+                .unwrap_or_else(|| empty_baseline_footprint(baseline_report.baseline_kind));
+
             BaselineAggregateSummary {
                 baseline_kind: baseline_report.baseline_kind,
                 baseline_name: baseline_report.baseline_name.clone(),
                 baseline_label,
                 comparison_label,
+                baseline_footprint,
                 workload_count: aggregate.workload_count,
                 total_baseline_evaluated_records: aggregate.total_baseline_evaluated_records,
                 total_fse_reconstructed_records: aggregate.total_fse_reconstructed_records,
@@ -122,4 +133,12 @@ pub fn summarize_multi_baseline_aggregates(
         .collect();
 
     MultiBaselineAggregateSummary { baseline_summaries }
+}
+
+fn empty_baseline_footprint(baseline_kind: BaselineKind) -> BaselineFootprintMetrics {
+    match baseline_kind {
+        BaselineKind::FlatScan => BaselineFootprintMetrics::flat_scan(0, 0),
+        BaselineKind::KdTree => BaselineFootprintMetrics::kd_tree(0, 0, 0, 0),
+        BaselineKind::RTree => BaselineFootprintMetrics::r_tree(0, 0, 0, 0),
+    }
 }

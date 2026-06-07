@@ -4,6 +4,9 @@ use crate::benchmark::reports::multi_summary::{
     BaselineAggregateSummary, MultiBaselineAggregateSummary,
 };
 
+use super::baseline_footprint::{
+    baseline_footprint_header_fields, baseline_footprint_value_fields,
+};
 use super::document::{
     csv_document, format_ratio, header_fields_with_metadata, value_fields_with_metadata,
 };
@@ -41,10 +44,11 @@ pub fn multi_baseline_aggregate_summary_to_csv_with_metadata(
 }
 
 fn aggregate_header_fields() -> Vec<&'static str> {
-    vec![
-        "baseline_name",
-        "baseline_label",
-        "comparison_label",
+    let mut fields = vec!["baseline_name", "baseline_label", "comparison_label"];
+
+    fields.extend(baseline_footprint_header_fields());
+
+    fields.extend([
         "workload_count",
         "total_baseline_evaluated_records",
         "total_fse_reconstructed_records",
@@ -54,14 +58,23 @@ fn aggregate_header_fields() -> Vec<&'static str> {
         "weighted_timing_ratio",
         "total_baseline_average_elapsed_ns",
         "total_fse_average_elapsed_ns",
-    ]
+    ]);
+
+    fields
 }
 
 fn aggregate_value_fields(baseline: &BaselineAggregateSummary) -> Vec<String> {
-    vec![
+    let mut fields = vec![
         baseline.baseline_name.clone(),
         baseline.baseline_label.clone(),
         baseline.comparison_label.clone(),
+    ];
+
+    fields.extend(baseline_footprint_value_fields(
+        &baseline.baseline_footprint,
+    ));
+
+    fields.extend([
         baseline.workload_count.to_string(),
         baseline.total_baseline_evaluated_records.to_string(),
         baseline.total_fse_reconstructed_records.to_string(),
@@ -74,5 +87,7 @@ fn aggregate_value_fields(baseline: &BaselineAggregateSummary) -> Vec<String> {
             .as_nanos()
             .to_string(),
         baseline.total_fse_average_elapsed.as_nanos().to_string(),
-    ]
+    ]);
+
+    fields
 }

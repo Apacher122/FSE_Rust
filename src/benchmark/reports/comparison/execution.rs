@@ -160,10 +160,12 @@ pub(super) fn run_query_comparison_with_baseline_and_options(
     let candidate_ratio = fse_report.stats.candidate_ratio;
     let retained_leaf_ratio = fse_report.stats.retained_leaf_ratio;
     let labels = baseline.labels();
+    let baseline_footprint = baseline.footprint_metrics();
 
     QueryComparisonReport {
         labels,
         baseline_name: baseline_report.baseline_name,
+        baseline_footprint,
         baseline_stats: baseline_report.stats,
         fse_stats: fse_report.stats,
         count_only_stats: count_report.stats,

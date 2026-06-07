@@ -1,6 +1,8 @@
 //! Query comparison report type.
 
-use crate::benchmark::baselines::{BaselineComparisonLabels, BaselineQueryStats};
+use crate::benchmark::baselines::{
+    BaselineComparisonLabels, BaselineFootprintMetrics, BaselineQueryStats,
+};
 use crate::benchmark::reports::timing::{
     RepeatedComparisonTimingReport, RepeatedTimingReport, TimingReport,
 };
@@ -22,6 +24,9 @@ pub struct QueryComparisonReport {
 
     /// Human-readable baseline name.
     pub baseline_name: String,
+
+    /// Logical scalar footprint metrics for the baseline structure.
+    pub baseline_footprint: BaselineFootprintMetrics,
 
     /// Statistics from the baseline execution path.
     pub baseline_stats: BaselineQueryStats,

@@ -81,7 +81,9 @@ fn low_selectivity_gap_csv_includes_tree_baseline_rows() {
     let rows: Vec<&str> = csv.lines().collect();
 
     assert_eq!(rows.len(), 3);
-    assert!(rows[0].starts_with("baseline_name,baseline_label,comparison_label"));
+    assert!(rows[0].starts_with(
+        "baseline_name,baseline_label,comparison_label,baseline_footprint_node_count"
+    ));
     assert!(rows[0].contains("low_weighted_candidate_ratio"));
     assert!(rows[0].contains("low_mean_timing_ratio"));
     assert!(rows[1].starts_with("kd_tree,KD-Tree,KD-Tree vs FSE,"));

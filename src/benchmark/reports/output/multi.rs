@@ -16,6 +16,18 @@ pub fn render_multi_baseline_summary(summary: &MultiBaselineAggregateSummary) ->
     for baseline in &summary.baseline_summaries {
         writeln!(output, "Baseline: {}", baseline.baseline_label).unwrap();
         writeln!(output, "Comparison: {}", baseline.comparison_label).unwrap();
+        writeln!(
+            output,
+            "  baseline total scalars: {}",
+            baseline.baseline_footprint.total_scalar_count
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "  baseline structural metadata scalars: {}",
+            baseline.baseline_footprint.structural_metadata_scalar_count
+        )
+        .unwrap();
         writeln!(output, "  workloads: {}", baseline.workload_count).unwrap();
         writeln!(
             output,

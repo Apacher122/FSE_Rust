@@ -22,6 +22,11 @@ fn comparison_report_counts_avoided_reconstructions() {
     assert_eq!(report.labels.baseline_label, "Flat Scan");
     assert_eq!(report.labels.fse_label, "FSE");
     assert_eq!(report.labels.comparison_label, "Flat Scan vs FSE");
+    assert_eq!(report.baseline_footprint.total_scalar_count, 8);
+    assert_eq!(
+        report.baseline_footprint.structural_metadata_scalar_count,
+        0
+    );
     assert_eq!(report.baseline_stats.evaluated_records, 4);
     assert_eq!(report.baseline_stats.matched_records, 2);
 

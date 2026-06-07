@@ -2,6 +2,9 @@
 
 use crate::benchmark::runner::{BaselineBenchmarkSuiteReport, MultiBaselineBenchmarkSuiteReport};
 
+use super::baseline_footprint::{
+    baseline_footprint_header_fields, baseline_footprint_value_fields,
+};
 use super::document::{
     csv_document, format_ratio, header_fields_with_metadata, value_fields_with_metadata,
 };
@@ -48,10 +51,17 @@ fn append_workload_value_rows(
         let comparison = &summary.comparison;
         let pruning = &pruning_report.pruning;
 
-        rows.push(vec![
+        let mut fields = vec![
             baseline_report.baseline_name.clone(),
             comparison.labels.baseline_label.clone(),
             comparison.labels.comparison_label.clone(),
+        ];
+
+        fields.extend(baseline_footprint_value_fields(
+            &comparison.baseline_footprint,
+        ));
+
+        fields.extend([
             summary.workload_name.clone(),
             comparison.baseline_stats.evaluated_records.to_string(),
             comparison.baseline_stats.matched_records.to_string(),
@@ -133,14 +143,17 @@ fn append_workload_value_rows(
             format_ratio(comparison.reusable_owned_result_speedup_ratio),
             (comparison.reusable_owned_stats == comparison.fse_stats).to_string(),
         ]);
+
+        rows.push(fields);
     }
 }
 
 fn workload_header_fields() -> Vec<&'static str> {
-    vec![
-        "baseline_name",
-        "baseline_label",
-        "comparison_label",
+    let mut fields = vec!["baseline_name", "baseline_label", "comparison_label"];
+
+    fields.extend(baseline_footprint_header_fields());
+
+    fields.extend([
         "workload_name",
         "baseline_evaluated_records",
         "baseline_matched_records",
@@ -184,5 +197,7 @@ fn workload_header_fields() -> Vec<&'static str> {
         "estimated_fresh_vs_reusable_owned_overhead_ns",
         "reusable_owned_result_speedup_ratio",
         "reusable_owned_stats_match_owned",
-    ]
+    ]);
+
+    fields
 }

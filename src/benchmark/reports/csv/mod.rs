@@ -5,6 +5,7 @@
 //! public CSV export API.
 
 mod aggregate;
+mod baseline_footprint;
 mod config;
 mod document;
 mod low_selectivity_gap;
