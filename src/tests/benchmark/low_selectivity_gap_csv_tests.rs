@@ -4,9 +4,13 @@ use crate::benchmark::{
     multi_baseline_low_selectivity_gap_to_csv_with_metadata, parse_benchmark_cli_config,
     run_multi_baseline_benchmark_suite,
 };
+use crate::math::Scalar;
 use crate::tests::support::small_benchmark_fixture;
+use std::mem::size_of;
 
 fn test_metadata() -> BenchmarkCsvMetadata {
+    let scalar_size_bytes = size_of::<Scalar>();
+
     BenchmarkCsvMetadata {
         dataset_records: 60,
         index_nodes: 15,
@@ -37,6 +41,13 @@ fn test_metadata() -> BenchmarkCsvMetadata {
         index_residual_to_encoded_scalar_ratio: 1.0,
         index_structural_to_encoded_scalar_ratio: 2.25,
         index_to_encoded_scalar_ratio: 3.25,
+        index_scalar_size_bytes: scalar_size_bytes,
+        index_encoded_coordinate_estimated_bytes: 8 * scalar_size_bytes,
+        index_residual_estimated_bytes: 8 * scalar_size_bytes,
+        index_centroid_estimated_bytes: 6 * scalar_size_bytes,
+        index_bounds_estimated_bytes: 12 * scalar_size_bytes,
+        index_structural_metadata_estimated_bytes: 18 * scalar_size_bytes,
+        index_total_estimated_bytes: 26 * scalar_size_bytes,
         index_encoded_baseline_scalar_count: 8,
         index_comparison_scalar_count: 26,
         index_scalar_delta_from_encoded_baseline: 18,

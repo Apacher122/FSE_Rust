@@ -100,6 +100,27 @@ pub struct BenchmarkCsvMetadata {
     /// Total counted index scalar count divided by encoded coordinate scalar count.
     pub index_to_encoded_scalar_ratio: Scalar,
 
+    /// Number of bytes used by one scalar value.
+    pub index_scalar_size_bytes: usize,
+
+    /// Estimated bytes for encoded coordinate scalar payloads.
+    pub index_encoded_coordinate_estimated_bytes: usize,
+
+    /// Estimated bytes for residual scalar payloads.
+    pub index_residual_estimated_bytes: usize,
+
+    /// Estimated bytes for centroid scalar payloads.
+    pub index_centroid_estimated_bytes: usize,
+
+    /// Estimated bytes for bounding scalar payloads.
+    pub index_bounds_estimated_bytes: usize,
+
+    /// Estimated bytes for centroid and bounds scalar payloads.
+    pub index_structural_metadata_estimated_bytes: usize,
+
+    /// Estimated bytes for residuals and structural metadata.
+    pub index_total_estimated_bytes: usize,
+
     /// Scalar count for the encoded coordinate baseline.
     pub index_encoded_baseline_scalar_count: usize,
 
@@ -196,6 +217,17 @@ impl BenchmarkCsvMetadata {
                 .index_footprint
                 .structural_to_encoded_scalar_ratio,
             index_to_encoded_scalar_ratio: overview.index_footprint.index_to_encoded_scalar_ratio,
+            index_scalar_size_bytes: overview.index_footprint_byte_estimates.scalar_size_bytes,
+            index_encoded_coordinate_estimated_bytes: overview
+                .index_footprint_byte_estimates
+                .encoded_coordinate_bytes,
+            index_residual_estimated_bytes: overview.index_footprint_byte_estimates.residual_bytes,
+            index_centroid_estimated_bytes: overview.index_footprint_byte_estimates.centroid_bytes,
+            index_bounds_estimated_bytes: overview.index_footprint_byte_estimates.bounds_bytes,
+            index_structural_metadata_estimated_bytes: overview
+                .index_footprint_byte_estimates
+                .structural_metadata_bytes,
+            index_total_estimated_bytes: overview.index_footprint_byte_estimates.total_index_bytes,
             index_encoded_baseline_scalar_count: overview
                 .index_footprint_comparison
                 .encoded_baseline_scalar_count,
@@ -271,6 +303,13 @@ pub(super) fn metadata_header_fields() -> Vec<&'static str> {
         "index_residual_to_encoded_scalar_ratio",
         "index_structural_to_encoded_scalar_ratio",
         "index_to_encoded_scalar_ratio",
+        "index_scalar_size_bytes",
+        "index_encoded_coordinate_estimated_bytes",
+        "index_residual_estimated_bytes",
+        "index_centroid_estimated_bytes",
+        "index_bounds_estimated_bytes",
+        "index_structural_metadata_estimated_bytes",
+        "index_total_estimated_bytes",
         "index_encoded_baseline_scalar_count",
         "index_comparison_scalar_count",
         "index_scalar_delta_from_encoded_baseline",
@@ -323,6 +362,17 @@ pub(super) fn metadata_value_fields(metadata: &BenchmarkCsvMetadata) -> Vec<Stri
         format_scalar(metadata.index_residual_to_encoded_scalar_ratio),
         format_scalar(metadata.index_structural_to_encoded_scalar_ratio),
         format_scalar(metadata.index_to_encoded_scalar_ratio),
+        metadata.index_scalar_size_bytes.to_string(),
+        metadata
+            .index_encoded_coordinate_estimated_bytes
+            .to_string(),
+        metadata.index_residual_estimated_bytes.to_string(),
+        metadata.index_centroid_estimated_bytes.to_string(),
+        metadata.index_bounds_estimated_bytes.to_string(),
+        metadata
+            .index_structural_metadata_estimated_bytes
+            .to_string(),
+        metadata.index_total_estimated_bytes.to_string(),
         metadata.index_encoded_baseline_scalar_count.to_string(),
         metadata.index_comparison_scalar_count.to_string(),
         metadata

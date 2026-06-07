@@ -1,3 +1,4 @@
+use std::mem::size_of;
 use std::time::Duration;
 
 use crate::benchmark::reports::output::format_duration_ascii;
@@ -8,9 +9,10 @@ use crate::benchmark::{
     render_suite_report,
 };
 use crate::build::{
-    IndexFootprintComparisonMetrics, IndexFootprintMetrics, IndexStructureMetrics,
-    IndexValidationReport,
+    IndexFootprintByteEstimates, IndexFootprintComparisonMetrics, IndexFootprintMetrics,
+    IndexStructureMetrics, IndexValidationReport,
 };
+use crate::math::Scalar;
 use crate::query::QueryExecutionMode;
 
 #[test]
@@ -38,6 +40,31 @@ fn benchmark_overview_render_includes_run_metadata() {
     assert!(output.contains("Structural metadata scalars: 18"));
     assert!(output.contains("Total counted index scalars: 26"));
     assert!(output.contains("Index-to-encoded scalar ratio: 3.25"));
+    assert!(output.contains(&format!("Scalar size bytes: {}", size_of::<Scalar>())));
+    assert!(output.contains(&format!(
+        "Estimated encoded coordinate bytes: {}",
+        8 * size_of::<Scalar>()
+    )));
+    assert!(output.contains(&format!(
+        "Estimated residual bytes: {}",
+        8 * size_of::<Scalar>()
+    )));
+    assert!(output.contains(&format!(
+        "Estimated centroid bytes: {}",
+        6 * size_of::<Scalar>()
+    )));
+    assert!(output.contains(&format!(
+        "Estimated bounds bytes: {}",
+        12 * size_of::<Scalar>()
+    )));
+    assert!(output.contains(&format!(
+        "Estimated structural metadata bytes: {}",
+        18 * size_of::<Scalar>()
+    )));
+    assert!(output.contains(&format!(
+        "Estimated total index bytes: {}",
+        26 * size_of::<Scalar>()
+    )));
     assert!(output.contains("Encoded baseline scalars: 8"));
     assert!(output.contains("Scalar delta from encoded baseline: 18"));
     assert!(output.contains("Index-to-encoded baseline scalar ratio: 3.25"));
@@ -200,6 +227,8 @@ fn test_overview(
     fse_execution_mode: QueryExecutionMode,
     fse_parallel_min_retained_leaves: usize,
 ) -> BenchmarkRunOverview {
+    let scalar_size_bytes = size_of::<Scalar>();
+
     BenchmarkRunOverview {
         dataset_records: 60,
         index_nodes: 15,
@@ -238,6 +267,15 @@ fn test_overview(
             residual_to_encoded_scalar_ratio: 1.0,
             structural_to_encoded_scalar_ratio: 2.25,
             index_to_encoded_scalar_ratio: 3.25,
+        },
+        index_footprint_byte_estimates: IndexFootprintByteEstimates {
+            scalar_size_bytes,
+            encoded_coordinate_bytes: 8 * scalar_size_bytes,
+            residual_bytes: 8 * scalar_size_bytes,
+            centroid_bytes: 6 * scalar_size_bytes,
+            bounds_bytes: 12 * scalar_size_bytes,
+            structural_metadata_bytes: 18 * scalar_size_bytes,
+            total_index_bytes: 26 * scalar_size_bytes,
         },
         index_footprint_comparison: IndexFootprintComparisonMetrics {
             encoded_baseline_scalar_count: 8,

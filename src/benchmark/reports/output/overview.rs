@@ -3,8 +3,8 @@
 use std::fmt::Write;
 
 use crate::build::{
-    IndexFootprintComparisonMetrics, IndexFootprintMetrics, IndexStructureMetrics,
-    IndexValidationReport,
+    IndexFootprintByteEstimates, IndexFootprintComparisonMetrics, IndexFootprintMetrics,
+    IndexStructureMetrics, IndexValidationReport,
 };
 use crate::query::QueryExecutionMode;
 
@@ -51,6 +51,9 @@ pub struct BenchmarkRunOverview {
 
     /// Logical scalar footprint metrics for the constructed FSE index.
     pub index_footprint: IndexFootprintMetrics,
+
+    /// Estimated scalar payload bytes for the constructed FSE index.
+    pub index_footprint_byte_estimates: IndexFootprintByteEstimates,
 
     /// Footprint comparison metrics for the constructed FSE index.
     pub index_footprint_comparison: IndexFootprintComparisonMetrics,
@@ -167,6 +170,52 @@ pub fn render_benchmark_overview(overview: &BenchmarkRunOverview) -> String {
         output,
         "Index-to-encoded scalar ratio: {:.2}",
         overview.index_footprint.index_to_encoded_scalar_ratio
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Scalar size bytes: {}",
+        overview.index_footprint_byte_estimates.scalar_size_bytes
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Estimated encoded coordinate bytes: {}",
+        overview
+            .index_footprint_byte_estimates
+            .encoded_coordinate_bytes
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Estimated residual bytes: {}",
+        overview.index_footprint_byte_estimates.residual_bytes
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Estimated centroid bytes: {}",
+        overview.index_footprint_byte_estimates.centroid_bytes
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Estimated bounds bytes: {}",
+        overview.index_footprint_byte_estimates.bounds_bytes
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Estimated structural metadata bytes: {}",
+        overview
+            .index_footprint_byte_estimates
+            .structural_metadata_bytes
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "Estimated total index bytes: {}",
+        overview.index_footprint_byte_estimates.total_index_bytes
     )
     .unwrap();
     writeln!(

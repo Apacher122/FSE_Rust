@@ -1,13 +1,17 @@
 use std::fs;
+use std::mem::size_of;
 
 use crate::benchmark::{
     BaselineKind, BaselineRegistry, BenchmarkCsvMetadata, BenchmarkCsvOutputConfig,
     run_multi_baseline_benchmark_suite, summarize_multi_baseline_aggregates,
     write_benchmark_csv_outputs,
 };
+use crate::math::Scalar;
 use crate::tests::support::small_benchmark_fixture;
 
 fn test_metadata() -> BenchmarkCsvMetadata {
+    let scalar_size_bytes = size_of::<Scalar>();
+
     BenchmarkCsvMetadata {
         dataset_records: 60,
         index_nodes: 15,
@@ -38,6 +42,13 @@ fn test_metadata() -> BenchmarkCsvMetadata {
         index_residual_to_encoded_scalar_ratio: 1.0,
         index_structural_to_encoded_scalar_ratio: 2.25,
         index_to_encoded_scalar_ratio: 3.25,
+        index_scalar_size_bytes: scalar_size_bytes,
+        index_encoded_coordinate_estimated_bytes: 8 * scalar_size_bytes,
+        index_residual_estimated_bytes: 8 * scalar_size_bytes,
+        index_centroid_estimated_bytes: 6 * scalar_size_bytes,
+        index_bounds_estimated_bytes: 12 * scalar_size_bytes,
+        index_structural_metadata_estimated_bytes: 18 * scalar_size_bytes,
+        index_total_estimated_bytes: 26 * scalar_size_bytes,
         index_encoded_baseline_scalar_count: 8,
         index_comparison_scalar_count: 26,
         index_scalar_delta_from_encoded_baseline: 18,
@@ -156,6 +167,8 @@ fn benchmark_csv_output_writer_writes_configured_outputs() {
     assert!(summary_csv.contains("index_leaf_count,index_internal_node_count"));
     assert!(summary_csv.contains("index_encoded_coordinate_scalar_count"));
     assert!(summary_csv.contains("index_to_encoded_scalar_ratio"));
+    assert!(summary_csv.contains("index_scalar_size_bytes"));
+    assert!(summary_csv.contains("index_total_estimated_bytes"));
     assert!(summary_csv.contains("index_scalar_delta_from_encoded_baseline"));
     assert!(summary_csv.contains("index_structural_metadata_share_of_index"));
     assert!(summary_csv.contains("parallel,2,8,7,60,4,8,7.500000"));
@@ -168,6 +181,8 @@ fn benchmark_csv_output_writer_writes_configured_outputs() {
     assert!(workloads_csv.contains("index_leaf_count,index_internal_node_count"));
     assert!(workloads_csv.contains("index_encoded_coordinate_scalar_count"));
     assert!(workloads_csv.contains("index_to_encoded_scalar_ratio"));
+    assert!(workloads_csv.contains("index_scalar_size_bytes"));
+    assert!(workloads_csv.contains("index_total_estimated_bytes"));
     assert!(workloads_csv.contains("index_scalar_delta_from_encoded_baseline"));
     assert!(workloads_csv.contains("index_structural_metadata_share_of_index"));
     assert!(workloads_csv.contains("parallel,2,8,7,60,4,8,7.500000"));
@@ -175,6 +190,8 @@ fn benchmark_csv_output_writer_writes_configured_outputs() {
     assert!(low_selectivity_gap_csv.contains("low_weighted_candidate_ratio"));
     assert!(low_selectivity_gap_csv.contains("index_encoded_coordinate_scalar_count"));
     assert!(low_selectivity_gap_csv.contains("index_to_encoded_scalar_ratio"));
+    assert!(low_selectivity_gap_csv.contains("index_scalar_size_bytes"));
+    assert!(low_selectivity_gap_csv.contains("index_total_estimated_bytes"));
     assert!(low_selectivity_gap_csv.contains("index_scalar_delta_from_encoded_baseline"));
     assert!(low_selectivity_gap_csv.contains("index_structural_metadata_share_of_index"));
     assert!(low_selectivity_gap_csv.contains("parallel,2,8,7,60,4,8,7.500000"));
