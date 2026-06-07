@@ -22,10 +22,10 @@ pub use app::{
 };
 
 pub use baselines::{
-    BaselineComparisonLabels, BaselineKind, BaselineQueryReport, BaselineQueryStats,
-    BaselineRegistry, BenchmarkBaselineSet, EXACT_RANGE_BASELINE_KINDS, FlatScanBaseline,
-    FlatScanReport, FlatScanStats, KdTreeBaseline, RTreeBaseline, RangeQueryBaseline,
-    baseline_kind_name_list, baseline_kind_names, exact_range_baseline_kinds,
+    BaselineComparisonLabels, BaselineFootprintMetrics, BaselineKind, BaselineQueryReport,
+    BaselineQueryStats, BaselineRegistry, BenchmarkBaselineSet, EXACT_RANGE_BASELINE_KINDS,
+    FlatScanBaseline, FlatScanReport, FlatScanStats, KdTreeBaseline, RTreeBaseline,
+    RangeQueryBaseline, baseline_kind_name_list, baseline_kind_names, exact_range_baseline_kinds,
     exact_range_baseline_vec, execute_range_baseline, flat_scan, flat_scan_with_stats,
     has_multiple_baselines,
 };

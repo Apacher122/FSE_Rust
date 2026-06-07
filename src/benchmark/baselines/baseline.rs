@@ -1,5 +1,6 @@
 //! Baseline query execution abstractions.
 
+use super::footprint::BaselineFootprintMetrics;
 use super::scan::FlatScanStats;
 use crate::math::Vector;
 use crate::query::QueryRegion;
@@ -231,6 +232,9 @@ pub struct BaselineQueryReport {
 pub trait RangeQueryBaseline {
     /// Returns the stable baseline name.
     fn name(&self) -> &'static str;
+
+    /// Returns logical footprint metrics for this baseline.
+    fn footprint_metrics(&self) -> BaselineFootprintMetrics;
 
     /// Returns display labels for this baseline comparison.
     fn labels(&self) -> BaselineComparisonLabels {

@@ -1,5 +1,6 @@
 //! Simple exact R-tree baseline.
 
+use super::footprint::BaselineFootprintMetrics;
 use crate::benchmark::{BaselineKind, BaselineQueryReport, BaselineQueryStats, RangeQueryBaseline};
 use crate::math::{BoundingBox, Vector};
 use crate::query::QueryRegion;
@@ -59,6 +60,33 @@ impl RTreeBaseline {
         self.dimensions
     }
 
+    /// Returns the number of records represented by the R-tree.
+    pub fn record_count(&self) -> usize {
+        r_tree_node_counts(&self.root).record_count
+    }
+
+    /// Returns the number of nodes represented by the R-tree.
+    pub fn node_count(&self) -> usize {
+        r_tree_node_counts(&self.root).node_count
+    }
+
+    /// Returns the number of leaf nodes represented by the R-tree.
+    pub fn leaf_count(&self) -> usize {
+        r_tree_node_counts(&self.root).leaf_count
+    }
+
+    /// Returns logical footprint metrics for the R-tree.
+    pub fn footprint_metrics(&self) -> BaselineFootprintMetrics {
+        let counts = r_tree_node_counts(&self.root);
+
+        BaselineFootprintMetrics::r_tree(
+            counts.record_count,
+            self.dimensions,
+            counts.node_count,
+            counts.leaf_count,
+        )
+    }
+
     /// Returns true when the tree contains no points.
     pub fn is_empty(&self) -> bool {
         self.root.is_none()
@@ -68,6 +96,10 @@ impl RTreeBaseline {
 impl RangeQueryBaseline for RTreeBaseline {
     fn name(&self) -> &'static str {
         BaselineKind::RTree.name()
+    }
+
+    fn footprint_metrics(&self) -> BaselineFootprintMetrics {
+        RTreeBaseline::footprint_metrics(self)
     }
 
     fn execute(&self, query: &QueryRegion) -> BaselineQueryReport {
@@ -111,6 +143,13 @@ enum RTreeNode {
         bounds: BoundingBox,
         children: Vec<RTreeNode>,
     },
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct RTreeNodeCounts {
+    record_count: usize,
+    node_count: usize,
+    leaf_count: usize,
 }
 
 impl RTreeNode {
@@ -233,6 +272,36 @@ fn query_r_tree_node(
             for child in children {
                 query_r_tree_node(child, query, query_bounds, results, stats);
             }
+        }
+    }
+}
+
+fn r_tree_node_counts(root: &Option<RTreeNode>) -> RTreeNodeCounts {
+    root.as_ref()
+        .map_or_else(RTreeNodeCounts::default, count_r_tree_node)
+}
+
+fn count_r_tree_node(node: &RTreeNode) -> RTreeNodeCounts {
+    match node {
+        RTreeNode::Leaf { points, .. } => RTreeNodeCounts {
+            record_count: points.len(),
+            node_count: 1,
+            leaf_count: 1,
+        },
+        RTreeNode::Internal { children, .. } => {
+            let mut counts = RTreeNodeCounts {
+                node_count: 1,
+                ..RTreeNodeCounts::default()
+            };
+
+            for child in children {
+                let child_counts = count_r_tree_node(child);
+                counts.record_count += child_counts.record_count;
+                counts.node_count += child_counts.node_count;
+                counts.leaf_count += child_counts.leaf_count;
+            }
+
+            counts
         }
     }
 }

@@ -1,5 +1,6 @@
 //! Simple exact KD-tree baseline.
 
+use super::footprint::BaselineFootprintMetrics;
 use crate::benchmark::{BaselineKind, BaselineQueryReport, BaselineQueryStats, RangeQueryBaseline};
 use crate::math::Vector;
 use crate::query::QueryRegion;
@@ -56,6 +57,33 @@ impl KdTreeBaseline {
         self.dimensions
     }
 
+    /// Returns the number of records represented by the KD-tree.
+    pub fn record_count(&self) -> usize {
+        self.node_count()
+    }
+
+    /// Returns the number of nodes represented by the KD-tree.
+    pub fn node_count(&self) -> usize {
+        kd_node_counts(&self.root).node_count
+    }
+
+    /// Returns the number of leaf nodes represented by the KD-tree.
+    pub fn leaf_count(&self) -> usize {
+        kd_node_counts(&self.root).leaf_count
+    }
+
+    /// Returns logical footprint metrics for the KD-tree.
+    pub fn footprint_metrics(&self) -> BaselineFootprintMetrics {
+        let counts = kd_node_counts(&self.root);
+
+        BaselineFootprintMetrics::kd_tree(
+            counts.node_count,
+            self.dimensions,
+            counts.node_count,
+            counts.leaf_count,
+        )
+    }
+
     /// Returns true when the tree contains no points.
     pub fn is_empty(&self) -> bool {
         self.root.is_none()
@@ -65,6 +93,10 @@ impl KdTreeBaseline {
 impl RangeQueryBaseline for KdTreeBaseline {
     fn name(&self) -> &'static str {
         BaselineKind::KdTree.name()
+    }
+
+    fn footprint_metrics(&self) -> BaselineFootprintMetrics {
+        KdTreeBaseline::footprint_metrics(self)
     }
 
     fn execute(&self, query: &QueryRegion) -> BaselineQueryReport {
@@ -103,6 +135,12 @@ struct KdNode {
     split_axis: usize,
     left: Option<Box<KdNode>>,
     right: Option<Box<KdNode>>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct KdNodeCounts {
+    node_count: usize,
+    leaf_count: usize,
 }
 
 fn build_kd_node(mut points: Vec<Vector>, depth: usize, dimensions: usize) -> Option<Box<KdNode>> {
@@ -158,5 +196,21 @@ fn query_kd_node(
         if let Some(right) = &node.right {
             query_kd_node(right, query, results, stats);
         }
+    }
+}
+
+fn kd_node_counts(root: &Option<Box<KdNode>>) -> KdNodeCounts {
+    root.as_deref()
+        .map_or_else(KdNodeCounts::default, count_kd_node)
+}
+
+fn count_kd_node(node: &KdNode) -> KdNodeCounts {
+    let left_counts = kd_node_counts(&node.left);
+    let right_counts = kd_node_counts(&node.right);
+    let has_child = node.left.is_some() || node.right.is_some();
+
+    KdNodeCounts {
+        node_count: 1 + left_counts.node_count + right_counts.node_count,
+        leaf_count: usize::from(!has_child) + left_counts.leaf_count + right_counts.leaf_count,
     }
 }

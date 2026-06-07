@@ -5,6 +5,7 @@
 
 pub mod baseline;
 mod flat_scan_baseline;
+mod footprint;
 pub mod kd_tree;
 pub mod r_tree;
 mod registry;
@@ -18,6 +19,7 @@ pub use baseline::{
 };
 
 pub use flat_scan_baseline::FlatScanBaseline;
+pub use footprint::BaselineFootprintMetrics;
 pub use kd_tree::KdTreeBaseline;
 pub use r_tree::RTreeBaseline;
 pub use registry::{BaselineRegistry, execute_range_baseline};
