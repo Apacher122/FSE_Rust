@@ -19,7 +19,10 @@ pub use manifest::{
     FSEArchiveManifestError, FSEArchiveSections,
 };
 pub use row_mapped::{
-    FSELeafRowIdArchiveRecord, FSERowMappedArchiveCodecError, FSERowMappedArchiveSnapshotError,
+    FSELeafRowIdArchiveRecord, FSERowMappedArchiveCodecError, FSERowMappedArchiveFileError,
+    FSERowMappedArchiveSnapshotError, FSERowMappedIndexArchiveError,
     FSERowMappedIndexArchiveSnapshot, decode_row_mapped_archive_snapshot,
-    encode_row_mapped_archive_snapshot,
+    encode_row_mapped_archive_snapshot, load_row_mapped_index_archive_file,
+    read_row_mapped_archive_snapshot_file, save_row_mapped_index_archive_file,
+    write_row_mapped_archive_snapshot_file,
 };
