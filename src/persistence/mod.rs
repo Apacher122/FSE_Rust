@@ -6,6 +6,7 @@ mod codec;
 mod file;
 mod index_file;
 mod manifest;
+mod row_mapping;
 mod snapshot;
 
 pub use codec::{FSEArchiveCodecError, decode_archive_snapshot, encode_archive_snapshot};
@@ -20,6 +21,9 @@ pub use index_file::{
 pub use manifest::{
     FSE_ARCHIVE_FILE_EXTENSION, FSE_ARCHIVE_FORMAT_VERSION, FSE_ARCHIVE_MAGIC, FSEArchiveManifest,
     FSEArchiveManifestError, FSEArchiveSections,
+};
+pub use row_mapping::{
+    FSELeafRowIdArchiveRecord, FSERowMappedArchiveSnapshotError, FSERowMappedIndexArchiveSnapshot,
 };
 pub use snapshot::{
     FSEArchiveSnapshotError, FSEIndexArchiveSnapshot, FSEPartitionNodeArchiveRecord,
