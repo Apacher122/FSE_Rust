@@ -4,10 +4,11 @@ use std::error::Error;
 use std::fmt;
 use std::path::Path;
 
+use crate::persistence::FSEArchiveSections;
 use crate::storage::FSEIndex;
 
 use super::{
-    FSEArchiveFileError, FSEArchiveSections, FSEArchiveSnapshotError, FSEIndexArchiveSnapshot,
+    FSEArchiveFileError, FSEArchiveSnapshotError, FSEIndexArchiveSnapshot,
     read_archive_snapshot_file, write_archive_snapshot_file,
 };
 

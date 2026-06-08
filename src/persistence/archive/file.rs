@@ -7,9 +7,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use super::{
-    FSE_ARCHIVE_FILE_EXTENSION, FSEArchiveCodecError, FSEIndexArchiveSnapshot,
-    decode_archive_snapshot, encode_archive_snapshot,
+    FSEArchiveCodecError, FSEIndexArchiveSnapshot, decode_archive_snapshot, encode_archive_snapshot,
 };
+use crate::persistence::FSE_ARCHIVE_FILE_EXTENSION;
 
 /// Filesystem operation performed against an FSE archive file.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

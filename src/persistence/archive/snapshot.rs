@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::math::{BoundingBox, BoundingBoxError, ResidualBlock, ResidualBlockError, Scalar};
 use crate::storage::{FSEIndex, FSEIndexError, PartitionNode};
 
-use super::{FSEArchiveManifest, FSEArchiveManifestError, FSEArchiveSections};
+use crate::persistence::{FSEArchiveManifest, FSEArchiveManifestError, FSEArchiveSections};
 
 /// Error returned when archive snapshot validation or reconstruction fails.
 #[derive(Clone, Debug, PartialEq, Eq)]

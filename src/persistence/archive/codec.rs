@@ -6,10 +6,8 @@ use std::mem::size_of;
 
 use crate::math::Scalar;
 
-use super::{
-    FSEArchiveManifest, FSEArchiveSections, FSEArchiveSnapshotError, FSEIndexArchiveSnapshot,
-    FSEPartitionNodeArchiveRecord,
-};
+use super::{FSEArchiveSnapshotError, FSEIndexArchiveSnapshot, FSEPartitionNodeArchiveRecord};
+use crate::persistence::{FSEArchiveManifest, FSEArchiveSections};
 
 const MIN_ARCHIVE_NODE_BYTES: usize = 57;
 

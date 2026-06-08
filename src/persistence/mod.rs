@@ -1,30 +1,25 @@
-//! Persistence metadata for FSE archives.
+//! Persistence components for FSE archives.
 //!
-//! This module defines versioned archive metadata used by durable FSE storage.
+//! This module defines versioned archive metadata, numeric index archives, and
+//! row-mapped archive metadata used by durable FSE storage.
 
-mod codec;
-mod file;
-mod index_file;
+mod archive;
 mod manifest;
-mod row_mapping;
-mod snapshot;
+mod row_mapped;
 
-pub use codec::{FSEArchiveCodecError, decode_archive_snapshot, encode_archive_snapshot};
-pub use file::{
-    FSEArchiveFileError, FSEArchiveFileOperation, read_archive_snapshot_file,
+pub use archive::{
+    FSEArchiveCodecError, FSEArchiveFileError, FSEArchiveFileOperation, FSEArchiveSnapshotError,
+    FSEIndexArchiveError, FSEIndexArchiveSnapshot, FSEPartitionNodeArchiveRecord,
+    decode_archive_snapshot, encode_archive_snapshot, load_index_archive_file,
+    read_archive_snapshot_file, save_index_archive_file, save_index_archive_file_with_sections,
     write_archive_snapshot_file,
-};
-pub use index_file::{
-    FSEIndexArchiveError, load_index_archive_file, save_index_archive_file,
-    save_index_archive_file_with_sections,
 };
 pub use manifest::{
     FSE_ARCHIVE_FILE_EXTENSION, FSE_ARCHIVE_FORMAT_VERSION, FSE_ARCHIVE_MAGIC, FSEArchiveManifest,
     FSEArchiveManifestError, FSEArchiveSections,
 };
-pub use row_mapping::{
-    FSELeafRowIdArchiveRecord, FSERowMappedArchiveSnapshotError, FSERowMappedIndexArchiveSnapshot,
-};
-pub use snapshot::{
-    FSEArchiveSnapshotError, FSEIndexArchiveSnapshot, FSEPartitionNodeArchiveRecord,
+pub use row_mapped::{
+    FSELeafRowIdArchiveRecord, FSERowMappedArchiveCodecError, FSERowMappedArchiveSnapshotError,
+    FSERowMappedIndexArchiveSnapshot, decode_row_mapped_archive_snapshot,
+    encode_row_mapped_archive_snapshot,
 };

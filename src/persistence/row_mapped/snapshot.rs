@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::build::RowMappedFSEIndex;
 use crate::data::RowId;
 
-use super::{FSEArchiveSnapshotError, FSEIndexArchiveSnapshot};
+use crate::persistence::{FSEArchiveSnapshotError, FSEIndexArchiveSnapshot};
 
 /// Error returned when row-mapped archive snapshot validation fails.
 #[derive(Clone, Debug, PartialEq, Eq)]
