@@ -6,3 +6,4 @@ mod row_mapping_codec_tests;
 mod row_mapping_file_tests;
 mod row_mapping_tests;
 mod snapshot_tests;
+mod typed_record_batch_tests;

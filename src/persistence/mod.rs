@@ -1,11 +1,13 @@
 //! Persistence components for FSE archives.
 //!
-//! This module defines versioned archive metadata, numeric index archives, and
-//! row-mapped archive metadata used by durable FSE storage.
+//! This module defines versioned archive metadata, numeric index archives,
+//! row-mapped archive metadata, and typed record archive metadata used by
+//! durable FSE storage.
 
 mod archive;
 mod manifest;
 mod row_mapped;
+mod typed;
 
 pub use archive::{
     FSEArchiveCodecError, FSEArchiveFileError, FSEArchiveFileOperation, FSEArchiveSnapshotError,
@@ -25,4 +27,8 @@ pub use row_mapped::{
     encode_row_mapped_archive_snapshot, load_row_mapped_index_archive_file,
     read_row_mapped_archive_snapshot_file, save_row_mapped_index_archive_file,
     write_row_mapped_archive_snapshot_file,
+};
+pub use typed::{
+    FSEFieldArchiveRecord, FSEFieldTypeArchiveTag, FSERecordArchiveRecord,
+    FSERecordBatchArchiveSnapshot, FSETypedRecordBatchArchiveSnapshotError, FSEValueArchiveRecord,
 };
