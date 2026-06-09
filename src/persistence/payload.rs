@@ -8,7 +8,10 @@ use std::mem::size_of;
 pub const FSE_ARCHIVE_PAYLOAD_MAGIC: [u8; 8] = *b"FSEPLD01";
 
 /// Current `.fse` archive payload header version.
-pub const FSE_ARCHIVE_PAYLOAD_HEADER_VERSION: u32 = 1;
+pub const FSE_ARCHIVE_PAYLOAD_HEADER_VERSION: u32 = 2;
+
+const FSE_ARCHIVE_PAYLOAD_CHECKSUM_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+const FSE_ARCHIVE_PAYLOAD_CHECKSUM_PRIME: u64 = 0x0000_0100_0000_01b3;
 
 /// Logical payload stored in an `.fse` archive file.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,6 +90,22 @@ pub enum FSEArchivePayloadHeaderError {
         /// Payload kind found in the input.
         actual: FSEArchivePayloadKind,
     },
+
+    /// The payload byte length does not match the length recorded in the header.
+    PayloadLengthMismatch {
+        /// Payload byte length recorded in the header.
+        expected: u64,
+        /// Payload byte length found in the input.
+        actual: usize,
+    },
+
+    /// The payload checksum does not match the checksum recorded in the header.
+    PayloadChecksumMismatch {
+        /// Payload checksum recorded in the header.
+        expected: u64,
+        /// Payload checksum computed from the input.
+        actual: u64,
+    },
 }
 
 impl fmt::Display for FSEArchivePayloadHeaderError {
@@ -107,6 +126,12 @@ impl fmt::Display for FSEArchivePayloadHeaderError {
             Self::UnexpectedPayloadKind { .. } => {
                 formatter.write_str("archive payload kind does not match the reader")
             }
+            Self::PayloadLengthMismatch { .. } => {
+                formatter.write_str("archive payload length does not match the header")
+            }
+            Self::PayloadChecksumMismatch { .. } => {
+                formatter.write_str("archive payload checksum does not match the header")
+            }
         }
     }
 }
@@ -116,12 +141,19 @@ impl Error for FSEArchivePayloadHeaderError {}
 /// Encodes an archive payload with file-level payload metadata.
 pub fn encode_archive_payload(kind: FSEArchivePayloadKind, payload: &[u8]) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(
-        FSE_ARCHIVE_PAYLOAD_MAGIC.len() + size_of::<u32>() + size_of::<u8>() + payload.len(),
+        FSE_ARCHIVE_PAYLOAD_MAGIC.len()
+            + size_of::<u32>()
+            + size_of::<u8>()
+            + size_of::<u64>()
+            + size_of::<u64>()
+            + payload.len(),
     );
 
     bytes.extend_from_slice(&FSE_ARCHIVE_PAYLOAD_MAGIC);
     bytes.extend_from_slice(&FSE_ARCHIVE_PAYLOAD_HEADER_VERSION.to_le_bytes());
     bytes.push(kind.tag());
+    bytes.extend_from_slice(&(payload.len() as u64).to_le_bytes());
+    bytes.extend_from_slice(&archive_payload_checksum(payload).to_le_bytes());
     bytes.extend_from_slice(payload);
 
     bytes
@@ -157,7 +189,37 @@ pub fn decode_archive_payload(
         });
     }
 
-    Ok(reader.remaining_bytes().to_vec())
+    let expected_length = reader.read_u64("payload.length")?;
+    let expected_checksum = reader.read_u64("payload.checksum")?;
+    let payload = reader.remaining_bytes();
+
+    if expected_length != payload.len() as u64 {
+        return Err(FSEArchivePayloadHeaderError::PayloadLengthMismatch {
+            expected: expected_length,
+            actual: payload.len(),
+        });
+    }
+
+    let actual_checksum = archive_payload_checksum(payload);
+    if expected_checksum != actual_checksum {
+        return Err(FSEArchivePayloadHeaderError::PayloadChecksumMismatch {
+            expected: expected_checksum,
+            actual: actual_checksum,
+        });
+    }
+
+    Ok(payload.to_vec())
+}
+
+fn archive_payload_checksum(payload: &[u8]) -> u64 {
+    let mut checksum = FSE_ARCHIVE_PAYLOAD_CHECKSUM_OFFSET;
+
+    for byte in payload {
+        checksum ^= u64::from(*byte);
+        checksum = checksum.wrapping_mul(FSE_ARCHIVE_PAYLOAD_CHECKSUM_PRIME);
+    }
+
+    checksum
 }
 
 struct ArchivePayloadHeaderReader<'a> {
@@ -190,6 +252,14 @@ impl<'a> ArchivePayloadHeaderReader<'a> {
         let bytes = self.read_exact(field, size_of::<u32>())?;
 
         Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    }
+
+    fn read_u64(&mut self, field: &'static str) -> Result<u64, FSEArchivePayloadHeaderError> {
+        let bytes = self.read_exact(field, size_of::<u64>())?;
+
+        Ok(u64::from_le_bytes([
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+        ]))
     }
 
     fn read_u8(&mut self, field: &'static str) -> Result<u8, FSEArchivePayloadHeaderError> {

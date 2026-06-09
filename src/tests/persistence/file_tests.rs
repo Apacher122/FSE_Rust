@@ -10,6 +10,8 @@ use crate::persistence::{
 use crate::query::execute_query;
 use crate::tests::support::{small_benchmark_fixture, sort_points};
 
+use super::corrupted_archive_payload;
+
 fn temp_archive_path(name: &str, extension: &str) -> PathBuf {
     let mut path = std::env::temp_dir();
     path.push(format!(
@@ -144,6 +146,22 @@ fn archive_file_rejects_row_mapped_payload_kind() {
             }
         ))
     );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn archive_file_reports_payload_checksum_mismatch() {
+    let path = temp_archive_path("checksum-mismatch", ".fse");
+    let bytes = corrupted_archive_payload(FSEArchivePayloadKind::Index);
+
+    fs::write(&path, bytes).unwrap();
+    let error = read_archive_snapshot_file(&path).unwrap_err();
+
+    assert!(matches!(
+        error,
+        FSEArchiveFileError::Payload(FSEArchivePayloadHeaderError::PayloadChecksumMismatch { .. })
+    ));
 
     let _ = fs::remove_file(path);
 }

@@ -14,6 +14,8 @@ use crate::persistence::{
     write_row_mapped_archive_snapshot_file,
 };
 
+use super::corrupted_archive_payload;
+
 fn row_mapped_fixture() -> crate::build::RowMappedFSEIndex {
     let encoded = EncodedRecordBatch::new(
         vec![
@@ -160,6 +162,24 @@ fn row_mapped_archive_file_rejects_index_payload_kind() {
             }
         ))
     );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn row_mapped_archive_file_reports_payload_checksum_mismatch() {
+    let path = temp_archive_path("checksum-mismatch", ".fse");
+    let bytes = corrupted_archive_payload(FSEArchivePayloadKind::RowMappedIndex);
+
+    fs::write(&path, bytes).unwrap();
+    let error = read_row_mapped_archive_snapshot_file(&path).unwrap_err();
+
+    assert!(matches!(
+        error,
+        FSERowMappedArchiveFileError::Payload(
+            FSEArchivePayloadHeaderError::PayloadChecksumMismatch { .. }
+        )
+    ));
 
     let _ = fs::remove_file(path);
 }

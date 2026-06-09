@@ -20,6 +20,8 @@ use crate::persistence::{
 };
 use crate::query::{FSEPredicate, FSEPredicateField, TypedQueryIndex, TypedQueryPlanBuilder};
 
+use super::corrupted_archive_payload;
+
 #[test]
 fn typed_query_index_archive_file_round_trips_snapshot_through_fse_file() {
     let query_index = typed_query_index();
@@ -135,6 +137,24 @@ fn typed_query_index_archive_file_rejects_typed_record_batch_payload_kind() {
             }
         ))
     );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_query_index_archive_file_reports_payload_checksum_mismatch() {
+    let path = temp_archive_path("checksum-mismatch", ".fse");
+    let bytes = corrupted_archive_payload(FSEArchivePayloadKind::TypedQueryIndex);
+
+    fs::write(&path, bytes).unwrap();
+    let error = read_typed_query_index_archive_snapshot_file(&path).unwrap_err();
+
+    assert!(matches!(
+        error,
+        FSETypedQueryIndexArchiveFileError::Payload(
+            FSEArchivePayloadHeaderError::PayloadChecksumMismatch { .. }
+        )
+    ));
 
     let _ = fs::remove_file(path);
 }

@@ -11,6 +11,8 @@ use crate::persistence::{
 use crate::query::execute_query;
 use crate::tests::support::{small_benchmark_fixture, sort_points};
 
+use super::corrupted_archive_payload;
+
 fn temp_archive_path(name: &str, extension: &str) -> PathBuf {
     let mut path = std::env::temp_dir();
     path.push(format!(
@@ -116,6 +118,24 @@ fn index_archive_file_reports_payload_header_errors_on_load() {
         error,
         FSEIndexArchiveError::File(FSEArchiveFileError::Payload(
             FSEArchivePayloadHeaderError::UnexpectedEndOfArchive { .. }
+        ))
+    ));
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn index_archive_file_reports_payload_checksum_mismatch_on_load() {
+    let path = temp_archive_path("checksum-mismatch", ".fse");
+    let bytes = corrupted_archive_payload(FSEArchivePayloadKind::Index);
+
+    fs::write(&path, bytes).unwrap();
+    let error = load_index_archive_file(&path).unwrap_err();
+
+    assert!(matches!(
+        error,
+        FSEIndexArchiveError::File(FSEArchiveFileError::Payload(
+            FSEArchivePayloadHeaderError::PayloadChecksumMismatch { .. }
         ))
     ));
 
