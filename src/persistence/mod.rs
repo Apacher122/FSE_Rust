@@ -30,7 +30,10 @@ pub use row_mapped::{
 };
 pub use typed::{
     FSEFieldArchiveRecord, FSEFieldTypeArchiveTag, FSERecordArchiveRecord,
-    FSERecordBatchArchiveSnapshot, FSETypedRecordBatchArchiveCodecError,
-    FSETypedRecordBatchArchiveSnapshotError, FSEValueArchiveRecord,
-    decode_typed_record_batch_archive_snapshot, encode_typed_record_batch_archive_snapshot,
+    FSERecordBatchArchiveError, FSERecordBatchArchiveFileError, FSERecordBatchArchiveSnapshot,
+    FSETypedRecordBatchArchiveCodecError, FSETypedRecordBatchArchiveSnapshotError,
+    FSEValueArchiveRecord, decode_typed_record_batch_archive_snapshot,
+    encode_typed_record_batch_archive_snapshot, load_typed_record_batch_archive_file,
+    read_typed_record_batch_archive_snapshot_file, save_typed_record_batch_archive_file,
+    write_typed_record_batch_archive_snapshot_file,
 };

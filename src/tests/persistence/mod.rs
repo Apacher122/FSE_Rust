@@ -7,4 +7,5 @@ mod row_mapping_file_tests;
 mod row_mapping_tests;
 mod snapshot_tests;
 mod typed_record_batch_codec_tests;
+mod typed_record_batch_file_tests;
 mod typed_record_batch_tests;

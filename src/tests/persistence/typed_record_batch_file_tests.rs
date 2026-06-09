@@ -1,0 +1,179 @@
+use std::fs;
+use std::io;
+use std::path::PathBuf;
+
+use crate::data::{FSEField, FSEFieldType, FSERecord, FSERecordBatch, FSESchema, FSEValue, RowId};
+use crate::persistence::{
+    FSEArchiveFileOperation, FSERecordBatchArchiveError, FSERecordBatchArchiveFileError,
+    FSERecordBatchArchiveSnapshot, FSETypedRecordBatchArchiveCodecError,
+    load_typed_record_batch_archive_file, read_typed_record_batch_archive_snapshot_file,
+    save_typed_record_batch_archive_file, write_typed_record_batch_archive_snapshot_file,
+};
+
+#[test]
+fn typed_record_batch_archive_file_round_trips_snapshot_through_fse_file() {
+    let batch = sample_batch();
+    let snapshot = FSERecordBatchArchiveSnapshot::from_record_batch(&batch);
+    let path = temp_archive_path("snapshot-round-trip", ".fse");
+
+    write_typed_record_batch_archive_snapshot_file(&path, &snapshot).unwrap();
+    let decoded = read_typed_record_batch_archive_snapshot_file(&path).unwrap();
+
+    assert_eq!(decoded, snapshot);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_record_batch_archive_file_methods_round_trip_snapshot() {
+    let batch = sample_batch();
+    let snapshot = FSERecordBatchArchiveSnapshot::from_record_batch(&batch);
+    let path = temp_archive_path("snapshot-methods", ".fse");
+
+    snapshot.write_to_archive_file(&path).unwrap();
+    let decoded = FSERecordBatchArchiveSnapshot::read_from_archive_file(&path).unwrap();
+
+    assert_eq!(decoded, snapshot);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_record_batch_archive_file_saves_and_loads_record_batch() {
+    let batch = sample_batch();
+    let path = temp_archive_path("batch-round-trip", ".fse");
+
+    save_typed_record_batch_archive_file(&path, &batch).unwrap();
+    let loaded = load_typed_record_batch_archive_file(&path).unwrap();
+
+    assert_eq!(loaded, batch);
+    assert_eq!(loaded.row_ids(), &[RowId::new(100), RowId::new(101)]);
+    assert_eq!(
+        loaded.record_for_row_id(RowId::new(101)).unwrap().value(0),
+        Some(&FSEValue::Integer(2))
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_record_batch_archive_file_reports_invalid_extension_on_save() {
+    let batch = sample_batch();
+    let path = temp_archive_path("wrong-save-extension", ".bin");
+
+    assert_eq!(
+        save_typed_record_batch_archive_file(&path, &batch),
+        Err(FSERecordBatchArchiveError::File(
+            FSERecordBatchArchiveFileError::InvalidFileExtension { path }
+        ))
+    );
+}
+
+#[test]
+fn typed_record_batch_archive_file_reports_missing_file_on_load() {
+    let path = temp_archive_path("missing-load", ".fse");
+
+    assert_eq!(
+        load_typed_record_batch_archive_file(&path),
+        Err(FSERecordBatchArchiveError::File(
+            FSERecordBatchArchiveFileError::Io {
+                operation: FSEArchiveFileOperation::Read,
+                path,
+                kind: io::ErrorKind::NotFound
+            }
+        ))
+    );
+}
+
+#[test]
+fn typed_record_batch_archive_file_reports_codec_errors_for_invalid_payload() {
+    let path = temp_archive_path("invalid-payload", ".fse");
+
+    fs::write(&path, [0_u8; 4]).unwrap();
+    let error = read_typed_record_batch_archive_snapshot_file(&path).unwrap_err();
+
+    assert!(matches!(
+        error,
+        FSERecordBatchArchiveFileError::Codec(
+            FSETypedRecordBatchArchiveCodecError::UnexpectedEndOfArchive { .. }
+        )
+    ));
+
+    let _ = fs::remove_file(path);
+}
+
+fn sample_batch() -> FSERecordBatch {
+    let schema = sample_schema();
+    let records = vec![
+        sample_record(
+            1,
+            12.5,
+            "alpha",
+            true,
+            1_735_689_600_000,
+            "open",
+            FSEValue::Text("reviewed".to_string()),
+            &schema,
+        ),
+        sample_record(
+            2,
+            24.0,
+            "beta",
+            false,
+            1_735_776_000_000,
+            "closed",
+            FSEValue::Null,
+            &schema,
+        ),
+    ];
+
+    FSERecordBatch::new(schema, vec![RowId::new(100), RowId::new(101)], records)
+}
+
+fn sample_schema() -> FSESchema {
+    FSESchema::new(vec![
+        FSEField::new("record_id", FSEFieldType::Integer, false),
+        FSEField::new("amount", FSEFieldType::Float, false),
+        FSEField::new("label", FSEFieldType::Text, false),
+        FSEField::new("active", FSEFieldType::Boolean, false),
+        FSEField::new("created_at", FSEFieldType::TimestampMillis, false),
+        FSEField::new("status", FSEFieldType::Category, false),
+        FSEField::new("notes", FSEFieldType::Text, true),
+    ])
+}
+
+fn sample_record(
+    record_id: i64,
+    amount: f64,
+    label: &str,
+    active: bool,
+    created_at: i64,
+    status: &str,
+    notes: FSEValue,
+    schema: &FSESchema,
+) -> FSERecord {
+    FSERecord::new(
+        vec![
+            FSEValue::Integer(record_id),
+            FSEValue::Float(amount),
+            FSEValue::Text(label.to_string()),
+            FSEValue::Boolean(active),
+            FSEValue::TimestampMillis(created_at),
+            FSEValue::Category(status.to_string()),
+            notes,
+        ],
+        schema,
+    )
+}
+
+fn temp_archive_path(name: &str, extension: &str) -> PathBuf {
+    let mut path = std::env::temp_dir();
+    path.push(format!(
+        "fse-rust-typed-record-batch-archive-file-{}-{}{}",
+        std::process::id(),
+        name,
+        extension
+    ));
+    let _ = fs::remove_file(&path);
+    path
+}
