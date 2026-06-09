@@ -150,16 +150,16 @@ function Get-BenchmarkReviewManifestEntry {
     [string]$ArtifactName
   )
 
-  $Matches = @(
+  $MatchingEntries = @(
     $Entries |
     Where-Object { $_.Artifact -eq $ArtifactName }
   )
 
-  if ($Matches.Count -eq 0) {
+  if ($MatchingEntries.Count -eq 0) {
     return $null
   }
 
-  return $Matches[0]
+  return $MatchingEntries[0]
 }
 
 function Test-BenchmarkReviewPathExists {
@@ -495,6 +495,22 @@ function Resolve-BenchmarkReviewManifestArtifactSet {
   $ResolvedArtifacts.MaterializationNotes = Resolve-BenchmarkReviewManifestArtifact `
     -Entries $Entries `
     -ArtifactName $BenchmarkReviewArtifactNames.MaterializationModeNotes `
+    -OutputDir $OutputDir `
+    -Label $Label `
+    -OnFailure $OnFailure `
+    -OnInvalidPath $OnInvalidPath
+
+  $ResolvedArtifacts.TypedArchiveLoadSummary = Resolve-BenchmarkReviewManifestArtifact `
+    -Entries $Entries `
+    -ArtifactName $BenchmarkReviewArtifactNames.TypedArchiveLoadSummary `
+    -OutputDir $OutputDir `
+    -Label $Label `
+    -OnFailure $OnFailure `
+    -OnInvalidPath $OnInvalidPath
+
+  $ResolvedArtifacts.TypedArchiveLoadNotes = Resolve-BenchmarkReviewManifestArtifact `
+    -Entries $Entries `
+    -ArtifactName $BenchmarkReviewArtifactNames.TypedArchiveLoadNotes `
     -OutputDir $OutputDir `
     -Label $Label `
     -OnFailure $OnFailure `

@@ -13,6 +13,7 @@ core benchmark output
 core benchmark CSVs
 count-only summary artifacts
 materialization summary artifacts
+typed archive load artifacts
 low-gap trial artifacts
 target workload artifacts
 optional comparison artifacts
@@ -35,6 +36,8 @@ count-only-workload-summary-<label>.csv
 count-only-workload-summary-<label>.txt
 materialization-mode-summary-<label>.csv
 materialization-mode-summary-<label>.txt
+typed-archive-load-summary-<label>.csv
+typed-archive-load-summary-<label>.txt
 low-selectivity-gap-<label>.csv
 low-gap-regression-notes-<label>.txt
 low-gap-trial-details-<label>.csv
@@ -138,6 +141,32 @@ agreement = pass
 ```
 
 This protects the review from accepting materialization timing when owned, reusable-owned, reference-result, reference-visitor, row-view, and count-only output contracts disagree.
+
+## Typed archive load validation
+
+The typed archive load summary must include:
+
+```text
+dataset
+max_depth
+workload_name
+matched_records
+in_memory_elapsed
+warm_loaded_elapsed
+cold_loaded_elapsed
+warm_loaded_to_in_memory_ratio
+cold_loaded_to_in_memory_ratio
+cold_loaded_to_warm_loaded_ratio
+agreement
+```
+
+Every row must have:
+
+```text
+agreement = pass
+```
+
+This check verifies that loaded `.fse` typed query index execution matches the in-memory typed query index execution for each reported workload.
 
 ## Target workload validation
 

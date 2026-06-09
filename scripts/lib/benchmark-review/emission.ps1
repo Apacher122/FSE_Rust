@@ -133,6 +133,16 @@ function New-BenchmarkReviewRunManifestArtifacts {
       -Skipped $false
 
     New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.TypedArchiveLoadSummary `
+      -Path $Context.CurrentTypedArchiveLoadSummaryCsv `
+      -Skipped $false
+
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.TypedArchiveLoadNotes `
+      -Path $Context.CurrentTypedArchiveLoadSummaryNotes `
+      -Skipped $false
+
+    New-BenchmarkReviewManifestArtifact `
       -Name $BenchmarkReviewArtifactNames.MaterializationModeComparisonCsv `
       -Path $Context.CurrentMaterializationComparisonCsv `
       -Skipped $MaterializationComparisonSkipped `

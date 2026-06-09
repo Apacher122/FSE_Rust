@@ -128,6 +128,8 @@ $CountOnlySummaryEntry = $ResolvedArtifacts.CountOnlySummary
 $CountOnlyNotesEntry = $ResolvedArtifacts.CountOnlyNotes
 $MaterializationSummaryEntry = $ResolvedArtifacts.MaterializationSummary
 $MaterializationNotesEntry = $ResolvedArtifacts.MaterializationNotes
+$TypedArchiveLoadSummaryEntry = $ResolvedArtifacts.TypedArchiveLoadSummary
+$TypedArchiveLoadNotesEntry = $ResolvedArtifacts.TypedArchiveLoadNotes
 $LowGapEntry = $ResolvedArtifacts.LowGap
 $RegressionNotesEntry = $ResolvedArtifacts.RegressionNotes
 $TrialSummaryEntry = $ResolvedArtifacts.TrialSummary
@@ -147,6 +149,7 @@ Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $Benchm
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $DebugOutputEntry -Description "debug output"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $CountOnlyNotesEntry -Description "count-only workload notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $MaterializationNotesEntry -Description "materialization mode notes"
+Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveLoadNotesEntry -Description "typed archive load notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $RegressionNotesEntry -Description "low-gap regression notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TrialNotesEntry -Description "low-gap trial notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TargetNotesEntry -Description "target workload trial notes"
@@ -232,6 +235,31 @@ Test-BenchmarkReviewTextColumnAllEquals `
   -ColumnName "agreement" `
   -ExpectedValue "pass" `
   -Description "materialization mode summary"
+
+$TypedArchiveLoadSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv `
+  -Entry $TypedArchiveLoadSummaryEntry `
+  -Description "typed archive load summary" `
+  -RequiredColumns @(
+  "dataset",
+  "max_depth",
+  "workload_name",
+  "matched_records",
+  "in_memory_elapsed",
+  "warm_loaded_elapsed",
+  "cold_loaded_elapsed",
+  "warm_loaded_to_in_memory_ratio",
+  "cold_loaded_to_in_memory_ratio",
+  "cold_loaded_to_warm_loaded_ratio",
+  "agreement"
+) `
+  -MinimumRows 1 `
+  -OnFailure $AddValidationFailure
+
+Test-BenchmarkReviewTextColumnAllEquals `
+  -Rows $TypedArchiveLoadSummaryRows `
+  -ColumnName "agreement" `
+  -ExpectedValue "pass" `
+  -Description "typed archive load summary"
 
 Invoke-BenchmarkReviewPolicyCsvValidation -OnFailure $AddValidationFailure `
   -Entry $LowGapEntry `

@@ -124,6 +124,8 @@ $CurrentCountOnlyComparisonCsv = $ReviewPaths.CurrentCountOnlyComparisonCsv
 $CurrentCountOnlyComparisonNotes = $ReviewPaths.CurrentCountOnlyComparisonNotes
 $CurrentMaterializationSummaryCsv = $ReviewPaths.CurrentMaterializationSummaryCsv
 $CurrentMaterializationSummaryNotes = $ReviewPaths.CurrentMaterializationSummaryNotes
+$CurrentTypedArchiveLoadSummaryCsv = $ReviewPaths.CurrentTypedArchiveLoadSummaryCsv
+$CurrentTypedArchiveLoadSummaryNotes = $ReviewPaths.CurrentTypedArchiveLoadSummaryNotes
 $CurrentMaterializationComparisonCsv = $ReviewPaths.CurrentMaterializationComparisonCsv
 $CurrentMaterializationComparisonNotes = $ReviewPaths.CurrentMaterializationComparisonNotes
 $CurrentTargetDetailCsv = $ReviewPaths.CurrentTargetDetailCsv
@@ -269,6 +271,8 @@ Add-ReviewLine "count-only workload summary: $CurrentCountOnlyWorkloadSummaryCsv
 Add-ReviewLine "count-only workload notes: $CurrentCountOnlyWorkloadSummaryNotes"
 Add-ReviewLine "materialization mode summary: $CurrentMaterializationSummaryCsv"
 Add-ReviewLine "materialization mode notes: $CurrentMaterializationSummaryNotes"
+Add-ReviewLine "typed archive load summary: $CurrentTypedArchiveLoadSummaryCsv"
+Add-ReviewLine "typed archive load notes: $CurrentTypedArchiveLoadSummaryNotes"
 
 if ($PreviousLowSelectivityGapInput.Exists) {
   Add-ReviewLine "single-run comparison status: completed by run-small-benchmark"
@@ -538,6 +542,8 @@ $ReviewManifestContext = [PSCustomObject]@{
   PreviousMaterializationSummaryCsv     = $PreviousMaterializationSummaryCsv
   CurrentMaterializationSummaryCsv      = $CurrentMaterializationSummaryCsv
   CurrentMaterializationSummaryNotes    = $CurrentMaterializationSummaryNotes
+  CurrentTypedArchiveLoadSummaryCsv     = $CurrentTypedArchiveLoadSummaryCsv
+  CurrentTypedArchiveLoadSummaryNotes   = $CurrentTypedArchiveLoadSummaryNotes
   CurrentMaterializationComparisonCsv   = $CurrentMaterializationComparisonCsv
   CurrentMaterializationComparisonNotes = $CurrentMaterializationComparisonNotes
   PreviousTargetSummaryCsv              = $PreviousTargetSummaryCsv
