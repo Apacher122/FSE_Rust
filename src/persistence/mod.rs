@@ -31,6 +31,7 @@ pub use row_mapped::{
 pub use typed::{
     FSEFieldArchiveRecord, FSEFieldTypeArchiveTag, FSERecordArchiveRecord,
     FSERecordBatchArchiveError, FSERecordBatchArchiveFileError, FSERecordBatchArchiveSnapshot,
+    FSETypedQueryIndexArchiveSnapshot, FSETypedQueryIndexArchiveSnapshotError,
     FSETypedRecordBatchArchiveCodecError, FSETypedRecordBatchArchiveSnapshotError,
     FSEValueArchiveRecord, decode_typed_record_batch_archive_snapshot,
     encode_typed_record_batch_archive_snapshot, load_typed_record_batch_archive_file,
