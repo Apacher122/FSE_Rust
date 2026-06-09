@@ -8,6 +8,8 @@ $BenchmarkArtifactFilePrefixes = @(
   "materialization-mode-trial-details-",
   "materialization-mode-trial-summary-",
   "materialization-mode-trial-notes-",
+  "typed-indexed-comparison-summary-",
+  "typed-archive-load-summary-",
   "existence-timing-summary-",
   "materialization-mode-summary-",
   "count-only-workload-summary-comparison-",

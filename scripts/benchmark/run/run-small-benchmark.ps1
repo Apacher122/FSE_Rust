@@ -56,6 +56,8 @@ $ExistenceTimingSummaryCsvPath = Join-Path $OutputDir "existence-timing-summary-
 $ExistenceTimingSummaryNotesPath = Join-Path $OutputDir "existence-timing-summary-$Label.txt"
 $TypedIndexedComparisonSummaryCsvPath = Join-Path $OutputDir "typed-indexed-comparison-summary-$Label.csv"
 $TypedIndexedComparisonSummaryNotesPath = Join-Path $OutputDir "typed-indexed-comparison-summary-$Label.txt"
+$TypedArchiveLoadSummaryCsvPath = Join-Path $OutputDir "typed-archive-load-summary-$Label.csv"
+$TypedArchiveLoadSummaryNotesPath = Join-Path $OutputDir "typed-archive-load-summary-$Label.txt"
 $LowSelectivityGapCsvPath = Join-Path $OutputDir "low-selectivity-gap-$Label.csv"
 $LowGapRegressionNotesPath = Join-Path $OutputDir "low-gap-regression-notes-$Label.txt"
 
@@ -63,6 +65,7 @@ $CountOnlyWorkloadSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "sum
 $MaterializationModeSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-materialization-mode-summary.ps1"
 $ExistenceTimingSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-existence-timing-summary.ps1"
 $TypedIndexedComparisonSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-indexed-comparison-summary.ps1"
+$TypedArchiveLoadSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-archive-load-summary.ps1"
 
 
 function Write-BenchmarkSection {
@@ -445,6 +448,24 @@ if ($LASTEXITCODE -ne 0) {
     throw "typed indexed comparison summary failed with exit code $LASTEXITCODE"
 }
 
+if (!(Test-Path -LiteralPath $TypedArchiveLoadSummaryScript)) {
+    throw "required script was not found: $TypedArchiveLoadSummaryScript"
+}
+
+$TypedArchiveLoadSummaryArguments = @{
+    DebugOutputPath = $DebugOutputPath
+    OutputCsv       = $TypedArchiveLoadSummaryCsvPath
+    OutputNotesPath = $TypedArchiveLoadSummaryNotesPath
+    Dataset         = $Dataset
+    MaxDepth        = $EffectiveMaxDepthText
+}
+
+& $TypedArchiveLoadSummaryScript @TypedArchiveLoadSummaryArguments
+
+if ($LASTEXITCODE -ne 0) {
+    throw "typed archive load summary failed with exit code $LASTEXITCODE"
+}
+
 Add-Utf8Text -Path $TextOutputPath -Text "`r`n---`r`n`r`nArtifacts:`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Dataset:                        $Dataset`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Max depth:                      $EffectiveMaxDepth`r`n"
@@ -460,6 +481,8 @@ Add-Utf8Text -Path $TextOutputPath -Text "  Existence timing summary CSV:   $Exi
 Add-Utf8Text -Path $TextOutputPath -Text "  Existence timing notes:         $ExistenceTimingSummaryNotesPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed indexed summary CSV:      $TypedIndexedComparisonSummaryCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed indexed notes:            $TypedIndexedComparisonSummaryNotesPath`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive load summary CSV: $TypedArchiveLoadSummaryCsvPath`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive load notes:       $TypedArchiveLoadSummaryNotesPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Low-selectivity gap CSV:        $LowSelectivityGapCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Low-gap regression notes:       $LowGapRegressionNotesPath`r`n"
 
@@ -478,6 +501,8 @@ Add-Utf8Text -Path $DebugOutputPath -Text "  Existence timing summary CSV:   $Ex
 Add-Utf8Text -Path $DebugOutputPath -Text "  Existence timing notes:         $ExistenceTimingSummaryNotesPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed indexed summary CSV:      $TypedIndexedComparisonSummaryCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed indexed notes:            $TypedIndexedComparisonSummaryNotesPath`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive load summary CSV: $TypedArchiveLoadSummaryCsvPath`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive load notes:       $TypedArchiveLoadSummaryNotesPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Low-selectivity gap CSV:        $LowSelectivityGapCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Low-gap regression notes:       $LowGapRegressionNotesPath`r`n"
 
@@ -497,5 +522,7 @@ Write-Host "  $ExistenceTimingSummaryCsvPath"
 Write-Host "  $ExistenceTimingSummaryNotesPath"
 Write-Host "  $TypedIndexedComparisonSummaryCsvPath"
 Write-Host "  $TypedIndexedComparisonSummaryNotesPath"
+Write-Host "  $TypedArchiveLoadSummaryCsvPath"
+Write-Host "  $TypedArchiveLoadSummaryNotesPath"
 Write-Host "  $LowSelectivityGapCsvPath"
 Write-Host "  $LowGapRegressionNotesPath"

@@ -33,6 +33,8 @@ The benchmark workflow currently separates:
     row-view query execution
     count-only query execution
     existence query execution
+    typed indexed query execution
+    typed archive load execution
     index footprint reporting
     debug-only retained execution diagnostics
 
@@ -47,6 +49,8 @@ Row-view timing answers borrowed exact row-view delivery without building owned 
 Count-only timing answers exact-cardinality performance.
 
 Existence timing answers exact non-empty-result performance and inspected-record behavior.
+
+Typed archive load timing answers `.fse` typed query index reload cost under warm-loaded and cold-loaded execution paths.
 
 Index footprint reporting answers how many coordinate-like scalars are represented by residuals, centroids, bounds, and the total counted FSE index footprint. It also reports scalar payload byte estimates derived from the scalar counts and the configured scalar width.
 
@@ -69,6 +73,8 @@ The benchmark workflow now has:
     existence query execution
     reference visitor materialization evidence for small and large datasets
     row-view materialization summary evidence
+    typed indexed comparison summary evidence
+    typed archive load timing summary evidence
     repeated materialization mode trial summaries
     per-workload CSV metrics
     index footprint metrics
@@ -250,6 +256,8 @@ Current benchmark interpretation:
     logical baseline footprint reporting is available for comparing baseline structural metadata cost
     count-only query mode is a valid separate output contract
     existence query mode is a valid separate output contract with timing-summary benchmark evidence
+    typed indexed query execution is available for FSE-native record queries
+    typed archive load timing is available for comparing in-memory, warm-loaded, and cold-loaded `.fse` query indexes
     reference visitor is a valid exact reference-delivery output contract with small and large materialization evidence
     row-view query mode is a valid borrowed row-delivery output contract but not the current performance direction
     repeated materialization trials are available for output-contract stability checks

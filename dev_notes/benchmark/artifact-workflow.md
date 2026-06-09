@@ -41,6 +41,10 @@ benchmark_artifacts/
       materialization-mode-trials-<label>/
       existence-timing-summary-<label>.csv
       existence-timing-summary-<label>.txt
+      typed-indexed-comparison-summary-<label>.csv
+      typed-indexed-comparison-summary-<label>.txt
+      typed-archive-load-summary-<label>.csv
+      typed-archive-load-summary-<label>.txt
       low-gap-review-notes-<label>.txt
       low-gap-review-manifest-<label>.txt
       low-gap-trials-<label>/
@@ -153,7 +157,7 @@ Use `-Force` only when intentionally overwriting already-organized artifacts:
   -Force
 ```
 
-The organization script recognizes normal benchmark artifacts, low-gap artifacts, target workload artifacts, count-only artifacts, materialization-mode artifacts, repeated materialization trial artifacts, existence timing artifacts, review manifests, review notes, and repeated-trial folders.
+The organization script recognizes normal benchmark artifacts, low-gap artifacts, target workload artifacts, count-only artifacts, materialization-mode artifacts, repeated materialization trial artifacts, existence timing artifacts, typed query timing artifacts, review manifests, review notes, and repeated-trial folders.
 
 Unrecognized files are left in place. This prevents accidental movement of manually-created notes, temporary files, or unrelated data.
 
@@ -325,6 +329,10 @@ benchmark_artifacts/
       materialization-mode-trials-<label>/
       existence-timing-summary-<label>.csv
       existence-timing-summary-<label>.txt
+      typed-indexed-comparison-summary-<label>.csv
+      typed-indexed-comparison-summary-<label>.txt
+      typed-archive-load-summary-<label>.csv
+      typed-archive-load-summary-<label>.txt
       low-gap-review-notes-<label>.txt
       low-gap-review-manifest-<label>.txt
       low-gap-trials-<label>/
@@ -599,6 +607,8 @@ low-gap trial artifacts
 target workload artifacts
 count-only workload summaries
 count-only comparison artifacts
+typed indexed comparison summaries
+typed archive load summaries
 repeated-trial folders
 repeated materialization trial folders
 ```
@@ -877,6 +887,43 @@ agreement = pass
 ```
 
 The notes file records row count, agreement failures, aggregate candidate count, aggregate inspected count, aggregate skipped count, and aggregate inspection ratio.
+
+## Typed archive load timing artifacts
+
+Typed archive load timing artifacts are extracted from the debug report workload summary.
+
+Artifacts:
+
+```text
+typed-archive-load-summary-<label>.csv
+typed-archive-load-summary-<label>.txt
+```
+
+The CSV preserves the workload-level relationship between querying the current in-memory typed query index, querying a typed query index loaded once before timing, and loading the `.fse` typed query index archive inside each measured iteration.
+
+Required CSV fields include:
+
+```text
+dataset
+max_depth
+workload_name
+matched_records
+in_memory_elapsed
+warm_loaded_elapsed
+cold_loaded_elapsed
+warm_loaded_to_in_memory_ratio
+cold_loaded_to_in_memory_ratio
+cold_loaded_to_warm_loaded_ratio
+agreement
+```
+
+Every row should have:
+
+```text
+agreement = pass
+```
+
+The notes file records row count, agreement failures, total matched records, and mean timing ratios for warm-loaded and cold-loaded archive paths.
 
 ## Target workload artifacts
 
