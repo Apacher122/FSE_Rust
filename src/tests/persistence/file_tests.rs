@@ -3,7 +3,8 @@ use std::io;
 use std::path::PathBuf;
 
 use crate::persistence::{
-    FSEArchiveCodecError, FSEArchiveFileError, FSEArchiveFileOperation, FSEIndexArchiveSnapshot,
+    FSEArchiveFileError, FSEArchiveFileOperation, FSEArchivePayloadHeaderError,
+    FSEArchivePayloadKind, FSEIndexArchiveSnapshot, encode_archive_payload,
     read_archive_snapshot_file, write_archive_snapshot_file,
 };
 use crate::query::execute_query;
@@ -113,7 +114,7 @@ fn archive_file_reports_missing_file_read_error() {
 }
 
 #[test]
-fn archive_file_reports_codec_errors_for_invalid_payload() {
+fn archive_file_reports_payload_header_errors_for_invalid_payload() {
     let path = temp_archive_path("invalid-payload", ".fse");
 
     fs::write(&path, [0_u8; 4]).unwrap();
@@ -121,8 +122,28 @@ fn archive_file_reports_codec_errors_for_invalid_payload() {
 
     assert!(matches!(
         error,
-        FSEArchiveFileError::Codec(FSEArchiveCodecError::UnexpectedEndOfArchive { .. })
+        FSEArchiveFileError::Payload(FSEArchivePayloadHeaderError::UnexpectedEndOfArchive { .. })
     ));
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn archive_file_rejects_row_mapped_payload_kind() {
+    let path = temp_archive_path("wrong-payload-kind", ".fse");
+    let bytes = encode_archive_payload(FSEArchivePayloadKind::RowMappedIndex, &[]);
+
+    fs::write(&path, bytes).unwrap();
+
+    assert_eq!(
+        read_archive_snapshot_file(&path),
+        Err(FSEArchiveFileError::Payload(
+            FSEArchivePayloadHeaderError::UnexpectedPayloadKind {
+                expected: FSEArchivePayloadKind::Index,
+                actual: FSEArchivePayloadKind::RowMappedIndex
+            }
+        ))
+    );
 
     let _ = fs::remove_file(path);
 }

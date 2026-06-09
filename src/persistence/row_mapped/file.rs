@@ -7,7 +7,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::build::RowMappedFSEIndex;
-use crate::persistence::{FSE_ARCHIVE_FILE_EXTENSION, FSEArchiveFileOperation};
+use crate::persistence::{
+    FSE_ARCHIVE_FILE_EXTENSION, FSEArchiveFileOperation, FSEArchivePayloadHeaderError,
+    FSEArchivePayloadKind, decode_archive_payload, encode_archive_payload,
+};
 
 use super::{
     FSERowMappedArchiveCodecError, FSERowMappedArchiveSnapshotError,
@@ -26,6 +29,9 @@ pub enum FSERowMappedArchiveFileError {
 
     /// Archive byte encoding or decoding failed.
     Codec(FSERowMappedArchiveCodecError),
+
+    /// Archive payload metadata validation failed.
+    Payload(FSEArchivePayloadHeaderError),
 
     /// A filesystem operation failed.
     Io {
@@ -47,6 +53,7 @@ impl fmt::Display for FSERowMappedArchiveFileError {
                 formatter.write_str("row-mapped archive path must use the .fse extension")
             }
             Self::Codec(error) => error.fmt(formatter),
+            Self::Payload(error) => error.fmt(formatter),
             Self::Io { operation, .. } => match operation {
                 FSEArchiveFileOperation::Read => {
                     formatter.write_str("failed to read row-mapped FSE archive file")
@@ -63,6 +70,7 @@ impl Error for FSERowMappedArchiveFileError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Codec(error) => Some(error),
+            Self::Payload(error) => Some(error),
             Self::InvalidFileExtension { .. } | Self::Io { .. } => None,
         }
     }
@@ -71,6 +79,12 @@ impl Error for FSERowMappedArchiveFileError {
 impl From<FSERowMappedArchiveCodecError> for FSERowMappedArchiveFileError {
     fn from(error: FSERowMappedArchiveCodecError) -> Self {
         Self::Codec(error)
+    }
+}
+
+impl From<FSEArchivePayloadHeaderError> for FSERowMappedArchiveFileError {
+    fn from(error: FSEArchivePayloadHeaderError) -> Self {
+        Self::Payload(error)
     }
 }
 
@@ -125,7 +139,8 @@ where
     let path = path.as_ref();
     validate_archive_file_extension(path)?;
 
-    let bytes = encode_row_mapped_archive_snapshot(snapshot)?;
+    let payload = encode_row_mapped_archive_snapshot(snapshot)?;
+    let bytes = encode_archive_payload(FSEArchivePayloadKind::RowMappedIndex, &payload);
     fs::write(path, bytes).map_err(|error| FSERowMappedArchiveFileError::Io {
         operation: FSEArchiveFileOperation::Write,
         path: path.to_path_buf(),
@@ -149,7 +164,9 @@ where
         kind: error.kind(),
     })?;
 
-    decode_row_mapped_archive_snapshot(&bytes).map_err(FSERowMappedArchiveFileError::Codec)
+    let payload = decode_archive_payload(FSEArchivePayloadKind::RowMappedIndex, &bytes)?;
+
+    decode_row_mapped_archive_snapshot(&payload).map_err(FSERowMappedArchiveFileError::Codec)
 }
 
 /// Saves a row-mapped FSE index to a `.fse` archive file.

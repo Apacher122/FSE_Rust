@@ -6,6 +6,7 @@
 
 mod archive;
 mod manifest;
+mod payload;
 mod row_mapped;
 mod typed;
 
@@ -19,6 +20,10 @@ pub use archive::{
 pub use manifest::{
     FSE_ARCHIVE_FILE_EXTENSION, FSE_ARCHIVE_FORMAT_VERSION, FSE_ARCHIVE_MAGIC, FSEArchiveManifest,
     FSEArchiveManifestError, FSEArchiveSections,
+};
+pub use payload::{
+    FSE_ARCHIVE_PAYLOAD_HEADER_VERSION, FSE_ARCHIVE_PAYLOAD_MAGIC, FSEArchivePayloadHeaderError,
+    FSEArchivePayloadKind, decode_archive_payload, encode_archive_payload,
 };
 pub use row_mapped::{
     FSELeafRowIdArchiveRecord, FSERowMappedArchiveCodecError, FSERowMappedArchiveFileError,

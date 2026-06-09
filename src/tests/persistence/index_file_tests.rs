@@ -3,9 +3,10 @@ use std::io;
 use std::path::PathBuf;
 
 use crate::persistence::{
-    FSEArchiveCodecError, FSEArchiveFileError, FSEArchiveFileOperation, FSEArchiveSections,
-    FSEIndexArchiveError, FSEIndexArchiveSnapshot, load_index_archive_file,
-    read_archive_snapshot_file, save_index_archive_file, save_index_archive_file_with_sections,
+    FSEArchiveFileError, FSEArchiveFileOperation, FSEArchivePayloadHeaderError,
+    FSEArchivePayloadKind, FSEArchiveSections, FSEIndexArchiveError, FSEIndexArchiveSnapshot,
+    encode_archive_payload, load_index_archive_file, read_archive_snapshot_file,
+    save_index_archive_file, save_index_archive_file_with_sections,
 };
 use crate::query::execute_query;
 use crate::tests::support::{small_benchmark_fixture, sort_points};
@@ -62,14 +63,15 @@ fn index_archive_file_records_explicit_section_metadata() {
 }
 
 #[test]
-fn index_archive_file_matches_snapshot_archive_bytes() {
+fn index_archive_file_wraps_snapshot_bytes_with_index_payload_metadata() {
     let fixture = small_benchmark_fixture();
     let snapshot = FSEIndexArchiveSnapshot::from_index(&fixture.index).unwrap();
     let path = temp_archive_path("snapshot-bytes", ".fse");
 
     save_index_archive_file(&path, &fixture.index).unwrap();
     let saved_bytes = fs::read(&path).unwrap();
-    let expected_bytes = snapshot.to_archive_bytes().unwrap();
+    let expected_payload = snapshot.to_archive_bytes().unwrap();
+    let expected_bytes = encode_archive_payload(FSEArchivePayloadKind::Index, &expected_payload);
 
     assert_eq!(saved_bytes, expected_bytes);
 
@@ -104,7 +106,7 @@ fn index_archive_file_reports_missing_file_on_load() {
 }
 
 #[test]
-fn index_archive_file_reports_codec_errors_on_load() {
+fn index_archive_file_reports_payload_header_errors_on_load() {
     let path = temp_archive_path("invalid-load", ".fse");
 
     fs::write(&path, [0_u8; 4]).unwrap();
@@ -112,8 +114,8 @@ fn index_archive_file_reports_codec_errors_on_load() {
 
     assert!(matches!(
         error,
-        FSEIndexArchiveError::File(FSEArchiveFileError::Codec(
-            FSEArchiveCodecError::UnexpectedEndOfArchive { .. }
+        FSEIndexArchiveError::File(FSEArchiveFileError::Payload(
+            FSEArchivePayloadHeaderError::UnexpectedEndOfArchive { .. }
         ))
     ));
 

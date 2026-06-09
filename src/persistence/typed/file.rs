@@ -7,7 +7,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::data::FSERecordBatch;
-use crate::persistence::{FSE_ARCHIVE_FILE_EXTENSION, FSEArchiveFileOperation};
+use crate::persistence::{
+    FSE_ARCHIVE_FILE_EXTENSION, FSEArchiveFileOperation, FSEArchivePayloadHeaderError,
+    FSEArchivePayloadKind, decode_archive_payload, encode_archive_payload,
+};
 
 use super::{
     FSERecordBatchArchiveSnapshot, FSETypedRecordBatchArchiveCodecError,
@@ -26,6 +29,9 @@ pub enum FSERecordBatchArchiveFileError {
 
     /// Archive byte encoding or decoding failed.
     Codec(FSETypedRecordBatchArchiveCodecError),
+
+    /// Archive payload metadata validation failed.
+    Payload(FSEArchivePayloadHeaderError),
 
     /// A filesystem operation failed.
     Io {
@@ -47,6 +53,7 @@ impl fmt::Display for FSERecordBatchArchiveFileError {
                 formatter.write_str("typed record batch archive path must use the .fse extension")
             }
             Self::Codec(error) => error.fmt(formatter),
+            Self::Payload(error) => error.fmt(formatter),
             Self::Io { operation, .. } => match operation {
                 FSEArchiveFileOperation::Read => {
                     formatter.write_str("failed to read typed record batch archive file")
@@ -63,6 +70,7 @@ impl Error for FSERecordBatchArchiveFileError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Codec(error) => Some(error),
+            Self::Payload(error) => Some(error),
             Self::InvalidFileExtension { .. } | Self::Io { .. } => None,
         }
     }
@@ -71,6 +79,12 @@ impl Error for FSERecordBatchArchiveFileError {
 impl From<FSETypedRecordBatchArchiveCodecError> for FSERecordBatchArchiveFileError {
     fn from(error: FSETypedRecordBatchArchiveCodecError) -> Self {
         Self::Codec(error)
+    }
+}
+
+impl From<FSEArchivePayloadHeaderError> for FSERecordBatchArchiveFileError {
+    fn from(error: FSEArchivePayloadHeaderError) -> Self {
+        Self::Payload(error)
     }
 }
 
@@ -125,7 +139,8 @@ where
     let path = path.as_ref();
     validate_archive_file_extension(path)?;
 
-    let bytes = encode_typed_record_batch_archive_snapshot(snapshot)?;
+    let payload = encode_typed_record_batch_archive_snapshot(snapshot)?;
+    let bytes = encode_archive_payload(FSEArchivePayloadKind::TypedRecordBatch, &payload);
     fs::write(path, bytes).map_err(|error| FSERecordBatchArchiveFileError::Io {
         operation: FSEArchiveFileOperation::Write,
         path: path.to_path_buf(),
@@ -149,7 +164,9 @@ where
         kind: error.kind(),
     })?;
 
-    decode_typed_record_batch_archive_snapshot(&bytes)
+    let payload = decode_archive_payload(FSEArchivePayloadKind::TypedRecordBatch, &bytes)?;
+
+    decode_typed_record_batch_archive_snapshot(&payload)
         .map_err(FSERecordBatchArchiveFileError::Codec)
 }
 

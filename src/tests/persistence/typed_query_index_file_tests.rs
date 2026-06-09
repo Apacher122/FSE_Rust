@@ -12,10 +12,11 @@ use crate::encoding::{
     TimestampMillisEncoder,
 };
 use crate::persistence::{
-    FSEArchiveFileOperation, FSETypedQueryIndexArchiveCodecError, FSETypedQueryIndexArchiveError,
-    FSETypedQueryIndexArchiveFileError, FSETypedQueryIndexArchiveSnapshot,
-    load_typed_query_index_archive_file, read_typed_query_index_archive_snapshot_file,
-    save_typed_query_index_archive_file, write_typed_query_index_archive_snapshot_file,
+    FSEArchiveFileOperation, FSEArchivePayloadHeaderError, FSEArchivePayloadKind,
+    FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveFileError,
+    FSETypedQueryIndexArchiveSnapshot, encode_archive_payload, load_typed_query_index_archive_file,
+    read_typed_query_index_archive_snapshot_file, save_typed_query_index_archive_file,
+    write_typed_query_index_archive_snapshot_file,
 };
 use crate::query::{FSEPredicate, FSEPredicateField, TypedQueryIndex, TypedQueryPlanBuilder};
 
@@ -102,7 +103,7 @@ fn typed_query_index_archive_file_reports_missing_file_on_load() {
 }
 
 #[test]
-fn typed_query_index_archive_file_reports_codec_errors_for_invalid_payload() {
+fn typed_query_index_archive_file_reports_payload_header_errors_for_invalid_payload() {
     let path = temp_archive_path("invalid-payload", ".fse");
 
     fs::write(&path, [0_u8; 4]).unwrap();
@@ -110,10 +111,30 @@ fn typed_query_index_archive_file_reports_codec_errors_for_invalid_payload() {
 
     assert!(matches!(
         error,
-        FSETypedQueryIndexArchiveFileError::Codec(
-            FSETypedQueryIndexArchiveCodecError::UnexpectedEndOfArchive { .. }
+        FSETypedQueryIndexArchiveFileError::Payload(
+            FSEArchivePayloadHeaderError::UnexpectedEndOfArchive { .. }
         )
     ));
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_query_index_archive_file_rejects_typed_record_batch_payload_kind() {
+    let path = temp_archive_path("wrong-payload-kind", ".fse");
+    let bytes = encode_archive_payload(FSEArchivePayloadKind::TypedRecordBatch, &[]);
+
+    fs::write(&path, bytes).unwrap();
+
+    assert_eq!(
+        read_typed_query_index_archive_snapshot_file(&path),
+        Err(FSETypedQueryIndexArchiveFileError::Payload(
+            FSEArchivePayloadHeaderError::UnexpectedPayloadKind {
+                expected: FSEArchivePayloadKind::TypedQueryIndex,
+                actual: FSEArchivePayloadKind::TypedRecordBatch
+            }
+        ))
+    );
 
     let _ = fs::remove_file(path);
 }

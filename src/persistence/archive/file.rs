@@ -9,7 +9,10 @@ use std::path::{Path, PathBuf};
 use super::{
     FSEArchiveCodecError, FSEIndexArchiveSnapshot, decode_archive_snapshot, encode_archive_snapshot,
 };
-use crate::persistence::FSE_ARCHIVE_FILE_EXTENSION;
+use crate::persistence::{
+    FSE_ARCHIVE_FILE_EXTENSION, FSEArchivePayloadHeaderError, FSEArchivePayloadKind,
+    decode_archive_payload, encode_archive_payload,
+};
 
 /// Filesystem operation performed against an FSE archive file.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,6 +36,9 @@ pub enum FSEArchiveFileError {
     /// Archive byte encoding or decoding failed.
     Codec(FSEArchiveCodecError),
 
+    /// Archive payload metadata validation failed.
+    Payload(FSEArchivePayloadHeaderError),
+
     /// A filesystem operation failed.
     Io {
         /// Operation that failed.
@@ -53,6 +59,7 @@ impl fmt::Display for FSEArchiveFileError {
                 formatter.write_str("archive path must use the .fse extension")
             }
             Self::Codec(error) => error.fmt(formatter),
+            Self::Payload(error) => error.fmt(formatter),
             Self::Io { operation, .. } => match operation {
                 FSEArchiveFileOperation::Read => {
                     formatter.write_str("failed to read FSE archive file")
@@ -69,6 +76,7 @@ impl Error for FSEArchiveFileError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Codec(error) => Some(error),
+            Self::Payload(error) => Some(error),
             Self::InvalidFileExtension { .. } | Self::Io { .. } => None,
         }
     }
@@ -77,6 +85,12 @@ impl Error for FSEArchiveFileError {
 impl From<FSEArchiveCodecError> for FSEArchiveFileError {
     fn from(error: FSEArchiveCodecError) -> Self {
         Self::Codec(error)
+    }
+}
+
+impl From<FSEArchivePayloadHeaderError> for FSEArchiveFileError {
+    fn from(error: FSEArchivePayloadHeaderError) -> Self {
+        Self::Payload(error)
     }
 }
 
@@ -91,7 +105,8 @@ where
     let path = path.as_ref();
     validate_archive_file_extension(path)?;
 
-    let bytes = encode_archive_snapshot(snapshot)?;
+    let payload = encode_archive_snapshot(snapshot)?;
+    let bytes = encode_archive_payload(FSEArchivePayloadKind::Index, &payload);
     fs::write(path, bytes).map_err(|error| FSEArchiveFileError::Io {
         operation: FSEArchiveFileOperation::Write,
         path: path.to_path_buf(),
@@ -115,7 +130,9 @@ where
         kind: error.kind(),
     })?;
 
-    decode_archive_snapshot(&bytes).map_err(FSEArchiveFileError::Codec)
+    let payload = decode_archive_payload(FSEArchivePayloadKind::Index, &bytes)?;
+
+    decode_archive_snapshot(&payload).map_err(FSEArchiveFileError::Codec)
 }
 
 impl FSEIndexArchiveSnapshot {

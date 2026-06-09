@@ -7,10 +7,11 @@ use crate::data::RowId;
 use crate::encoding::EncodedRecordBatch;
 use crate::math::Vector;
 use crate::persistence::{
-    FSEArchiveFileOperation, FSERowMappedArchiveCodecError, FSERowMappedArchiveFileError,
-    FSERowMappedIndexArchiveError, FSERowMappedIndexArchiveSnapshot,
-    load_row_mapped_index_archive_file, read_row_mapped_archive_snapshot_file,
-    save_row_mapped_index_archive_file, write_row_mapped_archive_snapshot_file,
+    FSEArchiveFileOperation, FSEArchivePayloadHeaderError, FSEArchivePayloadKind,
+    FSERowMappedArchiveFileError, FSERowMappedIndexArchiveError, FSERowMappedIndexArchiveSnapshot,
+    encode_archive_payload, load_row_mapped_index_archive_file,
+    read_row_mapped_archive_snapshot_file, save_row_mapped_index_archive_file,
+    write_row_mapped_archive_snapshot_file,
 };
 
 fn row_mapped_fixture() -> crate::build::RowMappedFSEIndex {
@@ -127,7 +128,7 @@ fn row_mapped_index_archive_file_reports_missing_file_on_load() {
 }
 
 #[test]
-fn row_mapped_archive_file_reports_codec_errors_for_invalid_payload() {
+fn row_mapped_archive_file_reports_payload_header_errors_for_invalid_payload() {
     let path = temp_archive_path("invalid-payload", ".fse");
 
     fs::write(&path, [0_u8; 4]).unwrap();
@@ -135,10 +136,30 @@ fn row_mapped_archive_file_reports_codec_errors_for_invalid_payload() {
 
     assert!(matches!(
         error,
-        FSERowMappedArchiveFileError::Codec(
-            FSERowMappedArchiveCodecError::UnexpectedEndOfArchive { .. }
+        FSERowMappedArchiveFileError::Payload(
+            FSEArchivePayloadHeaderError::UnexpectedEndOfArchive { .. }
         )
     ));
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn row_mapped_archive_file_rejects_index_payload_kind() {
+    let path = temp_archive_path("wrong-payload-kind", ".fse");
+    let bytes = encode_archive_payload(FSEArchivePayloadKind::Index, &[]);
+
+    fs::write(&path, bytes).unwrap();
+
+    assert_eq!(
+        read_row_mapped_archive_snapshot_file(&path),
+        Err(FSERowMappedArchiveFileError::Payload(
+            FSEArchivePayloadHeaderError::UnexpectedPayloadKind {
+                expected: FSEArchivePayloadKind::RowMappedIndex,
+                actual: FSEArchivePayloadKind::Index
+            }
+        ))
+    );
 
     let _ = fs::remove_file(path);
 }

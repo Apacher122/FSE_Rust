@@ -6,7 +6,10 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::persistence::{FSE_ARCHIVE_FILE_EXTENSION, FSEArchiveFileOperation};
+use crate::persistence::{
+    FSE_ARCHIVE_FILE_EXTENSION, FSEArchiveFileOperation, FSEArchivePayloadHeaderError,
+    FSEArchivePayloadKind, decode_archive_payload, encode_archive_payload,
+};
 use crate::query::TypedQueryIndex;
 
 use super::{
@@ -26,6 +29,9 @@ pub enum FSETypedQueryIndexArchiveFileError {
 
     /// Archive byte encoding or decoding failed.
     Codec(FSETypedQueryIndexArchiveCodecError),
+
+    /// Archive payload metadata validation failed.
+    Payload(FSEArchivePayloadHeaderError),
 
     /// A filesystem operation failed.
     Io {
@@ -47,6 +53,7 @@ impl fmt::Display for FSETypedQueryIndexArchiveFileError {
                 formatter.write_str("typed query index archive path must use the .fse extension")
             }
             Self::Codec(error) => error.fmt(formatter),
+            Self::Payload(error) => error.fmt(formatter),
             Self::Io { operation, .. } => match operation {
                 FSEArchiveFileOperation::Read => {
                     formatter.write_str("failed to read typed query index archive file")
@@ -63,6 +70,7 @@ impl Error for FSETypedQueryIndexArchiveFileError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Codec(error) => Some(error),
+            Self::Payload(error) => Some(error),
             Self::InvalidFileExtension { .. } | Self::Io { .. } => None,
         }
     }
@@ -71,6 +79,12 @@ impl Error for FSETypedQueryIndexArchiveFileError {
 impl From<FSETypedQueryIndexArchiveCodecError> for FSETypedQueryIndexArchiveFileError {
     fn from(error: FSETypedQueryIndexArchiveCodecError) -> Self {
         Self::Codec(error)
+    }
+}
+
+impl From<FSEArchivePayloadHeaderError> for FSETypedQueryIndexArchiveFileError {
+    fn from(error: FSEArchivePayloadHeaderError) -> Self {
+        Self::Payload(error)
     }
 }
 
@@ -125,7 +139,8 @@ where
     let path = path.as_ref();
     validate_archive_file_extension(path)?;
 
-    let bytes = encode_typed_query_index_archive_snapshot(snapshot)?;
+    let payload = encode_typed_query_index_archive_snapshot(snapshot)?;
+    let bytes = encode_archive_payload(FSEArchivePayloadKind::TypedQueryIndex, &payload);
     fs::write(path, bytes).map_err(|error| FSETypedQueryIndexArchiveFileError::Io {
         operation: FSEArchiveFileOperation::Write,
         path: path.to_path_buf(),
@@ -149,7 +164,9 @@ where
         kind: error.kind(),
     })?;
 
-    decode_typed_query_index_archive_snapshot(&bytes)
+    let payload = decode_archive_payload(FSEArchivePayloadKind::TypedQueryIndex, &bytes)?;
+
+    decode_typed_query_index_archive_snapshot(&payload)
         .map_err(FSETypedQueryIndexArchiveFileError::Codec)
 }
 
