@@ -3,6 +3,7 @@
 mod codec;
 mod file;
 mod index_codec;
+mod index_file;
 mod index_snapshot;
 mod snapshot;
 
@@ -18,6 +19,11 @@ pub use file::{
 pub use index_codec::{
     FSETypedQueryIndexArchiveCodecError, decode_typed_query_index_archive_snapshot,
     encode_typed_query_index_archive_snapshot,
+};
+pub use index_file::{
+    FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveFileError,
+    load_typed_query_index_archive_file, read_typed_query_index_archive_snapshot_file,
+    save_typed_query_index_archive_file, write_typed_query_index_archive_snapshot_file,
 };
 pub use index_snapshot::{
     FSETypedQueryIndexArchiveSnapshot, FSETypedQueryIndexArchiveSnapshotError,
