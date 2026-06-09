@@ -15,4 +15,6 @@ mod retained_execution_phase;
 mod retained_leaf;
 mod stage_timing;
 mod target;
+mod typed_archive_load;
 mod typed_comparison;
+mod typed_workload;

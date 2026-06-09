@@ -279,7 +279,9 @@ fn benchmark_application_renderer_uses_detailed_output_for_debug_report() {
     assert!(output.contains("Workload exact existence timing summary"));
     assert!(output.contains("Target workload exact existence timing"));
     assert!(output.contains("Target workload typed indexed comparison"));
+    assert!(output.contains("Target workload typed archive load timing"));
     assert!(output.contains("Workload typed indexed comparison summary"));
+    assert!(output.contains("Workload typed archive load timing summary"));
 }
 
 #[test]
@@ -394,7 +396,17 @@ fn benchmark_application_runs_debug_report_configuration() {
     assert!(
         output
             .terminal_output
+            .contains("Target workload typed archive load timing")
+    );
+    assert!(
+        output
+            .terminal_output
             .contains("Workload typed indexed comparison summary")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("Workload typed archive load timing summary")
     );
     assert!(
         output

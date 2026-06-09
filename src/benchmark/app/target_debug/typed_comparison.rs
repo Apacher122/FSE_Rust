@@ -6,27 +6,12 @@ use super::formatting::{format_percent_ratio, format_speedup_ratio};
 use super::target::{
     append_debug_duration_line, append_debug_line, append_target_workload_debug_section,
 };
+use super::typed_workload::{TypedBenchmarkContext, typed_x_range_plan};
 use crate::benchmark::reports::output::format_duration_ascii;
 use crate::benchmark::reports::{
     TypedQueryComparisonReport, compare_typed_query_execution_repeated,
 };
 use crate::benchmark::workloads::QueryWorkloadCase;
-use crate::build::FSEBuilder;
-use crate::data::{
-    FSEDimensionMapping, FSEField, FSEFieldType, FSERecord, FSERecordBatch, FSESchema,
-    FSESchemaDimensionMapping, FSEValue, RowId,
-};
-use crate::encoding::{ComposedRecordEncoder, FloatEncoder};
-use crate::query::{FSEPredicate, FSEPredicateField, TypedQueryIndex, TypedQueryPlan};
-
-const X_FIELD_NAME: &str = "x";
-const Y_FIELD_NAME: &str = "y";
-
-struct TypedBenchmarkContext {
-    schema: FSESchema,
-    mapping: FSESchemaDimensionMapping,
-    query_index: TypedQueryIndex,
-}
 
 impl BenchmarkApplicationRenderer {
     pub(crate) fn append_target_workload_typed_indexed_comparison_debug_output(
@@ -137,88 +122,11 @@ fn typed_comparison_report(
     let plan = typed_x_range_plan(typed_context, workload);
 
     compare_typed_query_execution_repeated(
-        &typed_context.query_index,
+        typed_context.query_index(),
         &plan,
         &context.timing_config,
     )
     .expect("typed benchmark comparison should execute")
-}
-
-fn typed_x_range_plan(
-    typed_context: &TypedBenchmarkContext,
-    workload: &QueryWorkloadCase,
-) -> TypedQueryPlan {
-    let predicate = FSEPredicate::range(
-        FSEPredicateField::name(X_FIELD_NAME),
-        FSEValue::Float(workload.query.min[0] as f64),
-        FSEValue::Float(workload.query.max[0] as f64),
-    );
-
-    TypedQueryPlan::numeric(&predicate, &typed_context.schema, &typed_context.mapping)
-        .expect("typed x-range predicate should produce a plan")
-}
-
-impl TypedBenchmarkContext {
-    fn from_benchmark_context(context: &BenchmarkApplicationContext) -> Self {
-        let schema = typed_benchmark_schema();
-        let mapping = typed_benchmark_mapping(&schema);
-        let batch = typed_benchmark_batch(&schema, context);
-        let encoder = typed_benchmark_encoder(&schema);
-        let builder = FSEBuilder::new(context.suite_config.build_config());
-        let query_index = TypedQueryIndex::try_build(batch, &encoder, &builder)
-            .expect("typed benchmark records should build a typed query index");
-
-        Self {
-            schema,
-            mapping,
-            query_index,
-        }
-    }
-}
-
-fn typed_benchmark_schema() -> FSESchema {
-    FSESchema::new(vec![
-        FSEField::new(X_FIELD_NAME, FSEFieldType::Float, false),
-        FSEField::new(Y_FIELD_NAME, FSEFieldType::Float, false),
-    ])
-}
-
-fn typed_benchmark_mapping(schema: &FSESchema) -> FSESchemaDimensionMapping {
-    FSESchemaDimensionMapping::new(
-        schema,
-        vec![
-            FSEDimensionMapping::new(0, 0),
-            FSEDimensionMapping::new(1, 1),
-        ],
-    )
-}
-
-fn typed_benchmark_encoder(schema: &FSESchema) -> ComposedRecordEncoder {
-    ComposedRecordEncoder::new(schema, vec![Box::new(FloatEncoder), Box::new(FloatEncoder)])
-}
-
-fn typed_benchmark_batch(
-    schema: &FSESchema,
-    context: &BenchmarkApplicationContext,
-) -> FSERecordBatch {
-    let row_ids: Vec<RowId> = (0..context.points.len())
-        .map(|index| RowId::new(index as u64))
-        .collect();
-    let records: Vec<FSERecord> = context
-        .points
-        .iter()
-        .map(|point| {
-            FSERecord::new(
-                vec![
-                    FSEValue::Float(point.values[0] as f64),
-                    FSEValue::Float(point.values[1] as f64),
-                ],
-                schema,
-            )
-        })
-        .collect();
-
-    FSERecordBatch::new(schema.clone(), row_ids, records)
 }
 
 fn format_scalar_percent(value: crate::math::Scalar) -> String {
