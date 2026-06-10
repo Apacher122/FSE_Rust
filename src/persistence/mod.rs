@@ -11,7 +11,10 @@ mod payload;
 mod row_mapped;
 mod typed;
 
-pub use append::{FSEArchiveAppendOperationMetadata, FSEArchiveAppendOperationMetadataError};
+pub use append::{
+    FSEArchiveAppendOperationMetadata, FSEArchiveAppendOperationMetadataError,
+    FSEArchiveRebuildPlanMetadata, FSEArchiveRebuildPlanMetadataError, FSEArchiveRebuildReason,
+};
 pub use archive::{
     FSEArchiveCodecError, FSEArchiveFileError, FSEArchiveFileOperation, FSEArchiveSnapshotError,
     FSEIndexArchiveError, FSEIndexArchiveSnapshot, FSEPartitionNodeArchiveRecord,

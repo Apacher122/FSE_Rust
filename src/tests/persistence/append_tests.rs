@@ -1,6 +1,7 @@
 use crate::persistence::{
     FSEArchiveAppendOperationMetadata, FSEArchiveAppendOperationMetadataError, FSEArchiveManifest,
-    FSEArchiveManifestError, FSEArchivePayloadKind, FSEArchiveSections,
+    FSEArchiveManifestError, FSEArchivePayloadKind, FSEArchiveRebuildPlanMetadata,
+    FSEArchiveRebuildPlanMetadataError, FSEArchiveRebuildReason, FSEArchiveSections,
 };
 
 #[test]
@@ -107,6 +108,115 @@ fn append_operation_metadata_reports_result_count_mismatch() {
                 appended_record_count: 5,
                 resulting_record_count: 66,
                 expected_resulting_record_count: 65
+            }
+        )
+    );
+}
+
+#[test]
+fn archive_rebuild_plan_metadata_records_append_rebuild_intent() {
+    let append =
+        FSEArchiveAppendOperationMetadata::try_new(FSEArchivePayloadKind::TypedQueryIndex, 60, 5)
+            .unwrap();
+
+    let plan = FSEArchiveRebuildPlanMetadata::for_append(append).unwrap();
+
+    assert_eq!(plan.reason, FSEArchiveRebuildReason::Append);
+    assert_eq!(plan.payload_kind, FSEArchivePayloadKind::TypedQueryIndex);
+    assert_eq!(plan.append, append);
+    assert!(plan.requires_full_archive_rebuild);
+    assert_eq!(plan.resulting_record_count, 65);
+    assert_eq!(plan.validate(), Ok(()));
+}
+
+#[test]
+fn archive_rebuild_plan_metadata_reports_invalid_append_metadata() {
+    let append = FSEArchiveAppendOperationMetadata {
+        payload_kind: FSEArchivePayloadKind::TypedQueryIndex,
+        base_record_count: 60,
+        appended_record_count: 0,
+        resulting_record_count: 60,
+    };
+    let plan = FSEArchiveRebuildPlanMetadata {
+        reason: FSEArchiveRebuildReason::Append,
+        payload_kind: FSEArchivePayloadKind::TypedQueryIndex,
+        append,
+        requires_full_archive_rebuild: true,
+        resulting_record_count: 60,
+    };
+
+    assert_eq!(
+        plan.validate(),
+        Err(FSEArchiveRebuildPlanMetadataError::Append(
+            FSEArchiveAppendOperationMetadataError::ZeroAppendedRecordCount
+        ))
+    );
+}
+
+#[test]
+fn archive_rebuild_plan_metadata_reports_payload_kind_mismatch() {
+    let append =
+        FSEArchiveAppendOperationMetadata::try_new(FSEArchivePayloadKind::TypedQueryIndex, 60, 5)
+            .unwrap();
+    let plan = FSEArchiveRebuildPlanMetadata {
+        reason: FSEArchiveRebuildReason::Append,
+        payload_kind: FSEArchivePayloadKind::TypedRecordBatch,
+        append,
+        requires_full_archive_rebuild: true,
+        resulting_record_count: append.resulting_record_count,
+    };
+
+    assert_eq!(
+        plan.validate(),
+        Err(FSEArchiveRebuildPlanMetadataError::PayloadKindMismatch {
+            plan_payload_kind: FSEArchivePayloadKind::TypedRecordBatch,
+            append_payload_kind: FSEArchivePayloadKind::TypedQueryIndex
+        })
+    );
+}
+
+#[test]
+fn archive_rebuild_plan_metadata_reports_resulting_record_count_mismatch() {
+    let append =
+        FSEArchiveAppendOperationMetadata::try_new(FSEArchivePayloadKind::TypedQueryIndex, 60, 5)
+            .unwrap();
+    let plan = FSEArchiveRebuildPlanMetadata {
+        reason: FSEArchiveRebuildReason::Append,
+        payload_kind: FSEArchivePayloadKind::TypedQueryIndex,
+        append,
+        requires_full_archive_rebuild: true,
+        resulting_record_count: 66,
+    };
+
+    assert_eq!(
+        plan.validate(),
+        Err(
+            FSEArchiveRebuildPlanMetadataError::ResultingRecordCountMismatch {
+                plan_resulting_record_count: 66,
+                append_resulting_record_count: 65
+            }
+        )
+    );
+}
+
+#[test]
+fn archive_rebuild_plan_metadata_reports_missing_full_rebuild_requirement() {
+    let append =
+        FSEArchiveAppendOperationMetadata::try_new(FSEArchivePayloadKind::TypedQueryIndex, 60, 5)
+            .unwrap();
+    let plan = FSEArchiveRebuildPlanMetadata {
+        reason: FSEArchiveRebuildReason::Append,
+        payload_kind: FSEArchivePayloadKind::TypedQueryIndex,
+        append,
+        requires_full_archive_rebuild: false,
+        resulting_record_count: append.resulting_record_count,
+    };
+
+    assert_eq!(
+        plan.validate(),
+        Err(
+            FSEArchiveRebuildPlanMetadataError::FullArchiveRebuildRequired {
+                reason: FSEArchiveRebuildReason::Append
             }
         )
     );
