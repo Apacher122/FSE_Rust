@@ -3,6 +3,8 @@
 //! This module connects CLI configuration, index construction, benchmark
 //! execution, terminal rendering, aggregate summaries, and optional CSV output.
 
+use std::fs;
+
 pub mod context;
 pub mod error;
 pub mod output;
@@ -18,6 +20,9 @@ pub use result_bundle::BenchmarkApplicationResultBundle;
 
 use crate::benchmark::cli::BenchmarkCliConfig;
 use crate::benchmark::reports::write_benchmark_csv_outputs;
+use crate::persistence::{
+    FSEArchivePayloadKind, FSEArchivePayloadMetadata, inspect_archive_payload,
+};
 
 /// Runs a benchmark from parsed CLI configuration.
 ///
@@ -70,6 +75,10 @@ fn write_application_file_outputs(
         )?;
 
         status_lines.push(format!("Typed query index archive written: {path}"));
+        let metadata = inspect_typed_query_index_archive_payload(path)?;
+        status_lines.push(format_typed_query_index_archive_payload_status(
+            path, metadata,
+        ));
         status_lines.push(format!(
             "Typed query index archive validated: {path} ({} workloads, {} matched records)",
             validation.workloads_validated, validation.matched_records
@@ -77,6 +86,42 @@ fn write_application_file_outputs(
     }
 
     Ok(status_lines)
+}
+
+fn inspect_typed_query_index_archive_payload(
+    path: &str,
+) -> Result<FSEArchivePayloadMetadata, BenchmarkApplicationError> {
+    let bytes = fs::read(path).map_err(|error| {
+        BenchmarkApplicationError::TypedQueryIndexArchiveMetadataRead {
+            path: path.to_string(),
+            kind: error.kind(),
+        }
+    })?;
+
+    inspect_archive_payload(&bytes)
+        .map_err(BenchmarkApplicationError::TypedQueryIndexArchivePayload)
+}
+
+fn format_typed_query_index_archive_payload_status(
+    path: &str,
+    metadata: FSEArchivePayloadMetadata,
+) -> String {
+    format!(
+        "Typed query index archive payload: {path} (kind={}, header_version={}, payload_length={}, payload_checksum={:#018x})",
+        archive_payload_kind_name(metadata.kind),
+        metadata.header_version,
+        metadata.payload_length,
+        metadata.payload_checksum
+    )
+}
+
+fn archive_payload_kind_name(kind: FSEArchivePayloadKind) -> &'static str {
+    match kind {
+        FSEArchivePayloadKind::Index => "index",
+        FSEArchivePayloadKind::RowMappedIndex => "row_mapped_index",
+        FSEArchivePayloadKind::TypedRecordBatch => "typed_record_batch",
+        FSEArchivePayloadKind::TypedQueryIndex => "typed_query_index",
+    }
 }
 
 fn write_application_csv_outputs(

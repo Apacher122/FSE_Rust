@@ -9,7 +9,7 @@ use crate::benchmark::{
     BenchmarkTerminalOutputMode, render_benchmark_application_terminal_output,
     run_benchmark_application,
 };
-use crate::persistence::FSE_ARCHIVE_FILE_EXTENSION;
+use crate::persistence::{FSE_ARCHIVE_FILE_EXTENSION, inspect_archive_payload};
 use crate::query::QueryExecutionMode;
 
 #[test]
@@ -430,16 +430,22 @@ fn benchmark_application_writes_typed_query_index_archive_artifact() {
 
     assert!(path.exists());
     assert!(fs::metadata(&path).unwrap().len() > 0);
+    let metadata = inspect_archive_payload(&fs::read(&path).unwrap()).unwrap();
+    let path_display = path.to_string_lossy();
     assert_eq!(
         output.status_lines,
         vec![
+            format!("Typed query index archive written: {}", path_display),
             format!(
-                "Typed query index archive written: {}",
-                path.to_string_lossy()
+                "Typed query index archive payload: {} (kind=typed_query_index, header_version={}, payload_length={}, payload_checksum={:#018x})",
+                path_display,
+                metadata.header_version,
+                metadata.payload_length,
+                metadata.payload_checksum
             ),
             format!(
                 "Typed query index archive validated: {} (6 workloads, 83 matched records)",
-                path.to_string_lossy()
+                path_display
             )
         ]
     );
