@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::super::context::BenchmarkApplicationContext;
 use super::super::renderer::BenchmarkApplicationRenderer;
+use super::TypedQueryIndexArchiveArtifactValidation;
 use super::formatting::format_speedup_ratio;
 use super::target::{
     append_debug_duration_line, append_debug_line, append_target_workload_debug_section,
@@ -13,11 +14,14 @@ use super::target::{
 use super::typed_workload::{TypedBenchmarkContext, typed_x_range_plan};
 use crate::benchmark::reports::output::format_duration_ascii;
 use crate::benchmark::reports::{
-    TypedArchiveLoadTimingReport, compare_typed_archive_load_execution_repeated,
+    TypedArchiveLoadTimingError, TypedArchiveLoadTimingReport,
+    compare_typed_archive_load_execution_repeated,
 };
 use crate::benchmark::workloads::QueryWorkloadCase;
+use crate::data::RowId;
 use crate::persistence::{
-    FSE_ARCHIVE_FILE_EXTENSION, FSETypedQueryIndexArchiveError, save_typed_query_index_archive_file,
+    FSE_ARCHIVE_FILE_EXTENSION, load_typed_query_index_archive_file,
+    save_typed_query_index_archive_file,
 };
 
 static ARCHIVE_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -75,16 +79,40 @@ impl BenchmarkApplicationRenderer {
     }
 }
 
-pub(super) fn write_typed_query_index_archive_artifact<P>(
+pub(super) fn write_validated_typed_query_index_archive_artifact<P>(
     context: &BenchmarkApplicationContext,
     path: P,
-) -> Result<(), FSETypedQueryIndexArchiveError>
+) -> Result<TypedQueryIndexArchiveArtifactValidation, TypedArchiveLoadTimingError>
 where
     P: AsRef<Path>,
 {
     let typed_context = TypedBenchmarkContext::from_benchmark_context(context);
+    let path = path.as_ref();
 
-    save_typed_query_index_archive_file(path, typed_context.query_index())
+    save_typed_query_index_archive_file(path, typed_context.query_index())?;
+
+    let loaded_index = load_typed_query_index_archive_file(path)?;
+    let mut matched_records = 0;
+
+    for workload in &context.workloads {
+        let plan = typed_x_range_plan(&typed_context, workload);
+        let expected = typed_context.query_index().query_row_ids(&plan)?;
+        let actual = loaded_index.query_row_ids(&plan)?;
+
+        matched_records += expected.len();
+
+        validate_same_row_id_set(
+            "in-memory typed benchmark index",
+            &expected,
+            "emitted typed query index archive",
+            &actual,
+        )?;
+    }
+
+    Ok(TypedQueryIndexArchiveArtifactValidation {
+        workloads_validated: context.workloads.len(),
+        matched_records,
+    })
 }
 
 fn append_target_typed_archive_load_report(
@@ -167,4 +195,28 @@ fn sanitize_workload_name(name: &str) -> String {
             }
         })
         .collect()
+}
+
+fn validate_same_row_id_set(
+    expected_source: &'static str,
+    expected: &[RowId],
+    actual_source: &'static str,
+    actual: &[RowId],
+) -> Result<(), TypedArchiveLoadTimingError> {
+    let mut expected = expected.to_vec();
+    let mut actual = actual.to_vec();
+
+    expected.sort_unstable();
+    actual.sort_unstable();
+
+    if expected == actual {
+        return Ok(());
+    }
+
+    Err(TypedArchiveLoadTimingError::ResultMismatch {
+        expected_source,
+        actual_source,
+        expected,
+        actual,
+    })
 }

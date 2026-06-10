@@ -3,9 +3,8 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::benchmark::reports::BenchmarkCsvWriteError;
+use crate::benchmark::reports::{BenchmarkCsvWriteError, TypedArchiveLoadTimingError};
 use crate::build::BuildValidationError;
-use crate::persistence::FSETypedQueryIndexArchiveError;
 
 /// Error returned by benchmark application orchestration.
 ///
@@ -21,8 +20,8 @@ pub enum BenchmarkApplicationError {
     /// CSV output failed.
     CsvWrite(BenchmarkCsvWriteError),
 
-    /// Typed query index archive output failed.
-    TypedQueryIndexArchiveWrite(FSETypedQueryIndexArchiveError),
+    /// Typed query index archive validation failed.
+    TypedQueryIndexArchiveValidation(TypedArchiveLoadTimingError),
 }
 
 impl fmt::Display for BenchmarkApplicationError {
@@ -30,7 +29,7 @@ impl fmt::Display for BenchmarkApplicationError {
         match self {
             BenchmarkApplicationError::BuildValidation(error) => write!(formatter, "{}", error),
             BenchmarkApplicationError::CsvWrite(error) => write!(formatter, "{}", error),
-            BenchmarkApplicationError::TypedQueryIndexArchiveWrite(error) => {
+            BenchmarkApplicationError::TypedQueryIndexArchiveValidation(error) => {
                 write!(formatter, "{}", error)
             }
         }
@@ -42,7 +41,7 @@ impl Error for BenchmarkApplicationError {
         match self {
             BenchmarkApplicationError::BuildValidation(error) => Some(error),
             BenchmarkApplicationError::CsvWrite(error) => Some(error),
-            BenchmarkApplicationError::TypedQueryIndexArchiveWrite(error) => Some(error),
+            BenchmarkApplicationError::TypedQueryIndexArchiveValidation(error) => Some(error),
         }
     }
 }
@@ -59,8 +58,8 @@ impl From<BenchmarkCsvWriteError> for BenchmarkApplicationError {
     }
 }
 
-impl From<FSETypedQueryIndexArchiveError> for BenchmarkApplicationError {
-    fn from(error: FSETypedQueryIndexArchiveError) -> Self {
-        Self::TypedQueryIndexArchiveWrite(error)
+impl From<TypedArchiveLoadTimingError> for BenchmarkApplicationError {
+    fn from(error: TypedArchiveLoadTimingError) -> Self {
+        Self::TypedQueryIndexArchiveValidation(error)
     }
 }

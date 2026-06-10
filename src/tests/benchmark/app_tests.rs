@@ -432,10 +432,16 @@ fn benchmark_application_writes_typed_query_index_archive_artifact() {
     assert!(fs::metadata(&path).unwrap().len() > 0);
     assert_eq!(
         output.status_lines,
-        vec![format!(
-            "Typed query index archive written: {}",
-            path.to_string_lossy()
-        )]
+        vec![
+            format!(
+                "Typed query index archive written: {}",
+                path.to_string_lossy()
+            ),
+            format!(
+                "Typed query index archive validated: {} (6 workloads, 83 matched records)",
+                path.to_string_lossy()
+            )
+        ]
     );
 
     fs::remove_file(path).expect("typed query index archive artifact should be removable");

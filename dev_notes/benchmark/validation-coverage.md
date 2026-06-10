@@ -176,7 +176,16 @@ The typed query index archive artifact must exist and be non-empty:
 typed-query-index-archive-<label>.fse
 ```
 
-This file is the persisted typed query index produced by the benchmark run. The review validator does not inspect the binary archive contents beyond the required file check.
+The benchmark output must also include:
+
+```text
+Typed query index archive validated:
+```
+
+This status line is emitted after the benchmark reloads the written archive and
+compares loaded typed query execution against the in-memory typed query index
+for the benchmark workloads. The review validator does not parse the binary
+archive directly.
 
 ## Target workload validation
 

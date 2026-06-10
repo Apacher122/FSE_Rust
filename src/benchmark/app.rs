@@ -64,8 +64,16 @@ fn write_application_file_outputs(
     let mut status_lines = write_application_csv_outputs(context, result_bundle)?;
 
     if let Some(path) = &context.typed_query_index_archive_path {
-        target_debug::write_typed_query_index_archive_artifact(context, path.as_str())?;
+        let validation = target_debug::write_validated_typed_query_index_archive_artifact(
+            context,
+            path.as_str(),
+        )?;
+
         status_lines.push(format!("Typed query index archive written: {path}"));
+        status_lines.push(format!(
+            "Typed query index archive validated: {path} ({} workloads, {} matched records)",
+            validation.workloads_validated, validation.matched_records
+        ));
     }
 
     Ok(status_lines)

@@ -931,6 +931,14 @@ The notes file records row count, agreement failures, total matched records, and
 
 The `.fse` artifact is a persisted typed query index archive emitted by the benchmark run. It exists so the produced archive can be inspected as a benchmark artifact instead of only existing as a temporary timing file.
 
+The benchmark output includes a validation status line after the emitted archive is reloaded and checked against in-memory typed query execution:
+
+```text
+Typed query index archive validated:
+```
+
+The review validator requires this status line in addition to requiring the archive file to exist and be non-empty.
+
 ## Target workload artifacts
 
 Target workload review artifacts are generated from repeated trial workload CSVs.

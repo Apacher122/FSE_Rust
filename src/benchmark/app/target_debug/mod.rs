@@ -7,7 +7,7 @@
 use std::path::Path;
 
 use super::context::BenchmarkApplicationContext;
-use crate::persistence::FSETypedQueryIndexArchiveError;
+use crate::benchmark::reports::TypedArchiveLoadTimingError;
 
 mod candidates;
 mod existence_timing;
@@ -24,12 +24,18 @@ mod typed_archive_load;
 mod typed_comparison;
 mod typed_workload;
 
-pub(super) fn write_typed_query_index_archive_artifact<P>(
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct TypedQueryIndexArchiveArtifactValidation {
+    pub(super) workloads_validated: usize,
+    pub(super) matched_records: usize,
+}
+
+pub(super) fn write_validated_typed_query_index_archive_artifact<P>(
     context: &BenchmarkApplicationContext,
     path: P,
-) -> Result<(), FSETypedQueryIndexArchiveError>
+) -> Result<TypedQueryIndexArchiveArtifactValidation, TypedArchiveLoadTimingError>
 where
     P: AsRef<Path>,
 {
-    typed_archive_load::write_typed_query_index_archive_artifact(context, path)
+    typed_archive_load::write_validated_typed_query_index_archive_artifact(context, path)
 }
