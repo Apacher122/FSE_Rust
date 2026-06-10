@@ -23,7 +23,8 @@ pub use manifest::{
 };
 pub use payload::{
     FSE_ARCHIVE_PAYLOAD_HEADER_VERSION, FSE_ARCHIVE_PAYLOAD_MAGIC, FSEArchivePayloadHeaderError,
-    FSEArchivePayloadKind, decode_archive_payload, encode_archive_payload,
+    FSEArchivePayloadKind, FSEArchivePayloadMetadata, decode_archive_payload,
+    encode_archive_payload, inspect_archive_payload,
 };
 pub use row_mapped::{
     FSELeafRowIdArchiveRecord, FSERowMappedArchiveCodecError, FSERowMappedArchiveFileError,

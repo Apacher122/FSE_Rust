@@ -50,6 +50,22 @@ impl FSEArchivePayloadKind {
     }
 }
 
+/// Header metadata read from an `.fse` archive payload.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FSEArchivePayloadMetadata {
+    /// Payload header version.
+    pub header_version: u32,
+
+    /// Logical payload kind recorded in the header.
+    pub kind: FSEArchivePayloadKind,
+
+    /// Payload byte length recorded in the header.
+    pub payload_length: u64,
+
+    /// Payload checksum recorded in the header.
+    pub payload_checksum: u64,
+}
+
 /// Error returned when an `.fse` archive payload header is invalid.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FSEArchivePayloadHeaderError {
@@ -159,11 +175,35 @@ pub fn encode_archive_payload(kind: FSEArchivePayloadKind, payload: &[u8]) -> Ve
     bytes
 }
 
+/// Reads and validates payload metadata from archive bytes.
+pub fn inspect_archive_payload(
+    bytes: &[u8],
+) -> Result<FSEArchivePayloadMetadata, FSEArchivePayloadHeaderError> {
+    let (metadata, _) = read_archive_payload(bytes)?;
+
+    Ok(metadata)
+}
+
 /// Decodes an archive payload and verifies its file-level payload kind.
 pub fn decode_archive_payload(
     expected_kind: FSEArchivePayloadKind,
     bytes: &[u8],
 ) -> Result<Vec<u8>, FSEArchivePayloadHeaderError> {
+    let (metadata, payload) = read_archive_payload(bytes)?;
+
+    if metadata.kind != expected_kind {
+        return Err(FSEArchivePayloadHeaderError::UnexpectedPayloadKind {
+            expected: expected_kind,
+            actual: metadata.kind,
+        });
+    }
+
+    Ok(payload.to_vec())
+}
+
+fn read_archive_payload(
+    bytes: &[u8],
+) -> Result<(FSEArchivePayloadMetadata, &[u8]), FSEArchivePayloadHeaderError> {
     let mut reader = ArchivePayloadHeaderReader::new(bytes);
     let magic = reader.read_magic("payload.magic")?;
 
@@ -182,13 +222,6 @@ pub fn decode_archive_payload(
     }
 
     let actual_kind = FSEArchivePayloadKind::from_tag(reader.read_u8("payload.kind")?)?;
-    if actual_kind != expected_kind {
-        return Err(FSEArchivePayloadHeaderError::UnexpectedPayloadKind {
-            expected: expected_kind,
-            actual: actual_kind,
-        });
-    }
-
     let expected_length = reader.read_u64("payload.length")?;
     let expected_checksum = reader.read_u64("payload.checksum")?;
     let payload = reader.remaining_bytes();
@@ -208,7 +241,15 @@ pub fn decode_archive_payload(
         });
     }
 
-    Ok(payload.to_vec())
+    Ok((
+        FSEArchivePayloadMetadata {
+            header_version: version,
+            kind: actual_kind,
+            payload_length: expected_length,
+            payload_checksum: expected_checksum,
+        },
+        payload,
+    ))
 }
 
 fn archive_payload_checksum(payload: &[u8]) -> u64 {
