@@ -38,6 +38,9 @@ pub struct BenchmarkApplicationContext {
     /// CSV output paths selected for this benchmark run.
     pub csv_output: BenchmarkCsvOutputConfig,
 
+    /// Optional path for writing a typed query index archive artifact.
+    pub typed_query_index_archive_path: Option<String>,
+
     /// Terminal output mode selected for this benchmark run.
     pub terminal_output_mode: BenchmarkTerminalOutputMode,
 
@@ -75,6 +78,7 @@ impl BenchmarkApplicationContext {
             baseline_set,
             baseline_kinds,
             csv_output,
+            typed_query_index_archive_path,
             terminal_output_mode,
         } = cli_config;
 
@@ -91,6 +95,7 @@ impl BenchmarkApplicationContext {
             baseline_set,
             baseline_kinds,
             csv_output,
+            typed_query_index_archive_path,
             terminal_output_mode,
             points,
             workloads,
@@ -115,6 +120,7 @@ impl BenchmarkApplicationContext {
             baseline_set,
             baseline_kinds,
             csv_output,
+            typed_query_index_archive_path,
             terminal_output_mode,
         } = cli_config;
 
@@ -131,6 +137,7 @@ impl BenchmarkApplicationContext {
             baseline_set,
             baseline_kinds,
             csv_output,
+            typed_query_index_archive_path,
             terminal_output_mode,
             points,
             workloads,

@@ -1,7 +1,7 @@
 //! Typed archive load diagnostics.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::super::context::BenchmarkApplicationContext;
@@ -16,7 +16,9 @@ use crate::benchmark::reports::{
     TypedArchiveLoadTimingReport, compare_typed_archive_load_execution_repeated,
 };
 use crate::benchmark::workloads::QueryWorkloadCase;
-use crate::persistence::FSE_ARCHIVE_FILE_EXTENSION;
+use crate::persistence::{
+    FSE_ARCHIVE_FILE_EXTENSION, FSETypedQueryIndexArchiveError, save_typed_query_index_archive_file,
+};
 
 static ARCHIVE_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -71,6 +73,18 @@ impl BenchmarkApplicationRenderer {
 
         output.push('\n');
     }
+}
+
+pub(super) fn write_typed_query_index_archive_artifact<P>(
+    context: &BenchmarkApplicationContext,
+    path: P,
+) -> Result<(), FSETypedQueryIndexArchiveError>
+where
+    P: AsRef<Path>,
+{
+    let typed_context = TypedBenchmarkContext::from_benchmark_context(context);
+
+    save_typed_query_index_archive_file(path, typed_context.query_index())
 }
 
 fn append_target_typed_archive_load_report(

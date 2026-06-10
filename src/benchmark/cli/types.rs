@@ -38,7 +38,8 @@ impl Default for BenchmarkTerminalOutputMode {
 ///
 /// `BenchmarkCliConfig` separates the benchmark suite configuration from the
 /// selected baseline list. This allows the CLI to support both single-baseline
-/// and multi-baseline benchmark runs.
+/// and multi-baseline benchmark runs while carrying optional artifact output
+/// paths selected by the caller.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BenchmarkCliConfig {
     /// Benchmark suite configuration.
@@ -52,6 +53,9 @@ pub struct BenchmarkCliConfig {
 
     /// CSV output paths selected for this benchmark run.
     pub csv_output: BenchmarkCsvOutputConfig,
+
+    /// Optional path for writing a typed query index archive artifact.
+    pub typed_query_index_archive_path: Option<String>,
 
     /// Terminal output mode selected for this benchmark run.
     pub terminal_output_mode: BenchmarkTerminalOutputMode,

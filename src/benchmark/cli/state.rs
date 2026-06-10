@@ -70,6 +70,7 @@ pub(super) struct BenchmarkCliParseState {
     suite_config: BenchmarkSuiteConfig,
     baseline_selection: BaselineSelectionState,
     csv_output: BenchmarkCsvOutputConfig,
+    typed_query_index_archive_path: Option<String>,
     terminal_output_mode: BenchmarkTerminalOutputMode,
     target_leaf_size_was_set: bool,
     max_leaf_size_was_set: bool,
@@ -82,6 +83,7 @@ impl Default for BenchmarkCliParseState {
             suite_config: BenchmarkSuiteConfig::default(),
             baseline_selection: BaselineSelectionState::default(),
             csv_output: BenchmarkCsvOutputConfig::default(),
+            typed_query_index_archive_path: None,
             terminal_output_mode: BenchmarkTerminalOutputMode::default(),
             target_leaf_size_was_set: false,
             max_leaf_size_was_set: false,
@@ -172,6 +174,10 @@ impl BenchmarkCliParseState {
         self.csv_output.set_low_selectivity_gap_path(value);
     }
 
+    pub(super) fn set_typed_query_index_archive_path(&mut self, value: String) {
+        self.typed_query_index_archive_path = Some(value);
+    }
+
     pub(super) fn enable_debug_report(&mut self) {
         self.terminal_output_mode = BenchmarkTerminalOutputMode::DebugReport;
     }
@@ -193,6 +199,7 @@ impl BenchmarkCliParseState {
             baseline_set,
             baseline_kinds,
             csv_output: self.csv_output,
+            typed_query_index_archive_path: self.typed_query_index_archive_path,
             terminal_output_mode: self.terminal_output_mode,
         })
     }

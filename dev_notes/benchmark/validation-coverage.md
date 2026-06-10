@@ -14,6 +14,7 @@ core benchmark CSVs
 count-only summary artifacts
 materialization summary artifacts
 typed archive load artifacts
+typed query index archive artifact
 low-gap trial artifacts
 target workload artifacts
 optional comparison artifacts
@@ -38,6 +39,7 @@ materialization-mode-summary-<label>.csv
 materialization-mode-summary-<label>.txt
 typed-archive-load-summary-<label>.csv
 typed-archive-load-summary-<label>.txt
+typed-query-index-archive-<label>.fse
 low-selectivity-gap-<label>.csv
 low-gap-regression-notes-<label>.txt
 low-gap-trial-details-<label>.csv
@@ -167,6 +169,14 @@ agreement = pass
 ```
 
 This check verifies that loaded `.fse` typed query index execution matches the in-memory typed query index execution for each reported workload.
+
+The typed query index archive artifact must exist and be non-empty:
+
+```text
+typed-query-index-archive-<label>.fse
+```
+
+This file is the persisted typed query index produced by the benchmark run. The review validator does not inspect the binary archive contents beyond the required file check.
 
 ## Target workload validation
 

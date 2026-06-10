@@ -1,3 +1,4 @@
+use std::fs;
 use std::io::{self, Write};
 
 use crate::benchmark::{
@@ -8,6 +9,7 @@ use crate::benchmark::{
     BenchmarkTerminalOutputMode, render_benchmark_application_terminal_output,
     run_benchmark_application,
 };
+use crate::persistence::FSE_ARCHIVE_FILE_EXTENSION;
 use crate::query::QueryExecutionMode;
 
 #[test]
@@ -36,7 +38,7 @@ fn benchmark_application_output_writer_writes_terminal_output() {
 }
 
 #[test]
-fn benchmark_application_output_writer_writes_csv_status_lines_after_terminal_output() {
+fn benchmark_application_output_writer_writes_status_lines_after_terminal_output() {
     let output = BenchmarkApplicationOutput::new(
         "benchmark output\n".to_string(),
         vec![
@@ -345,7 +347,7 @@ fn benchmark_application_runs_single_baseline_configuration() {
     assert!(output.terminal_output.contains("FSE Benchmark Summary"));
     assert!(output.terminal_output.contains("FSE execution: serial"));
     assert!(output.terminal_output.contains("flat_scan"));
-    assert!(output.csv_status_lines.is_empty());
+    assert!(output.status_lines.is_empty());
 }
 
 #[test]
@@ -358,7 +360,7 @@ fn benchmark_application_runs_all_exact_baselines_configuration() {
     assert!(output.terminal_output.contains("flat_scan"));
     assert!(output.terminal_output.contains("kd_tree"));
     assert!(output.terminal_output.contains("r_tree"));
-    assert!(output.csv_status_lines.is_empty());
+    assert!(output.status_lines.is_empty());
 }
 
 #[test]
@@ -413,7 +415,30 @@ fn benchmark_application_runs_debug_report_configuration() {
             .terminal_output
             .contains("all matched records agree: true")
     );
-    assert!(output.csv_status_lines.is_empty());
+    assert!(output.status_lines.is_empty());
+}
+
+#[test]
+fn benchmark_application_writes_typed_query_index_archive_artifact() {
+    let path = archive_path("benchmark_application_writes_typed_query_index_archive_artifact");
+    let _ = fs::remove_file(&path);
+    let mut config = single_baseline_cli_config();
+
+    config.typed_query_index_archive_path = Some(path.to_string_lossy().into_owned());
+
+    let output = run_benchmark_application(config).unwrap();
+
+    assert!(path.exists());
+    assert!(fs::metadata(&path).unwrap().len() > 0);
+    assert_eq!(
+        output.status_lines,
+        vec![format!(
+            "Typed query index archive written: {}",
+            path.to_string_lossy()
+        )]
+    );
+
+    fs::remove_file(path).expect("typed query index archive artifact should be removable");
 }
 
 struct AlwaysFailingWriter;
@@ -507,6 +532,7 @@ fn benchmark_cli_config(baseline_set: BenchmarkBaselineSet) -> BenchmarkCliConfi
         baseline_set,
         baseline_kinds: baseline_set.selected_kinds(),
         csv_output: BenchmarkCsvOutputConfig::default(),
+        typed_query_index_archive_path: None,
         terminal_output_mode: BenchmarkTerminalOutputMode::Summary,
     }
 }
@@ -522,4 +548,12 @@ fn small_fast_suite_config() -> BenchmarkSuiteConfig {
     config.max_depth = 8;
 
     config
+}
+
+fn archive_path(test_name: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!(
+        "fse-{test_name}-{}{}",
+        std::process::id(),
+        FSE_ARCHIVE_FILE_EXTENSION
+    ))
 }

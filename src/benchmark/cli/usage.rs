@@ -20,6 +20,7 @@ pub fn benchmark_usage() -> String {
         "  --csv <PATH>",
         "  --csv-workloads <PATH>",
         "  --csv-low-selectivity-gap <PATH>",
+        "  --typed-query-index-archive <PATH>",
         "  --debug-report",
     ]
     .join("\n")

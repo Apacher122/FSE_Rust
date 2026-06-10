@@ -383,6 +383,7 @@ fn summary_cli_config() -> BenchmarkCliConfig {
         baseline_set: BenchmarkBaselineSet::AllExact,
         baseline_kinds: BenchmarkBaselineSet::AllExact.selected_kinds(),
         csv_output: BenchmarkCsvOutputConfig::default(),
+        typed_query_index_archive_path: None,
         terminal_output_mode: BenchmarkTerminalOutputMode::Summary,
     }
 }

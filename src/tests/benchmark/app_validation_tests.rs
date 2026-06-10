@@ -52,6 +52,7 @@ fn benchmark_cli_config(suite_config: BenchmarkSuiteConfig) -> BenchmarkCliConfi
         baseline_set,
         baseline_kinds: baseline_set.selected_kinds(),
         csv_output: BenchmarkCsvOutputConfig::default(),
+        typed_query_index_archive_path: None,
         terminal_output_mode: BenchmarkTerminalOutputMode::Summary,
     }
 }

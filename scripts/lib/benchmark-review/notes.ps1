@@ -183,6 +183,7 @@ function Add-BenchmarkReviewArtifactSummary {
   Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode notes: $(Join-Path $OutputDir "materialization-mode-summary-$Label.txt")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive load summary: $(Join-Path $OutputDir "typed-archive-load-summary-$Label.csv")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive load notes: $(Join-Path $OutputDir "typed-archive-load-summary-$Label.txt")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "typed query index archive: $(Join-Path $OutputDir "typed-query-index-archive-$Label.fse")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode comparison CSV: $(Join-Path $OutputDir "materialization-mode-summary-comparison-$Label.csv")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode comparison notes: $(Join-Path $OutputDir "materialization-mode-summary-comparison-$Label.txt")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "low-selectivity gap CSV: $(Join-Path $OutputDir "low-selectivity-gap-$Label.csv")`r`n"

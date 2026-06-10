@@ -45,6 +45,7 @@ benchmark_artifacts/
       typed-indexed-comparison-summary-<label>.txt
       typed-archive-load-summary-<label>.csv
       typed-archive-load-summary-<label>.txt
+      typed-query-index-archive-<label>.fse
       low-gap-review-notes-<label>.txt
       low-gap-review-manifest-<label>.txt
       low-gap-trials-<label>/
@@ -333,6 +334,7 @@ benchmark_artifacts/
       typed-indexed-comparison-summary-<label>.txt
       typed-archive-load-summary-<label>.csv
       typed-archive-load-summary-<label>.txt
+      typed-query-index-archive-<label>.fse
       low-gap-review-notes-<label>.txt
       low-gap-review-manifest-<label>.txt
       low-gap-trials-<label>/
@@ -609,6 +611,7 @@ count-only workload summaries
 count-only comparison artifacts
 typed indexed comparison summaries
 typed archive load summaries
+typed query index archives
 repeated-trial folders
 repeated materialization trial folders
 ```
@@ -897,6 +900,7 @@ Artifacts:
 ```text
 typed-archive-load-summary-<label>.csv
 typed-archive-load-summary-<label>.txt
+typed-query-index-archive-<label>.fse
 ```
 
 The CSV preserves the workload-level relationship between querying the current in-memory typed query index, querying a typed query index loaded once before timing, and loading the `.fse` typed query index archive inside each measured iteration.
@@ -924,6 +928,8 @@ agreement = pass
 ```
 
 The notes file records row count, agreement failures, total matched records, and mean timing ratios for warm-loaded and cold-loaded archive paths.
+
+The `.fse` artifact is a persisted typed query index archive emitted by the benchmark run. It exists so the produced archive can be inspected as a benchmark artifact instead of only existing as a temporary timing file.
 
 ## Target workload artifacts
 

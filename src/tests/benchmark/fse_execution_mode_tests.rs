@@ -245,6 +245,7 @@ fn benchmark_application_context_preserves_configured_fse_execution_mode() {
         baseline_set: BenchmarkBaselineSet::Single(BaselineKind::FlatScan),
         baseline_kinds: vec![BaselineKind::FlatScan],
         csv_output: BenchmarkCsvOutputConfig::default(),
+        typed_query_index_archive_path: None,
         terminal_output_mode: BenchmarkTerminalOutputMode::Summary,
     };
 

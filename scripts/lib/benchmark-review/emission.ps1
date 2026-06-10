@@ -143,6 +143,11 @@ function New-BenchmarkReviewRunManifestArtifacts {
       -Skipped $false
 
     New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.TypedQueryIndexArchive `
+      -Path $Context.CurrentTypedQueryIndexArchive `
+      -Skipped $false
+
+    New-BenchmarkReviewManifestArtifact `
       -Name $BenchmarkReviewArtifactNames.MaterializationModeComparisonCsv `
       -Path $Context.CurrentMaterializationComparisonCsv `
       -Skipped $MaterializationComparisonSkipped `

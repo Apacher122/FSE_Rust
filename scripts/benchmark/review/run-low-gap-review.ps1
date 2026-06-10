@@ -126,6 +126,7 @@ $CurrentMaterializationSummaryCsv = $ReviewPaths.CurrentMaterializationSummaryCs
 $CurrentMaterializationSummaryNotes = $ReviewPaths.CurrentMaterializationSummaryNotes
 $CurrentTypedArchiveLoadSummaryCsv = $ReviewPaths.CurrentTypedArchiveLoadSummaryCsv
 $CurrentTypedArchiveLoadSummaryNotes = $ReviewPaths.CurrentTypedArchiveLoadSummaryNotes
+$CurrentTypedQueryIndexArchive = $ReviewPaths.CurrentTypedQueryIndexArchive
 $CurrentMaterializationComparisonCsv = $ReviewPaths.CurrentMaterializationComparisonCsv
 $CurrentMaterializationComparisonNotes = $ReviewPaths.CurrentMaterializationComparisonNotes
 $CurrentTargetDetailCsv = $ReviewPaths.CurrentTargetDetailCsv
@@ -273,6 +274,7 @@ Add-ReviewLine "materialization mode summary: $CurrentMaterializationSummaryCsv"
 Add-ReviewLine "materialization mode notes: $CurrentMaterializationSummaryNotes"
 Add-ReviewLine "typed archive load summary: $CurrentTypedArchiveLoadSummaryCsv"
 Add-ReviewLine "typed archive load notes: $CurrentTypedArchiveLoadSummaryNotes"
+Add-ReviewLine "typed query index archive: $CurrentTypedQueryIndexArchive"
 
 if ($PreviousLowSelectivityGapInput.Exists) {
   Add-ReviewLine "single-run comparison status: completed by run-small-benchmark"
@@ -544,6 +546,7 @@ $ReviewManifestContext = [PSCustomObject]@{
   CurrentMaterializationSummaryNotes    = $CurrentMaterializationSummaryNotes
   CurrentTypedArchiveLoadSummaryCsv     = $CurrentTypedArchiveLoadSummaryCsv
   CurrentTypedArchiveLoadSummaryNotes   = $CurrentTypedArchiveLoadSummaryNotes
+  CurrentTypedQueryIndexArchive         = $CurrentTypedQueryIndexArchive
   CurrentMaterializationComparisonCsv   = $CurrentMaterializationComparisonCsv
   CurrentMaterializationComparisonNotes = $CurrentMaterializationComparisonNotes
   PreviousTargetSummaryCsv              = $PreviousTargetSummaryCsv

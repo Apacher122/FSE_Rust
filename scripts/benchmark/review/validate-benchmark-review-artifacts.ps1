@@ -130,6 +130,7 @@ $MaterializationSummaryEntry = $ResolvedArtifacts.MaterializationSummary
 $MaterializationNotesEntry = $ResolvedArtifacts.MaterializationNotes
 $TypedArchiveLoadSummaryEntry = $ResolvedArtifacts.TypedArchiveLoadSummary
 $TypedArchiveLoadNotesEntry = $ResolvedArtifacts.TypedArchiveLoadNotes
+$TypedQueryIndexArchiveEntry = $ResolvedArtifacts.TypedQueryIndexArchive
 $LowGapEntry = $ResolvedArtifacts.LowGap
 $RegressionNotesEntry = $ResolvedArtifacts.RegressionNotes
 $TrialSummaryEntry = $ResolvedArtifacts.TrialSummary
@@ -150,6 +151,7 @@ Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $DebugO
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $CountOnlyNotesEntry -Description "count-only workload notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $MaterializationNotesEntry -Description "materialization mode notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveLoadNotesEntry -Description "typed archive load notes"
+Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedQueryIndexArchiveEntry -Description "typed query index archive"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $RegressionNotesEntry -Description "low-gap regression notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TrialNotesEntry -Description "low-gap trial notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TargetNotesEntry -Description "target workload trial notes"

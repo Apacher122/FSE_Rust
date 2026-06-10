@@ -34,6 +34,7 @@ use super::usage::benchmark_usage;
 /// - `--csv PATH`
 /// - `--csv-workloads PATH`
 /// - `--csv-low-selectivity-gap PATH`
+/// - `--typed-query-index-archive PATH`
 /// - `--debug-report`
 pub fn parse_benchmark_cli_config<I, S>(args: I) -> Result<BenchmarkCliConfig, String>
 where
@@ -95,6 +96,10 @@ where
             "--csv-low-selectivity-gap" | "--csv-low-gap" | "--csv-tree-gap" => {
                 let value = next_value(&mut args, arg.as_str())?;
                 state.set_csv_low_selectivity_gap_path(value);
+            }
+            "--typed-query-index-archive" => {
+                let value = next_value(&mut args, "--typed-query-index-archive")?;
+                state.set_typed_query_index_archive_path(value);
             }
             "--debug-report" => {
                 state.enable_debug_report();

@@ -58,6 +58,7 @@ $TypedIndexedComparisonSummaryCsvPath = Join-Path $OutputDir "typed-indexed-comp
 $TypedIndexedComparisonSummaryNotesPath = Join-Path $OutputDir "typed-indexed-comparison-summary-$Label.txt"
 $TypedArchiveLoadSummaryCsvPath = Join-Path $OutputDir "typed-archive-load-summary-$Label.csv"
 $TypedArchiveLoadSummaryNotesPath = Join-Path $OutputDir "typed-archive-load-summary-$Label.txt"
+$TypedQueryIndexArchivePath = Join-Path $OutputDir "typed-query-index-archive-$Label.fse"
 $LowSelectivityGapCsvPath = Join-Path $OutputDir "low-selectivity-gap-$Label.csv"
 $LowGapRegressionNotesPath = Join-Path $OutputDir "low-gap-regression-notes-$Label.txt"
 
@@ -361,7 +362,9 @@ Invoke-BenchmarkCommand `
         "--csv-workloads",
         $WorkloadsCsvPath,
         "--csv-low-selectivity-gap",
-        $LowSelectivityGapCsvPath
+        $LowSelectivityGapCsvPath,
+        "--typed-query-index-archive",
+        $TypedQueryIndexArchivePath
     ))
 
 if (!(Test-Path -LiteralPath $CountOnlyWorkloadSummaryScript)) {
@@ -483,6 +486,7 @@ Add-Utf8Text -Path $TextOutputPath -Text "  Typed indexed summary CSV:      $Typ
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed indexed notes:            $TypedIndexedComparisonSummaryNotesPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive load summary CSV: $TypedArchiveLoadSummaryCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive load notes:       $TypedArchiveLoadSummaryNotesPath`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Typed query index archive:      $TypedQueryIndexArchivePath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Low-selectivity gap CSV:        $LowSelectivityGapCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Low-gap regression notes:       $LowGapRegressionNotesPath`r`n"
 
@@ -503,6 +507,7 @@ Add-Utf8Text -Path $DebugOutputPath -Text "  Typed indexed summary CSV:      $Ty
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed indexed notes:            $TypedIndexedComparisonSummaryNotesPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive load summary CSV: $TypedArchiveLoadSummaryCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive load notes:       $TypedArchiveLoadSummaryNotesPath`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Typed query index archive:      $TypedQueryIndexArchivePath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Low-selectivity gap CSV:        $LowSelectivityGapCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Low-gap regression notes:       $LowGapRegressionNotesPath`r`n"
 
@@ -524,5 +529,6 @@ Write-Host "  $TypedIndexedComparisonSummaryCsvPath"
 Write-Host "  $TypedIndexedComparisonSummaryNotesPath"
 Write-Host "  $TypedArchiveLoadSummaryCsvPath"
 Write-Host "  $TypedArchiveLoadSummaryNotesPath"
+Write-Host "  $TypedQueryIndexArchivePath"
 Write-Host "  $LowSelectivityGapCsvPath"
 Write-Host "  $LowGapRegressionNotesPath"

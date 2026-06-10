@@ -41,11 +41,11 @@ fn build_benchmark_application_output(
     result_bundle: &BenchmarkApplicationResultBundle,
 ) -> Result<BenchmarkApplicationOutput, BenchmarkApplicationError> {
     let terminal_output = render_application_terminal_output(context, result_bundle);
-    let csv_status_lines = write_application_csv_outputs(context, result_bundle)?;
+    let status_lines = write_application_file_outputs(context, result_bundle)?;
 
     Ok(BenchmarkApplicationOutput::new(
         terminal_output,
-        csv_status_lines,
+        status_lines,
     ))
 }
 
@@ -57,11 +57,24 @@ fn render_application_terminal_output(
     BenchmarkApplicationRenderer::new().render_terminal_output(context, result_bundle)
 }
 
+fn write_application_file_outputs(
+    context: &BenchmarkApplicationContext,
+    result_bundle: &BenchmarkApplicationResultBundle,
+) -> Result<Vec<String>, BenchmarkApplicationError> {
+    let mut status_lines = write_application_csv_outputs(context, result_bundle)?;
+
+    if let Some(path) = &context.typed_query_index_archive_path {
+        target_debug::write_typed_query_index_archive_artifact(context, path.as_str())?;
+        status_lines.push(format!("Typed query index archive written: {path}"));
+    }
+
+    Ok(status_lines)
+}
+
 fn write_application_csv_outputs(
     context: &BenchmarkApplicationContext,
     result_bundle: &BenchmarkApplicationResultBundle,
 ) -> Result<Vec<String>, BenchmarkApplicationError> {
-    // csv is the only fallible output step right now
     let write_report = write_benchmark_csv_outputs(
         &context.csv_output,
         &result_bundle.metadata,

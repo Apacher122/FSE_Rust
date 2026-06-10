@@ -284,6 +284,7 @@ fn parse_benchmark_cli_config_uses_empty_csv_output_by_default() {
     assert!(config.csv_output.is_empty());
     assert!(!config.csv_output.has_summary_output());
     assert!(!config.csv_output.has_workload_output());
+    assert_eq!(config.typed_query_index_archive_path, None);
 }
 
 #[test]
@@ -456,6 +457,40 @@ fn parse_benchmark_cli_config_uses_last_csv_workloads_path() {
 #[test]
 fn parse_benchmark_cli_config_rejects_missing_csv_workloads_value() {
     let result = parse_benchmark_cli_config(["--csv-workloads"]);
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn parse_benchmark_cli_config_parses_typed_query_index_archive_path() {
+    let config =
+        parse_benchmark_cli_config(["--typed-query-index-archive", "typed-index.fse"]).unwrap();
+
+    assert_eq!(
+        config.typed_query_index_archive_path,
+        Some("typed-index.fse".to_string())
+    );
+}
+
+#[test]
+fn parse_benchmark_cli_config_uses_last_typed_query_index_archive_path() {
+    let config = parse_benchmark_cli_config([
+        "--typed-query-index-archive",
+        "first.fse",
+        "--typed-query-index-archive",
+        "second.fse",
+    ])
+    .unwrap();
+
+    assert_eq!(
+        config.typed_query_index_archive_path,
+        Some("second.fse".to_string())
+    );
+}
+
+#[test]
+fn parse_benchmark_cli_config_rejects_missing_typed_query_index_archive_value() {
+    let result = parse_benchmark_cli_config(["--typed-query-index-archive"]);
 
     assert!(result.is_err());
 }

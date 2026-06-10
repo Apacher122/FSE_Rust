@@ -516,6 +516,14 @@ function Resolve-BenchmarkReviewManifestArtifactSet {
     -OnFailure $OnFailure `
     -OnInvalidPath $OnInvalidPath
 
+  $ResolvedArtifacts.TypedQueryIndexArchive = Resolve-BenchmarkReviewManifestArtifact `
+    -Entries $Entries `
+    -ArtifactName $BenchmarkReviewArtifactNames.TypedQueryIndexArchive `
+    -OutputDir $OutputDir `
+    -Label $Label `
+    -OnFailure $OnFailure `
+    -OnInvalidPath $OnInvalidPath
+
   $ResolvedArtifacts.LowGap = Resolve-BenchmarkReviewManifestArtifact `
     -Entries $Entries `
     -ArtifactName $BenchmarkReviewArtifactNames.LowSelectivityGapCsv `
