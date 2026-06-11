@@ -22,7 +22,8 @@ pub use index_codec::{
     encode_typed_query_index_archive_snapshot,
 };
 pub use index_file::{
-    FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveFileError,
+    FSETypedQueryIndexArchiveAppendResult, FSETypedQueryIndexArchiveError,
+    FSETypedQueryIndexArchiveFileError, append_typed_query_index_archive_file,
     load_typed_query_index_archive_file, read_typed_query_index_archive_snapshot_file,
     save_typed_query_index_archive_file, write_typed_query_index_archive_snapshot_file,
 };

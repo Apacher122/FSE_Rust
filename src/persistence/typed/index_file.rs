@@ -6,11 +6,16 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use crate::build::FSEBuilder;
+use crate::data::FSERecordBatch;
+use crate::encoding::FSERecordEncoder;
 use crate::persistence::{
-    FSE_ARCHIVE_FILE_EXTENSION, FSEArchiveFileOperation, FSEArchivePayloadHeaderError,
-    FSEArchivePayloadKind, decode_archive_payload, encode_archive_payload,
+    FSE_ARCHIVE_FILE_EXTENSION, FSEArchiveAppendOperationMetadata,
+    FSEArchiveAppendOperationMetadataError, FSEArchiveFileOperation, FSEArchivePayloadHeaderError,
+    FSEArchivePayloadKind, FSEArchiveRebuildPlanMetadata, FSEArchiveRebuildPlanMetadataError,
+    decode_archive_payload, encode_archive_payload,
 };
-use crate::query::TypedQueryIndex;
+use crate::query::{TypedQueryIndex, TypedQueryIndexAppendError};
 
 use super::{
     FSETypedQueryIndexArchiveCodecError, FSETypedQueryIndexArchiveSnapshot,
@@ -94,6 +99,15 @@ pub enum FSETypedQueryIndexArchiveError {
     /// Building or reconstructing a typed query index archive snapshot failed.
     Snapshot(FSETypedQueryIndexArchiveSnapshotError),
 
+    /// Appending records to a typed query index failed.
+    Append(TypedQueryIndexAppendError),
+
+    /// Append operation metadata validation failed.
+    AppendMetadata(FSEArchiveAppendOperationMetadataError),
+
+    /// Archive rebuild plan metadata validation failed.
+    RebuildPlan(FSEArchiveRebuildPlanMetadataError),
+
     /// Typed query index archive file access failed.
     File(FSETypedQueryIndexArchiveFileError),
 }
@@ -102,6 +116,9 @@ impl fmt::Display for FSETypedQueryIndexArchiveError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Snapshot(error) => error.fmt(formatter),
+            Self::Append(error) => error.fmt(formatter),
+            Self::AppendMetadata(error) => error.fmt(formatter),
+            Self::RebuildPlan(error) => error.fmt(formatter),
             Self::File(error) => error.fmt(formatter),
         }
     }
@@ -111,6 +128,9 @@ impl Error for FSETypedQueryIndexArchiveError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Snapshot(error) => Some(error),
+            Self::Append(error) => Some(error),
+            Self::AppendMetadata(error) => Some(error),
+            Self::RebuildPlan(error) => Some(error),
             Self::File(error) => Some(error),
         }
     }
@@ -122,10 +142,41 @@ impl From<FSETypedQueryIndexArchiveSnapshotError> for FSETypedQueryIndexArchiveE
     }
 }
 
+impl From<TypedQueryIndexAppendError> for FSETypedQueryIndexArchiveError {
+    fn from(error: TypedQueryIndexAppendError) -> Self {
+        Self::Append(error)
+    }
+}
+
+impl From<FSEArchiveAppendOperationMetadataError> for FSETypedQueryIndexArchiveError {
+    fn from(error: FSEArchiveAppendOperationMetadataError) -> Self {
+        Self::AppendMetadata(error)
+    }
+}
+
+impl From<FSEArchiveRebuildPlanMetadataError> for FSETypedQueryIndexArchiveError {
+    fn from(error: FSEArchiveRebuildPlanMetadataError) -> Self {
+        Self::RebuildPlan(error)
+    }
+}
+
 impl From<FSETypedQueryIndexArchiveFileError> for FSETypedQueryIndexArchiveError {
     fn from(error: FSETypedQueryIndexArchiveFileError) -> Self {
         Self::File(error)
     }
+}
+
+/// Result returned after appending a typed query index archive.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FSETypedQueryIndexArchiveAppendResult {
+    /// Append operation metadata for the archive update.
+    pub append_metadata: FSEArchiveAppendOperationMetadata,
+
+    /// Rebuild plan metadata used by the archive update.
+    pub rebuild_plan: FSEArchiveRebuildPlanMetadata,
+
+    /// Rebuilt typed query index saved to the archive.
+    pub query_index: TypedQueryIndex,
 }
 
 /// Writes a typed query index archive snapshot to a `.fse` file.
@@ -196,6 +247,35 @@ where
     snapshot
         .to_typed_query_index()
         .map_err(FSETypedQueryIndexArchiveError::Snapshot)
+}
+
+/// Appends records to a typed query index `.fse` archive file.
+pub fn append_typed_query_index_archive_file<P>(
+    path: P,
+    appended: &FSERecordBatch,
+    encoder: &impl FSERecordEncoder,
+    builder: &FSEBuilder,
+) -> Result<FSETypedQueryIndexArchiveAppendResult, FSETypedQueryIndexArchiveError>
+where
+    P: AsRef<Path>,
+{
+    let path = path.as_ref();
+    let base = load_typed_query_index_archive_file(path)?;
+    let query_index = base.try_append(appended, encoder, builder)?;
+    let append_metadata = FSEArchiveAppendOperationMetadata::try_new(
+        FSEArchivePayloadKind::TypedQueryIndex,
+        base.batch().len() as u64,
+        appended.len() as u64,
+    )?;
+    let rebuild_plan = FSEArchiveRebuildPlanMetadata::for_append(append_metadata)?;
+
+    save_typed_query_index_archive_file(path, &query_index)?;
+
+    Ok(FSETypedQueryIndexArchiveAppendResult {
+        append_metadata,
+        rebuild_plan,
+        query_index,
+    })
 }
 
 impl FSETypedQueryIndexArchiveSnapshot {
