@@ -22,6 +22,12 @@ pub enum FSERecordBatchError {
         /// Repeated row identifier.
         row_id: RowId,
     },
+
+    /// The appended batch used a different schema.
+    SchemaMismatch,
+
+    /// The appended batch contained no records.
+    EmptyAppendBatch,
 }
 
 impl fmt::Display for FSERecordBatchError {
@@ -40,6 +46,12 @@ impl fmt::Display for FSERecordBatchError {
                     "row id {} appears more than once",
                     row_id.value()
                 )
+            }
+            Self::SchemaMismatch => {
+                formatter.write_str("record batch append requires matching schemas")
+            }
+            Self::EmptyAppendBatch => {
+                formatter.write_str("record batch append requires at least one appended record")
             }
         }
     }
@@ -100,6 +112,27 @@ impl FSERecordBatch {
             records,
             row_index_by_id,
         })
+    }
+
+    /// Appends another batch and returns a checked combined batch.
+    pub fn try_append(&self, appended: &Self) -> Result<Self, FSERecordBatchError> {
+        if self.schema != appended.schema {
+            return Err(FSERecordBatchError::SchemaMismatch);
+        }
+
+        if appended.is_empty() {
+            return Err(FSERecordBatchError::EmptyAppendBatch);
+        }
+
+        let mut row_ids = Vec::with_capacity(self.row_ids.len() + appended.row_ids.len());
+        row_ids.extend_from_slice(&self.row_ids);
+        row_ids.extend_from_slice(&appended.row_ids);
+
+        let mut records = Vec::with_capacity(self.records.len() + appended.records.len());
+        records.extend_from_slice(&self.records);
+        records.extend_from_slice(&appended.records);
+
+        Self::try_new(self.schema.clone(), row_ids, records)
     }
 
     /// Returns the schema shared by the batch records.
