@@ -6,10 +6,12 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::data::FSERecordBatch;
+use crate::data::{FSERecordBatch, FSERecordBatchError};
 use crate::persistence::{
-    FSE_ARCHIVE_FILE_EXTENSION, FSEArchiveFileOperation, FSEArchivePayloadHeaderError,
-    FSEArchivePayloadKind, decode_archive_payload, encode_archive_payload,
+    FSE_ARCHIVE_FILE_EXTENSION, FSEArchiveAppendOperationMetadata,
+    FSEArchiveAppendOperationMetadataError, FSEArchiveFileOperation, FSEArchivePayloadHeaderError,
+    FSEArchivePayloadKind, FSEArchiveRebuildPlanMetadata, FSEArchiveRebuildPlanMetadataError,
+    decode_archive_payload, encode_archive_payload,
 };
 
 use super::{
@@ -94,6 +96,15 @@ pub enum FSERecordBatchArchiveError {
     /// Building or reconstructing a typed record batch archive snapshot failed.
     Snapshot(FSETypedRecordBatchArchiveSnapshotError),
 
+    /// Record batch validation failed.
+    RecordBatch(FSERecordBatchError),
+
+    /// Append operation metadata validation failed.
+    AppendMetadata(FSEArchiveAppendOperationMetadataError),
+
+    /// Archive rebuild plan metadata validation failed.
+    RebuildPlan(FSEArchiveRebuildPlanMetadataError),
+
     /// Typed record batch archive file access failed.
     File(FSERecordBatchArchiveFileError),
 }
@@ -102,6 +113,9 @@ impl fmt::Display for FSERecordBatchArchiveError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Snapshot(error) => error.fmt(formatter),
+            Self::RecordBatch(error) => error.fmt(formatter),
+            Self::AppendMetadata(error) => error.fmt(formatter),
+            Self::RebuildPlan(error) => error.fmt(formatter),
             Self::File(error) => error.fmt(formatter),
         }
     }
@@ -111,6 +125,9 @@ impl Error for FSERecordBatchArchiveError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Snapshot(error) => Some(error),
+            Self::RecordBatch(error) => Some(error),
+            Self::AppendMetadata(error) => Some(error),
+            Self::RebuildPlan(error) => Some(error),
             Self::File(error) => Some(error),
         }
     }
@@ -122,10 +139,41 @@ impl From<FSETypedRecordBatchArchiveSnapshotError> for FSERecordBatchArchiveErro
     }
 }
 
+impl From<FSERecordBatchError> for FSERecordBatchArchiveError {
+    fn from(error: FSERecordBatchError) -> Self {
+        Self::RecordBatch(error)
+    }
+}
+
+impl From<FSEArchiveAppendOperationMetadataError> for FSERecordBatchArchiveError {
+    fn from(error: FSEArchiveAppendOperationMetadataError) -> Self {
+        Self::AppendMetadata(error)
+    }
+}
+
+impl From<FSEArchiveRebuildPlanMetadataError> for FSERecordBatchArchiveError {
+    fn from(error: FSEArchiveRebuildPlanMetadataError) -> Self {
+        Self::RebuildPlan(error)
+    }
+}
+
 impl From<FSERecordBatchArchiveFileError> for FSERecordBatchArchiveError {
     fn from(error: FSERecordBatchArchiveFileError) -> Self {
         Self::File(error)
     }
+}
+
+/// Result returned after appending a typed record batch archive.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FSERecordBatchArchiveAppendResult {
+    /// Append operation metadata for the archive update.
+    pub append_metadata: FSEArchiveAppendOperationMetadata,
+
+    /// Rebuild plan metadata used by the archive update.
+    pub rebuild_plan: FSEArchiveRebuildPlanMetadata,
+
+    /// Combined record batch saved to the archive.
+    pub record_batch: FSERecordBatch,
 }
 
 /// Writes a typed record batch archive snapshot to a `.fse` file.
@@ -196,6 +244,33 @@ where
     snapshot
         .to_record_batch()
         .map_err(FSERecordBatchArchiveError::Snapshot)
+}
+
+/// Appends a typed record batch to a `.fse` archive file.
+pub fn append_typed_record_batch_archive_file<P>(
+    path: P,
+    appended: &FSERecordBatch,
+) -> Result<FSERecordBatchArchiveAppendResult, FSERecordBatchArchiveError>
+where
+    P: AsRef<Path>,
+{
+    let path = path.as_ref();
+    let base = load_typed_record_batch_archive_file(path)?;
+    let combined = base.try_append(appended)?;
+    let append_metadata = FSEArchiveAppendOperationMetadata::try_new(
+        FSEArchivePayloadKind::TypedRecordBatch,
+        base.len() as u64,
+        appended.len() as u64,
+    )?;
+    let rebuild_plan = FSEArchiveRebuildPlanMetadata::for_append(append_metadata)?;
+
+    save_typed_record_batch_archive_file(path, &combined)?;
+
+    Ok(FSERecordBatchArchiveAppendResult {
+        append_metadata,
+        rebuild_plan,
+        record_batch: combined,
+    })
 }
 
 impl FSERecordBatchArchiveSnapshot {

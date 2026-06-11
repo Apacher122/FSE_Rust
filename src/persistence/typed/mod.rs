@@ -12,9 +12,10 @@ pub use codec::{
     encode_typed_record_batch_archive_snapshot,
 };
 pub use file::{
-    FSERecordBatchArchiveError, FSERecordBatchArchiveFileError,
-    load_typed_record_batch_archive_file, read_typed_record_batch_archive_snapshot_file,
-    save_typed_record_batch_archive_file, write_typed_record_batch_archive_snapshot_file,
+    FSERecordBatchArchiveAppendResult, FSERecordBatchArchiveError, FSERecordBatchArchiveFileError,
+    append_typed_record_batch_archive_file, load_typed_record_batch_archive_file,
+    read_typed_record_batch_archive_snapshot_file, save_typed_record_batch_archive_file,
+    write_typed_record_batch_archive_snapshot_file,
 };
 pub use index_codec::{
     FSETypedQueryIndexArchiveCodecError, decode_typed_query_index_archive_snapshot,

@@ -41,11 +41,12 @@ pub use row_mapped::{
 };
 pub use typed::{
     FSEFieldArchiveRecord, FSEFieldTypeArchiveTag, FSERecordArchiveRecord,
-    FSERecordBatchArchiveError, FSERecordBatchArchiveFileError, FSERecordBatchArchiveSnapshot,
-    FSETypedQueryIndexArchiveCodecError, FSETypedQueryIndexArchiveError,
-    FSETypedQueryIndexArchiveFileError, FSETypedQueryIndexArchiveSnapshot,
-    FSETypedQueryIndexArchiveSnapshotError, FSETypedRecordBatchArchiveCodecError,
-    FSETypedRecordBatchArchiveSnapshotError, FSEValueArchiveRecord,
+    FSERecordBatchArchiveAppendResult, FSERecordBatchArchiveError, FSERecordBatchArchiveFileError,
+    FSERecordBatchArchiveSnapshot, FSETypedQueryIndexArchiveCodecError,
+    FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveFileError,
+    FSETypedQueryIndexArchiveSnapshot, FSETypedQueryIndexArchiveSnapshotError,
+    FSETypedRecordBatchArchiveCodecError, FSETypedRecordBatchArchiveSnapshotError,
+    FSEValueArchiveRecord, append_typed_record_batch_archive_file,
     decode_typed_query_index_archive_snapshot, decode_typed_record_batch_archive_snapshot,
     encode_typed_query_index_archive_snapshot, encode_typed_record_batch_archive_snapshot,
     load_typed_query_index_archive_file, load_typed_record_batch_archive_file,

@@ -2,13 +2,17 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
-use crate::data::{FSEField, FSEFieldType, FSERecord, FSERecordBatch, FSESchema, FSEValue, RowId};
+use crate::data::{
+    FSEField, FSEFieldType, FSERecord, FSERecordBatch, FSERecordBatchError, FSESchema, FSEValue,
+    RowId,
+};
 use crate::persistence::{
-    FSEArchiveFileOperation, FSEArchivePayloadHeaderError, FSEArchivePayloadKind,
-    FSERecordBatchArchiveError, FSERecordBatchArchiveFileError, FSERecordBatchArchiveSnapshot,
-    encode_archive_payload, load_typed_record_batch_archive_file,
-    read_typed_record_batch_archive_snapshot_file, save_typed_record_batch_archive_file,
-    write_typed_record_batch_archive_snapshot_file,
+    FSEArchiveAppendOperationMetadataError, FSEArchiveFileOperation, FSEArchivePayloadHeaderError,
+    FSEArchivePayloadKind, FSEArchiveRebuildReason, FSERecordBatchArchiveError,
+    FSERecordBatchArchiveFileError, FSERecordBatchArchiveSnapshot,
+    append_typed_record_batch_archive_file, encode_archive_payload,
+    load_typed_record_batch_archive_file, read_typed_record_batch_archive_snapshot_file,
+    save_typed_record_batch_archive_file, write_typed_record_batch_archive_snapshot_file,
 };
 
 use super::corrupted_archive_payload;
@@ -55,6 +59,100 @@ fn typed_record_batch_archive_file_saves_and_loads_record_batch() {
         loaded.record_for_row_id(RowId::new(101)).unwrap().value(0),
         Some(&FSEValue::Integer(2))
     );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_record_batch_archive_file_appends_batch_and_rebuilds_archive() {
+    let base = sample_batch();
+    let appended = sample_appended_batch();
+    let path = temp_archive_path("batch-append", ".fse");
+
+    save_typed_record_batch_archive_file(&path, &base).unwrap();
+    let result = append_typed_record_batch_archive_file(&path, &appended).unwrap();
+    let loaded = load_typed_record_batch_archive_file(&path).unwrap();
+
+    assert_eq!(
+        result.append_metadata.payload_kind,
+        FSEArchivePayloadKind::TypedRecordBatch
+    );
+    assert_eq!(result.append_metadata.base_record_count, 2);
+    assert_eq!(result.append_metadata.appended_record_count, 2);
+    assert_eq!(result.append_metadata.resulting_record_count, 4);
+    assert_eq!(result.rebuild_plan.reason, FSEArchiveRebuildReason::Append);
+    assert!(result.rebuild_plan.requires_full_archive_rebuild);
+    assert_eq!(result.record_batch, loaded);
+    assert_eq!(
+        loaded.row_ids(),
+        &[
+            RowId::new(100),
+            RowId::new(101),
+            RowId::new(102),
+            RowId::new(103)
+        ]
+    );
+    assert_eq!(
+        loaded.record_for_row_id(RowId::new(103)).unwrap().value(0),
+        Some(&FSEValue::Integer(4))
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_record_batch_archive_file_reports_append_schema_mismatch() {
+    let base = sample_batch();
+    let appended = mismatched_appended_batch();
+    let path = temp_archive_path("append-schema-mismatch", ".fse");
+
+    save_typed_record_batch_archive_file(&path, &base).unwrap();
+
+    assert_eq!(
+        append_typed_record_batch_archive_file(&path, &appended),
+        Err(FSERecordBatchArchiveError::RecordBatch(
+            FSERecordBatchError::SchemaMismatch
+        ))
+    );
+    assert_eq!(load_typed_record_batch_archive_file(&path).unwrap(), base);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_record_batch_archive_file_reports_empty_append_batch() {
+    let base = sample_batch();
+    let appended = FSERecordBatch::new(sample_schema(), Vec::new(), Vec::new());
+    let path = temp_archive_path("empty-append", ".fse");
+
+    save_typed_record_batch_archive_file(&path, &base).unwrap();
+
+    assert_eq!(
+        append_typed_record_batch_archive_file(&path, &appended),
+        Err(FSERecordBatchArchiveError::RecordBatch(
+            FSERecordBatchError::EmptyAppendBatch
+        ))
+    );
+    assert_eq!(load_typed_record_batch_archive_file(&path).unwrap(), base);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_record_batch_archive_file_reports_zero_base_record_count_for_append() {
+    let base = FSERecordBatch::new(sample_schema(), Vec::new(), Vec::new());
+    let appended = sample_appended_batch();
+    let path = temp_archive_path("zero-base-append", ".fse");
+
+    save_typed_record_batch_archive_file(&path, &base).unwrap();
+
+    assert_eq!(
+        append_typed_record_batch_archive_file(&path, &appended),
+        Err(FSERecordBatchArchiveError::AppendMetadata(
+            FSEArchiveAppendOperationMetadataError::ZeroBaseRecordCount
+        ))
+    );
+    assert_eq!(load_typed_record_batch_archive_file(&path).unwrap(), base);
 
     let _ = fs::remove_file(path);
 }
@@ -169,6 +267,44 @@ fn sample_batch() -> FSERecordBatch {
     ];
 
     FSERecordBatch::new(schema, vec![RowId::new(100), RowId::new(101)], records)
+}
+
+fn sample_appended_batch() -> FSERecordBatch {
+    let schema = sample_schema();
+    let records = vec![
+        sample_record(
+            3,
+            36.5,
+            "gamma",
+            true,
+            1_735_862_400_000,
+            "review",
+            FSEValue::Text("queued".to_string()),
+            &schema,
+        ),
+        sample_record(
+            4,
+            48.0,
+            "delta",
+            false,
+            1_735_948_800_000,
+            "closed",
+            FSEValue::Null,
+            &schema,
+        ),
+    ];
+
+    FSERecordBatch::new(schema, vec![RowId::new(102), RowId::new(103)], records)
+}
+
+fn mismatched_appended_batch() -> FSERecordBatch {
+    let schema = FSESchema::new(vec![
+        FSEField::new("record_id", FSEFieldType::Integer, false),
+        FSEField::new("amount", FSEFieldType::Float, false),
+    ]);
+    let record = FSERecord::new(vec![FSEValue::Integer(3), FSEValue::Float(36.5)], &schema);
+
+    FSERecordBatch::new(schema, vec![RowId::new(102)], vec![record])
 }
 
 fn sample_schema() -> FSESchema {
