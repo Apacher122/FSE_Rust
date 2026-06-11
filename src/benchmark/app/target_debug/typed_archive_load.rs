@@ -14,10 +14,12 @@ use super::target::{
 use super::typed_workload::{TypedBenchmarkContext, typed_x_range_plan};
 use crate::benchmark::reports::output::format_duration_ascii;
 use crate::benchmark::reports::{
-    TypedArchiveLoadTimingError, TypedArchiveLoadTimingReport,
+    TypedArchiveAppendRebuildTimingReport, TypedArchiveLoadTimingError,
+    TypedArchiveLoadTimingReport, compare_typed_archive_append_rebuild_execution_repeated,
     compare_typed_archive_load_execution_repeated,
 };
 use crate::benchmark::workloads::QueryWorkloadCase;
+use crate::build::FSEBuilder;
 use crate::data::RowId;
 use crate::persistence::{
     FSE_ARCHIVE_FILE_EXTENSION, load_typed_query_index_archive_file,
@@ -72,6 +74,58 @@ impl BenchmarkApplicationRenderer {
                 format_speedup_ratio(report.warm_loaded_to_in_memory_ratio),
                 format_speedup_ratio(report.cold_loaded_to_in_memory_ratio),
                 format_speedup_ratio(report.cold_loaded_to_warm_loaded_ratio),
+            ));
+        }
+
+        output.push('\n');
+    }
+
+    pub(crate) fn append_target_workload_typed_archive_append_rebuild_debug_output(
+        &self,
+        output: &mut String,
+        context: &BenchmarkApplicationContext,
+    ) {
+        let typed_context = TypedBenchmarkContext::from_benchmark_context(context);
+
+        append_target_workload_debug_section(
+            output,
+            context,
+            "Target workload typed archive append rebuild timing",
+            |output, context, workload| {
+                let report = typed_archive_append_rebuild_report(context, &typed_context, workload);
+
+                append_target_typed_archive_append_rebuild_report(output, &report);
+            },
+        );
+    }
+
+    pub(crate) fn append_workload_typed_archive_append_rebuild_summary_debug_output(
+        &self,
+        output: &mut String,
+        context: &BenchmarkApplicationContext,
+    ) {
+        let typed_context = TypedBenchmarkContext::from_benchmark_context(context);
+
+        output.push_str("Workload typed archive append rebuild timing summary\n");
+        output.push_str("---------------------------------------------------\n");
+        output.push_str(
+            "workload | base records | appended records | resulting records | before bytes | after bytes | byte growth | matched after append | append rebuild | agreement\n",
+        );
+
+        for workload in &context.workloads {
+            let report = typed_archive_append_rebuild_report(context, &typed_context, workload);
+
+            output.push_str(&format!(
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
+                workload.name,
+                report.base_record_count,
+                report.appended_record_count,
+                report.resulting_record_count,
+                report.archive_bytes_before_append,
+                report.archive_bytes_after_append,
+                report.archive_byte_growth,
+                report.matched_records_after_append,
+                format_duration_ascii(report.append_rebuild_timing.average_elapsed),
             ));
         }
 
@@ -153,6 +207,37 @@ fn append_target_typed_archive_load_report(
     append_debug_line(output, "typed archive load agreement", "pass");
 }
 
+fn append_target_typed_archive_append_rebuild_report(
+    output: &mut String,
+    report: &TypedArchiveAppendRebuildTimingReport,
+) {
+    append_debug_line(output, "base records", report.base_record_count);
+    append_debug_line(output, "appended records", report.appended_record_count);
+    append_debug_line(output, "resulting records", report.resulting_record_count);
+    append_debug_line(
+        output,
+        "archive bytes before append",
+        report.archive_bytes_before_append,
+    );
+    append_debug_line(
+        output,
+        "archive bytes after append",
+        report.archive_bytes_after_append,
+    );
+    append_debug_line(output, "archive byte growth", report.archive_byte_growth);
+    append_debug_line(
+        output,
+        "matched records after append",
+        report.matched_records_after_append,
+    );
+    append_debug_duration_line(
+        output,
+        "append rebuild average elapsed",
+        report.append_rebuild_timing.average_elapsed,
+    );
+    append_debug_line(output, "typed archive append rebuild agreement", "pass");
+}
+
 fn typed_archive_load_report(
     context: &BenchmarkApplicationContext,
     typed_context: &TypedBenchmarkContext,
@@ -170,6 +255,31 @@ fn typed_archive_load_report(
     let _ = fs::remove_file(&path);
 
     report.expect("typed archive load timing should execute")
+}
+
+fn typed_archive_append_rebuild_report(
+    context: &BenchmarkApplicationContext,
+    typed_context: &TypedBenchmarkContext,
+    workload: &QueryWorkloadCase,
+) -> TypedArchiveAppendRebuildTimingReport {
+    let plan = typed_x_range_plan(typed_context, workload);
+    let path = typed_archive_temporary_path(workload);
+    let appended = typed_context.append_batch_from_benchmark_context(context);
+    let encoder = typed_context.encoder();
+    let builder = FSEBuilder::new(context.suite_config.build_config());
+    let report = compare_typed_archive_append_rebuild_execution_repeated(
+        &path,
+        typed_context.query_index(),
+        &appended,
+        &encoder,
+        &builder,
+        &plan,
+        &context.timing_config,
+    );
+
+    let _ = fs::remove_file(&path);
+
+    report.expect("typed archive append rebuild timing should execute")
 }
 
 fn typed_archive_temporary_path(workload: &QueryWorkloadCase) -> PathBuf {

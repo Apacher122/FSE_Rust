@@ -1,7 +1,8 @@
 use std::fs;
 
 use crate::benchmark::reports::{
-    RepeatedTimingConfig, compare_typed_archive_load_execution_repeated,
+    RepeatedTimingConfig, compare_typed_archive_append_rebuild_execution_repeated,
+    compare_typed_archive_load_execution_repeated,
 };
 use crate::build::{BuildConfig, FSEBuilder};
 use crate::data::{
@@ -44,6 +45,53 @@ fn typed_archive_load_timing_reports_exact_loaded_execution() {
     assert_eq!(report.cold_loaded_timing.iterations, 3);
     assert!(report.warm_loaded_to_in_memory_ratio >= 0.0);
     assert!(report.cold_loaded_to_in_memory_ratio >= 0.0);
+    assert!(path.exists());
+
+    fs::remove_file(path).expect("test archive file should be removable");
+}
+
+#[test]
+fn typed_archive_append_rebuild_timing_reports_rebuilt_archive() {
+    let fixture = typed_fixture();
+    let appended = appended_entity_batch(&fixture.schema);
+    let encoder = entity_encoder(&fixture.schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let predicate = FSEPredicate::range(
+        FSEPredicateField::name("score"),
+        FSEValue::Float(10.0),
+        FSEValue::Float(12.0),
+    );
+    let plan = TypedQueryPlan::numeric(&predicate, &fixture.schema, &fixture.mapping)
+        .expect("numeric predicate should produce a plan");
+    let timing_config = RepeatedTimingConfig::new(3);
+    let path = archive_path("typed_archive_append_rebuild_timing_reports_rebuilt_archive");
+
+    let _ = fs::remove_file(&path);
+
+    let report = compare_typed_archive_append_rebuild_execution_repeated(
+        &path,
+        &fixture.query_index,
+        &appended,
+        &encoder,
+        &builder,
+        &plan,
+        &timing_config,
+    )
+    .expect("typed archive append rebuild timing should execute");
+
+    assert_eq!(report.base_record_count, 4);
+    assert_eq!(report.appended_record_count, 2);
+    assert_eq!(report.resulting_record_count, 6);
+    assert!(report.archive_bytes_before_append > 0);
+    assert!(report.archive_bytes_after_append >= report.archive_bytes_before_append);
+    assert_eq!(
+        report.archive_byte_growth,
+        report
+            .archive_bytes_after_append
+            .saturating_sub(report.archive_bytes_before_append)
+    );
+    assert_eq!(report.matched_records_after_append, 4);
+    assert_eq!(report.append_rebuild_timing.iterations, 3);
     assert!(path.exists());
 
     fs::remove_file(path).expect("test archive file should be removable");
@@ -118,6 +166,17 @@ fn entity_batch(schema: &FSESchema) -> FSERecordBatch {
             entity_record(schema, 43, 11.0, "open", 1_735_689_650_000),
             entity_record(schema, 44, 1000.0, "closed", 1_735_689_700_000),
             entity_record(schema, 45, 1001.0, "closed", 1_735_689_750_000),
+        ],
+    )
+}
+
+fn appended_entity_batch(schema: &FSESchema) -> FSERecordBatch {
+    FSERecordBatch::new(
+        schema.clone(),
+        vec![RowId::new(14), RowId::new(15)],
+        vec![
+            entity_record(schema, 46, 10.5, "open", 1_735_689_800_000),
+            entity_record(schema, 47, 12.0, "closed", 1_735_689_850_000),
         ],
     )
 }

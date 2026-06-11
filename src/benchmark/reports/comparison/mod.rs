@@ -23,6 +23,7 @@ pub use typed::{
     compare_typed_query_execution_repeated,
 };
 pub use typed_archive::{
-    TypedArchiveLoadTimingError, TypedArchiveLoadTimingReport,
+    TypedArchiveAppendRebuildTimingReport, TypedArchiveLoadTimingError,
+    TypedArchiveLoadTimingReport, compare_typed_archive_append_rebuild_execution_repeated,
     compare_typed_archive_load_execution, compare_typed_archive_load_execution_repeated,
 };

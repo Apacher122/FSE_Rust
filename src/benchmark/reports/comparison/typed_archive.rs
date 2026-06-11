@@ -2,15 +2,22 @@
 
 use std::error::Error;
 use std::fmt;
-use std::path::Path;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
+use crate::benchmark::math::duration_div;
 use crate::benchmark::reports::timing::{
-    RepeatedTimingConfig, RepeatedTimingReport, duration_ratio, measure_repeated,
+    RepeatedTimingConfig, RepeatedTimingReport, duration_ratio, measure_elapsed, measure_repeated,
 };
+use crate::build::FSEBuilder;
+use crate::data::FSERecordBatch;
 use crate::data::RowId;
+use crate::encoding::FSERecordEncoder;
 use crate::persistence::{
-    FSETypedQueryIndexArchiveError, load_typed_query_index_archive_file,
-    save_typed_query_index_archive_file,
+    FSETypedQueryIndexArchiveError, append_typed_query_index_archive_file,
+    load_typed_query_index_archive_file, save_typed_query_index_archive_file,
 };
 use crate::query::{IndexedTypedQueryError, TypedQueryIndex, TypedQueryPlan};
 
@@ -22,6 +29,15 @@ pub enum TypedArchiveLoadTimingError {
 
     /// Typed indexed query execution failed.
     Query(IndexedTypedQueryError),
+
+    /// Archive file metadata could not be read.
+    ArchiveFileMetadata {
+        /// Archive path whose metadata was requested.
+        path: PathBuf,
+
+        /// Operating-system error kind.
+        kind: io::ErrorKind,
+    },
 
     /// A loaded archive produced a different row-id set.
     ResultMismatch {
@@ -44,6 +60,9 @@ impl fmt::Display for TypedArchiveLoadTimingError {
         match self {
             Self::Archive(error) => error.fmt(formatter),
             Self::Query(error) => error.fmt(formatter),
+            Self::ArchiveFileMetadata { .. } => {
+                formatter.write_str("typed archive file metadata could not be read")
+            }
             Self::ResultMismatch {
                 expected_source,
                 actual_source,
@@ -61,6 +80,7 @@ impl Error for TypedArchiveLoadTimingError {
         match self {
             Self::Archive(error) => Some(error),
             Self::Query(error) => Some(error),
+            Self::ArchiveFileMetadata { .. } => None,
             Self::ResultMismatch { .. } => None,
         }
     }
@@ -101,6 +121,34 @@ pub struct TypedArchiveLoadTimingReport {
 
     /// Average cold-loaded elapsed time divided by average warm-loaded elapsed time.
     pub cold_loaded_to_warm_loaded_ratio: f64,
+}
+
+/// Timing report for appending typed records and rebuilding an archive.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedArchiveAppendRebuildTimingReport {
+    /// Number of records in the source archive.
+    pub base_record_count: usize,
+
+    /// Number of records in the append batch.
+    pub appended_record_count: usize,
+
+    /// Number of records after the append rebuild.
+    pub resulting_record_count: usize,
+
+    /// Archive byte length before append.
+    pub archive_bytes_before_append: u64,
+
+    /// Archive byte length after append.
+    pub archive_bytes_after_append: u64,
+
+    /// Archive byte growth after append.
+    pub archive_byte_growth: u64,
+
+    /// Number of records matched by the typed query plan after append.
+    pub matched_records_after_append: usize,
+
+    /// Timing for append, rebuild, and archive write.
+    pub append_rebuild_timing: RepeatedTimingReport,
 }
 
 /// Measures typed archive load timing with the default repeated timing configuration.
@@ -200,6 +248,105 @@ where
         warm_loaded_timing,
         cold_loaded_timing,
     })
+}
+
+/// Measures typed query index archive append rebuild timing with repeated timing.
+///
+/// # Runtime Role
+///
+/// The function writes a base typed query index archive, appends a typed record
+/// batch through the persisted archive API, validates the loaded result, and
+/// reports repeated timing for append, rebuild, and archive write.
+pub fn compare_typed_archive_append_rebuild_execution_repeated<P>(
+    archive_path: P,
+    query_index: &TypedQueryIndex,
+    appended: &FSERecordBatch,
+    encoder: &impl FSERecordEncoder,
+    builder: &FSEBuilder,
+    plan: &TypedQueryPlan,
+    timing_config: &RepeatedTimingConfig,
+) -> Result<TypedArchiveAppendRebuildTimingReport, TypedArchiveLoadTimingError>
+where
+    P: AsRef<Path>,
+{
+    let archive_path = archive_path.as_ref();
+
+    save_typed_query_index_archive_file(archive_path, query_index)?;
+    let archive_bytes_before_append = archive_file_len(archive_path)?;
+    let append_result =
+        append_typed_query_index_archive_file(archive_path, appended, encoder, builder)?;
+    let archive_bytes_after_append = archive_file_len(archive_path)?;
+    let loaded_index = load_typed_query_index_archive_file(archive_path)?;
+    let appended_row_ids = append_result.query_index.query_row_ids(plan)?;
+    let loaded_row_ids = loaded_index.query_row_ids(plan)?;
+
+    validate_same_row_id_set(
+        "appended typed query index",
+        &appended_row_ids,
+        "loaded appended typed archive",
+        &loaded_row_ids,
+    )?;
+
+    let append_rebuild_timing = measure_repeated_archive_append_rebuild(
+        archive_path,
+        query_index,
+        appended,
+        encoder,
+        builder,
+        timing_config,
+    )?;
+
+    Ok(TypedArchiveAppendRebuildTimingReport {
+        base_record_count: append_result.append_metadata.base_record_count as usize,
+        appended_record_count: append_result.append_metadata.appended_record_count as usize,
+        resulting_record_count: append_result.append_metadata.resulting_record_count as usize,
+        archive_byte_growth: archive_bytes_after_append.saturating_sub(archive_bytes_before_append),
+        archive_bytes_before_append,
+        archive_bytes_after_append,
+        matched_records_after_append: appended_row_ids.len(),
+        append_rebuild_timing,
+    })
+}
+
+fn measure_repeated_archive_append_rebuild<P>(
+    archive_path: P,
+    query_index: &TypedQueryIndex,
+    appended: &FSERecordBatch,
+    encoder: &impl FSERecordEncoder,
+    builder: &FSEBuilder,
+    timing_config: &RepeatedTimingConfig,
+) -> Result<RepeatedTimingReport, TypedArchiveLoadTimingError>
+where
+    P: AsRef<Path>,
+{
+    let archive_path = archive_path.as_ref();
+    let mut total_elapsed = Duration::ZERO;
+
+    for _ in 0..timing_config.iterations {
+        save_typed_query_index_archive_file(archive_path, query_index)?;
+        let (append_result, elapsed) = measure_elapsed(|| {
+            append_typed_query_index_archive_file(archive_path, appended, encoder, builder)
+        });
+        let append_result = append_result?;
+
+        std::hint::black_box(append_result.query_index.batch().len());
+        total_elapsed += elapsed;
+    }
+
+    Ok(RepeatedTimingReport {
+        iterations: timing_config.iterations,
+        total_elapsed,
+        average_elapsed: duration_div(total_elapsed, timing_config.iterations),
+    })
+}
+
+fn archive_file_len(path: &Path) -> Result<u64, TypedArchiveLoadTimingError> {
+    fs::metadata(path)
+        .map(|metadata| metadata.len())
+        .map_err(|error| TypedArchiveLoadTimingError::ArchiveFileMetadata {
+            path: path.to_path_buf(),
+            kind: error.kind(),
+        })
 }
 
 fn validate_same_row_id_set(

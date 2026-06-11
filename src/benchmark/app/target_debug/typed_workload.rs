@@ -12,6 +12,7 @@ use crate::query::{FSEPredicate, FSEPredicateField, TypedQueryIndex, TypedQueryP
 
 const X_FIELD_NAME: &str = "x";
 const Y_FIELD_NAME: &str = "y";
+const APPENDED_RECORD_LIMIT: usize = 64;
 
 pub(super) struct TypedBenchmarkContext {
     schema: FSESchema,
@@ -38,6 +39,37 @@ impl TypedBenchmarkContext {
 
     pub(super) fn query_index(&self) -> &TypedQueryIndex {
         &self.query_index
+    }
+
+    pub(super) fn encoder(&self) -> ComposedRecordEncoder {
+        typed_benchmark_encoder(&self.schema)
+    }
+
+    pub(super) fn append_batch_from_benchmark_context(
+        &self,
+        context: &BenchmarkApplicationContext,
+    ) -> FSERecordBatch {
+        let base_record_count = self.query_index.batch().len();
+        let appended_record_count = context.points.len().min(APPENDED_RECORD_LIMIT);
+        let row_ids: Vec<RowId> = (0..appended_record_count)
+            .map(|index| RowId::new((base_record_count + index) as u64))
+            .collect();
+        let records: Vec<FSERecord> = context
+            .points
+            .iter()
+            .take(appended_record_count)
+            .map(|point| {
+                FSERecord::new(
+                    vec![
+                        FSEValue::Float(point.values[0] as f64),
+                        FSEValue::Float(point.values[1] as f64),
+                    ],
+                    &self.schema,
+                )
+            })
+            .collect();
+
+        FSERecordBatch::new(self.schema.clone(), row_ids, records)
     }
 }
 
