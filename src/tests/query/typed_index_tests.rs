@@ -1,7 +1,7 @@
 use crate::build::{BuildConfig, BuildInputError, FSEBuilder};
 use crate::data::{
-    FSEDimensionMapping, FSEField, FSEFieldType, FSERecord, FSERecordBatch, FSESchema,
-    FSESchemaDimensionMapping, FSEValue, RowId,
+    FSEDimensionMapping, FSEField, FSEFieldType, FSERecord, FSERecordBatch, FSERecordBatchError,
+    FSESchema, FSESchemaDimensionMapping, FSEValue, RowId,
 };
 use crate::encoding::{
     CategoricalDictionaryEncoder, ComposedRecordEncoder, FSEEncodingError,
@@ -9,7 +9,7 @@ use crate::encoding::{
 };
 use crate::query::{
     FSEPredicate, FSEPredicateField, IndexedTypedQueryError, TypedQueryIndex,
-    TypedQueryIndexBuildError, TypedQueryPlanBuilder,
+    TypedQueryIndexAppendError, TypedQueryIndexBuildError, TypedQueryPlanBuilder,
 };
 
 #[test]
@@ -207,6 +207,140 @@ fn typed_query_index_returns_index_and_batch_references() {
 }
 
 #[test]
+fn typed_query_index_append_rebuilds_index_and_queries_appended_rows() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let builder = builder();
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder).expect("valid input should build");
+    let appended_index = query_index
+        .try_append(&appended, &encoder, &builder)
+        .expect("valid append should rebuild the index");
+    let plan = score_and_class_plan(&schema, &mapping);
+
+    let mut matches = appended_index
+        .query_row_ids(&plan)
+        .expect("typed indexed query should execute");
+    matches.sort();
+
+    assert_eq!(
+        matches,
+        vec![RowId::new(100), RowId::new(103), RowId::new(104)]
+    );
+    assert_eq!(appended_index.batch().len(), 6);
+    assert_eq!(
+        appended_index.index().index().root_node().cardinality,
+        appended_index.batch().len()
+    );
+    assert_eq!(
+        appended_index
+            .batch()
+            .record_for_row_id(RowId::new(104))
+            .unwrap()
+            .value(0),
+        Some(&FSEValue::Integer(5))
+    );
+}
+
+#[test]
+fn typed_query_index_append_reports_duplicate_row_ids() {
+    let schema = entity_schema();
+    let encoder = entity_encoder(&schema);
+    let builder = builder();
+    let query_index = TypedQueryIndex::try_build(entity_batch(&schema), &encoder, &builder)
+        .expect("valid input should build");
+    let appended = FSERecordBatch::new(
+        schema.clone(),
+        vec![RowId::new(100)],
+        vec![entity_record(&schema, 5, 16.0, "alpha", 1_400)],
+    );
+
+    assert_eq!(
+        query_index.try_append(&appended, &encoder, &builder),
+        Err(TypedQueryIndexAppendError::RecordBatch(
+            FSERecordBatchError::DuplicateRowId {
+                row_id: RowId::new(100)
+            }
+        ))
+    );
+}
+
+#[test]
+fn typed_query_index_append_reports_schema_mismatch() {
+    let schema = entity_schema();
+    let encoder = entity_encoder(&schema);
+    let builder = builder();
+    let query_index = TypedQueryIndex::try_build(entity_batch(&schema), &encoder, &builder)
+        .expect("valid input should build");
+    let appended_schema = FSESchema::new(vec![
+        FSEField::new("entity_id", FSEFieldType::Integer, false),
+        FSEField::new("score", FSEFieldType::Float, false),
+    ]);
+    let appended = FSERecordBatch::new(
+        appended_schema.clone(),
+        vec![RowId::new(104)],
+        vec![FSERecord::new(
+            vec![FSEValue::Integer(5), FSEValue::Float(16.0)],
+            &appended_schema,
+        )],
+    );
+
+    assert_eq!(
+        query_index.try_append(&appended, &encoder, &builder),
+        Err(TypedQueryIndexAppendError::RecordBatch(
+            FSERecordBatchError::SchemaMismatch
+        ))
+    );
+}
+
+#[test]
+fn typed_query_index_append_reports_empty_append_batch() {
+    let schema = entity_schema();
+    let encoder = entity_encoder(&schema);
+    let builder = builder();
+    let query_index = TypedQueryIndex::try_build(entity_batch(&schema), &encoder, &builder)
+        .expect("valid input should build");
+    let appended = FSERecordBatch::new(schema, Vec::new(), Vec::new());
+
+    assert_eq!(
+        query_index.try_append(&appended, &encoder, &builder),
+        Err(TypedQueryIndexAppendError::RecordBatch(
+            FSERecordBatchError::EmptyAppendBatch
+        ))
+    );
+}
+
+#[test]
+fn typed_query_index_append_propagates_rebuild_errors() {
+    let schema = entity_schema();
+    let encoder = entity_encoder(&schema);
+    let builder = builder();
+    let query_index = TypedQueryIndex::try_build(entity_batch(&schema), &encoder, &builder)
+        .expect("valid input should build");
+    let appended = FSERecordBatch::new(
+        schema.clone(),
+        vec![RowId::new(104)],
+        vec![entity_record(&schema, 5, 16.0, "gamma", 1_400)],
+    );
+
+    assert_eq!(
+        query_index.try_append(&appended, &encoder, &builder),
+        Err(TypedQueryIndexAppendError::Rebuild(
+            TypedQueryIndexBuildError::Encoding(FSERecordBatchEncodingError::RecordEncoding {
+                record: 4,
+                row_id: RowId::new(104),
+                source: FSEEncodingError::UnsupportedValue {
+                    reason: "category 'gamma' is not in dictionary".to_string(),
+                },
+            })
+        ))
+    );
+}
+
+#[test]
 fn typed_query_index_propagates_encoding_errors() {
     let schema = entity_schema();
     let batch = FSERecordBatch::new(
@@ -392,6 +526,17 @@ fn entity_batch(schema: &FSESchema) -> FSERecordBatch {
             entity_record(schema, 2, 12.5, "beta", 1_100),
             entity_record(schema, 3, 25.0, "alpha", 1_200),
             entity_record(schema, 4, 18.0, "alpha", 1_300),
+        ],
+    )
+}
+
+fn appended_entity_batch(schema: &FSESchema) -> FSERecordBatch {
+    FSERecordBatch::new(
+        schema.clone(),
+        vec![RowId::new(104), RowId::new(105)],
+        vec![
+            entity_record(schema, 5, 16.0, "alpha", 1_400),
+            entity_record(schema, 6, 80.0, "beta", 1_500),
         ],
     )
 }

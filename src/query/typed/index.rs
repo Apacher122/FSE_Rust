@@ -4,7 +4,7 @@ use std::error::Error;
 use std::fmt;
 
 use crate::build::{BuildInputError, FSEBuilder, RowMappedFSEIndex};
-use crate::data::{FSERecord, FSERecordBatch, RowId};
+use crate::data::{FSERecord, FSERecordBatch, FSERecordBatchError, RowId};
 use crate::encoding::{FSERecordBatchEncodingError, FSERecordEncoder, encode_record_batch};
 use crate::query::execution::{QueryCountReport, QueryExecutionStats, QueryExistenceReport};
 
@@ -59,6 +59,46 @@ impl From<BuildInputError> for TypedQueryIndexBuildError {
     }
 }
 
+/// Error returned when typed indexed query append fails.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TypedQueryIndexAppendError {
+    /// Record batch append validation failed.
+    RecordBatch(FSERecordBatchError),
+
+    /// Rebuilding the typed query index failed.
+    Rebuild(TypedQueryIndexBuildError),
+}
+
+impl fmt::Display for TypedQueryIndexAppendError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::RecordBatch(error) => error.fmt(formatter),
+            Self::Rebuild(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for TypedQueryIndexAppendError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::RecordBatch(error) => Some(error),
+            Self::Rebuild(error) => Some(error),
+        }
+    }
+}
+
+impl From<FSERecordBatchError> for TypedQueryIndexAppendError {
+    fn from(error: FSERecordBatchError) -> Self {
+        Self::RecordBatch(error)
+    }
+}
+
+impl From<TypedQueryIndexBuildError> for TypedQueryIndexAppendError {
+    fn from(error: TypedQueryIndexBuildError) -> Self {
+        Self::Rebuild(error)
+    }
+}
+
 /// Typed records paired with a row-mapped FSE index.
 ///
 /// # Runtime Role
@@ -88,6 +128,18 @@ impl TypedQueryIndex {
         let index = builder.try_build_row_mapped_encoded_batch(&encoded)?;
 
         Ok(Self { batch, index })
+    }
+
+    /// Appends records and rebuilds the row-mapped index.
+    pub fn try_append(
+        &self,
+        appended: &FSERecordBatch,
+        encoder: &impl FSERecordEncoder,
+        builder: &FSEBuilder,
+    ) -> Result<Self, TypedQueryIndexAppendError> {
+        let batch = self.batch.try_append(appended)?;
+
+        Self::try_build(batch, encoder, builder).map_err(Into::into)
     }
 
     /// Returns the typed record batch.

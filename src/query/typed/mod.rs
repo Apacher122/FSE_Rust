@@ -25,7 +25,7 @@ pub use execution::{
     indexed_typed_query_has_match_with_stats, typed_query_has_match,
     visit_indexed_typed_query_row_ids, visit_indexed_typed_query_rows,
 };
-pub use index::{TypedQueryIndex, TypedQueryIndexBuildError};
+pub use index::{TypedQueryIndex, TypedQueryIndexAppendError, TypedQueryIndexBuildError};
 pub use plan::{TypedQueryPlan, TypedQueryPlanError};
 pub use predicate::{
     FSEPredicate, FSEPredicateError, FSEPredicateField, FSEPredicateOperator,
