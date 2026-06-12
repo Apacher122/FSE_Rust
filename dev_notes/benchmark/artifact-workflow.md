@@ -45,6 +45,8 @@ benchmark_artifacts/
       typed-indexed-comparison-summary-<label>.txt
       typed-archive-load-summary-<label>.csv
       typed-archive-load-summary-<label>.txt
+      typed-archive-append-rebuild-summary-<label>.csv
+      typed-archive-append-rebuild-summary-<label>.txt
       typed-query-index-archive-<label>.fse
       low-gap-review-notes-<label>.txt
       low-gap-review-manifest-<label>.txt
@@ -334,6 +336,8 @@ benchmark_artifacts/
       typed-indexed-comparison-summary-<label>.txt
       typed-archive-load-summary-<label>.csv
       typed-archive-load-summary-<label>.txt
+      typed-archive-append-rebuild-summary-<label>.csv
+      typed-archive-append-rebuild-summary-<label>.txt
       typed-query-index-archive-<label>.fse
       low-gap-review-notes-<label>.txt
       low-gap-review-manifest-<label>.txt
@@ -611,6 +615,7 @@ count-only workload summaries
 count-only comparison artifacts
 typed indexed comparison summaries
 typed archive load summaries
+typed archive append rebuild summaries
 typed query index archives
 repeated-trial folders
 repeated materialization trial folders
@@ -900,6 +905,8 @@ Artifacts:
 ```text
 typed-archive-load-summary-<label>.csv
 typed-archive-load-summary-<label>.txt
+typed-archive-append-rebuild-summary-<label>.csv
+typed-archive-append-rebuild-summary-<label>.txt
 typed-query-index-archive-<label>.fse
 ```
 
@@ -938,6 +945,44 @@ Typed query index archive validated:
 ```
 
 The review validator requires this status line in addition to requiring the archive file to exist and be non-empty.
+
+## Typed archive append rebuild timing artifacts
+
+Typed archive append rebuild timing artifacts are extracted from the debug report workload summary.
+
+Artifacts:
+
+```text
+typed-archive-append-rebuild-summary-<label>.csv
+typed-archive-append-rebuild-summary-<label>.txt
+```
+
+The CSV preserves the workload-level relationship between the source typed query index archive, the append batch, the rebuilt archive, and the measured append/rebuild/write path.
+
+Required CSV fields include:
+
+```text
+dataset
+max_depth
+workload_name
+base_record_count
+appended_record_count
+resulting_record_count
+archive_bytes_before_append
+archive_bytes_after_append
+archive_byte_growth
+matched_records_after_append
+append_rebuild_elapsed
+agreement
+```
+
+Every row should have:
+
+```text
+agreement = pass
+```
+
+The notes file records row count, agreement failures, total matched records after append, distinct record-count values, and distinct archive byte-growth values. The append rebuild elapsed field is the formatted duration emitted by the debug report.
 
 ## Target workload artifacts
 
