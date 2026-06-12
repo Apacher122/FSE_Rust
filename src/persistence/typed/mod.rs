@@ -6,6 +6,7 @@ mod index_codec;
 mod index_file;
 mod index_snapshot;
 mod snapshot;
+mod tombstone;
 
 pub use codec::{
     FSETypedRecordBatchArchiveCodecError, decode_typed_record_batch_archive_snapshot,
@@ -33,4 +34,7 @@ pub use index_snapshot::{
 pub use snapshot::{
     FSEFieldArchiveRecord, FSEFieldTypeArchiveTag, FSERecordArchiveRecord,
     FSERecordBatchArchiveSnapshot, FSETypedRecordBatchArchiveSnapshotError, FSEValueArchiveRecord,
+};
+pub use tombstone::{
+    FSETypedRowTombstoneArchiveSnapshot, FSETypedRowTombstoneArchiveSnapshotError,
 };
