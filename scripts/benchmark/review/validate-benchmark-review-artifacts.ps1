@@ -130,6 +130,8 @@ $MaterializationSummaryEntry = $ResolvedArtifacts.MaterializationSummary
 $MaterializationNotesEntry = $ResolvedArtifacts.MaterializationNotes
 $TypedArchiveLoadSummaryEntry = $ResolvedArtifacts.TypedArchiveLoadSummary
 $TypedArchiveLoadNotesEntry = $ResolvedArtifacts.TypedArchiveLoadNotes
+$TypedArchiveAppendRebuildSummaryEntry = $ResolvedArtifacts.TypedArchiveAppendRebuildSummary
+$TypedArchiveAppendRebuildNotesEntry = $ResolvedArtifacts.TypedArchiveAppendRebuildNotes
 $TypedQueryIndexArchiveEntry = $ResolvedArtifacts.TypedQueryIndexArchive
 $LowGapEntry = $ResolvedArtifacts.LowGap
 $RegressionNotesEntry = $ResolvedArtifacts.RegressionNotes
@@ -151,6 +153,7 @@ Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $DebugO
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $CountOnlyNotesEntry -Description "count-only workload notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $MaterializationNotesEntry -Description "materialization mode notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveLoadNotesEntry -Description "typed archive load notes"
+Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveAppendRebuildNotesEntry -Description "typed archive append rebuild notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedQueryIndexArchiveEntry -Description "typed query index archive"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $RegressionNotesEntry -Description "low-gap regression notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TrialNotesEntry -Description "low-gap trial notes"
@@ -262,6 +265,32 @@ Test-BenchmarkReviewTextColumnAllEquals `
   -ColumnName "agreement" `
   -ExpectedValue "pass" `
   -Description "typed archive load summary"
+
+$TypedArchiveAppendRebuildSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv `
+  -Entry $TypedArchiveAppendRebuildSummaryEntry `
+  -Description "typed archive append rebuild summary" `
+  -RequiredColumns @(
+  "dataset",
+  "max_depth",
+  "workload_name",
+  "base_record_count",
+  "appended_record_count",
+  "resulting_record_count",
+  "archive_bytes_before_append",
+  "archive_bytes_after_append",
+  "archive_byte_growth",
+  "matched_records_after_append",
+  "append_rebuild_elapsed",
+  "agreement"
+) `
+  -MinimumRows 1 `
+  -OnFailure $AddValidationFailure
+
+Test-BenchmarkReviewTextColumnAllEquals `
+  -Rows $TypedArchiveAppendRebuildSummaryRows `
+  -ColumnName "agreement" `
+  -ExpectedValue "pass" `
+  -Description "typed archive append rebuild summary"
 
 Invoke-BenchmarkReviewPolicyCsvValidation -OnFailure $AddValidationFailure `
   -Entry $LowGapEntry `

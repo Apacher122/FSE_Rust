@@ -14,6 +14,7 @@ core benchmark CSVs
 count-only summary artifacts
 materialization summary artifacts
 typed archive load artifacts
+typed archive append rebuild artifacts
 typed query index archive artifact
 low-gap trial artifacts
 target workload artifacts
@@ -39,6 +40,8 @@ materialization-mode-summary-<label>.csv
 materialization-mode-summary-<label>.txt
 typed-archive-load-summary-<label>.csv
 typed-archive-load-summary-<label>.txt
+typed-archive-append-rebuild-summary-<label>.csv
+typed-archive-append-rebuild-summary-<label>.txt
 typed-query-index-archive-<label>.fse
 low-selectivity-gap-<label>.csv
 low-gap-regression-notes-<label>.txt
@@ -169,6 +172,43 @@ agreement = pass
 ```
 
 This check verifies that loaded `.fse` typed query index execution matches the in-memory typed query index execution for each reported workload.
+
+## Typed archive append rebuild validation
+
+The typed archive append rebuild summary must include:
+
+```text
+dataset
+max_depth
+workload_name
+base_record_count
+appended_record_count
+resulting_record_count
+archive_bytes_before_append
+archive_bytes_after_append
+archive_byte_growth
+matched_records_after_append
+append_rebuild_elapsed
+agreement
+```
+
+Every row must have:
+
+```text
+agreement = pass
+```
+
+This check verifies that append/rebuild timing evidence was produced from a workload summary where the rebuilt `.fse` archive agreed with the appended typed query index.
+
+The typed archive append rebuild notes artifact must exist and be non-empty:
+
+```text
+typed-archive-append-rebuild-summary-<label>.txt
+```
+
+The notes file records the row count, agreement failure count, total matched records after append, distinct record counts, and archive byte-growth values.
+
+## Typed query index archive validation
 
 The typed query index archive artifact must exist and be non-empty:
 

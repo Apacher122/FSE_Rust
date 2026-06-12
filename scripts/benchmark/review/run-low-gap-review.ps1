@@ -126,6 +126,8 @@ $CurrentMaterializationSummaryCsv = $ReviewPaths.CurrentMaterializationSummaryCs
 $CurrentMaterializationSummaryNotes = $ReviewPaths.CurrentMaterializationSummaryNotes
 $CurrentTypedArchiveLoadSummaryCsv = $ReviewPaths.CurrentTypedArchiveLoadSummaryCsv
 $CurrentTypedArchiveLoadSummaryNotes = $ReviewPaths.CurrentTypedArchiveLoadSummaryNotes
+$CurrentTypedArchiveAppendRebuildSummaryCsv = $ReviewPaths.CurrentTypedArchiveAppendRebuildSummaryCsv
+$CurrentTypedArchiveAppendRebuildSummaryNotes = $ReviewPaths.CurrentTypedArchiveAppendRebuildSummaryNotes
 $CurrentTypedQueryIndexArchive = $ReviewPaths.CurrentTypedQueryIndexArchive
 $CurrentMaterializationComparisonCsv = $ReviewPaths.CurrentMaterializationComparisonCsv
 $CurrentMaterializationComparisonNotes = $ReviewPaths.CurrentMaterializationComparisonNotes
@@ -274,6 +276,8 @@ Add-ReviewLine "materialization mode summary: $CurrentMaterializationSummaryCsv"
 Add-ReviewLine "materialization mode notes: $CurrentMaterializationSummaryNotes"
 Add-ReviewLine "typed archive load summary: $CurrentTypedArchiveLoadSummaryCsv"
 Add-ReviewLine "typed archive load notes: $CurrentTypedArchiveLoadSummaryNotes"
+Add-ReviewLine "typed archive append rebuild summary: $CurrentTypedArchiveAppendRebuildSummaryCsv"
+Add-ReviewLine "typed archive append rebuild notes: $CurrentTypedArchiveAppendRebuildSummaryNotes"
 Add-ReviewLine "typed query index archive: $CurrentTypedQueryIndexArchive"
 
 if ($PreviousLowSelectivityGapInput.Exists) {
@@ -510,47 +514,49 @@ Add-BenchmarkReviewArtifactSummary `
   -TargetWorkloadName $TargetWorkloadName
 
 $ReviewManifestContext = [PSCustomObject]@{
-  ReviewManifestPath                    = $ReviewManifestPath
-  ReviewNotesPath                       = $ReviewNotesPath
-  Label                                 = $Label
-  RunId                                 = $RunId
-  AttemptId                             = $AttemptId
-  RunTopic                              = $NormalizedRunTopic
-  PreviousLabel                         = $PreviousLabel
-  Dataset                               = $Dataset
-  OutputDir                             = $OutputDir
-  OrganizedRunRoot                      = $OrganizedRunRoot
-  OrganizedRunDirectory                 = $OrganizedRunDirectory
-  PreviousOrganizedRunDirectory         = $PreviousOrganizedRunDirectory
-  EffectiveMaxDepth                     = $EffectiveMaxDepth
-  Trials                                = $Trials
-  Iterations                            = $Iterations
-  TargetWorkloadName                    = $TargetWorkloadName
-  CopyArtifactsToRunFolder              = [bool]$CopyArtifactsToRunFolder
-  ForceOrganizedArtifacts               = [bool]$ForceOrganizedArtifacts
-  ValidateArtifacts                     = [bool]$ValidateArtifacts
-  RequireValidatedComparisons           = [bool]$RequireValidatedComparisons
-  CleanupFlatArtifacts                  = [bool]$CleanupFlatArtifacts
-  UpdateHistory                         = [bool]$UpdateHistory
-  HistoryDir                            = $HistoryDir
-  SkipTargetWorkloadReview              = [bool]$SkipTargetWorkloadReview
-  NoiseThreshold                        = $NoiseThreshold
-  PreviousTrialSummaryCsv               = $PreviousTrialSummaryCsv
-  CurrentTrialSummaryCsv                = $CurrentTrialSummaryCsv
-  PreviousWorkloadSummaryCsv            = $PreviousWorkloadSummaryCsv
-  CurrentWorkloadSummaryCsv             = $CurrentWorkloadSummaryCsv
-  PreviousCountOnlySummaryCsv           = $PreviousCountOnlySummaryCsv
-  CurrentCountOnlyWorkloadSummaryCsv    = $CurrentCountOnlyWorkloadSummaryCsv
-  PreviousMaterializationSummaryCsv     = $PreviousMaterializationSummaryCsv
-  CurrentMaterializationSummaryCsv      = $CurrentMaterializationSummaryCsv
-  CurrentMaterializationSummaryNotes    = $CurrentMaterializationSummaryNotes
-  CurrentTypedArchiveLoadSummaryCsv     = $CurrentTypedArchiveLoadSummaryCsv
-  CurrentTypedArchiveLoadSummaryNotes   = $CurrentTypedArchiveLoadSummaryNotes
-  CurrentTypedQueryIndexArchive         = $CurrentTypedQueryIndexArchive
-  CurrentMaterializationComparisonCsv   = $CurrentMaterializationComparisonCsv
-  CurrentMaterializationComparisonNotes = $CurrentMaterializationComparisonNotes
-  PreviousTargetSummaryCsv              = $PreviousTargetSummaryCsv
-  CurrentTargetSummaryCsv               = $CurrentTargetSummaryCsv
+  ReviewManifestPath                           = $ReviewManifestPath
+  ReviewNotesPath                              = $ReviewNotesPath
+  Label                                        = $Label
+  RunId                                        = $RunId
+  AttemptId                                    = $AttemptId
+  RunTopic                                     = $NormalizedRunTopic
+  PreviousLabel                                = $PreviousLabel
+  Dataset                                      = $Dataset
+  OutputDir                                    = $OutputDir
+  OrganizedRunRoot                             = $OrganizedRunRoot
+  OrganizedRunDirectory                        = $OrganizedRunDirectory
+  PreviousOrganizedRunDirectory                = $PreviousOrganizedRunDirectory
+  EffectiveMaxDepth                            = $EffectiveMaxDepth
+  Trials                                       = $Trials
+  Iterations                                   = $Iterations
+  TargetWorkloadName                           = $TargetWorkloadName
+  CopyArtifactsToRunFolder                     = [bool]$CopyArtifactsToRunFolder
+  ForceOrganizedArtifacts                      = [bool]$ForceOrganizedArtifacts
+  ValidateArtifacts                            = [bool]$ValidateArtifacts
+  RequireValidatedComparisons                  = [bool]$RequireValidatedComparisons
+  CleanupFlatArtifacts                         = [bool]$CleanupFlatArtifacts
+  UpdateHistory                                = [bool]$UpdateHistory
+  HistoryDir                                   = $HistoryDir
+  SkipTargetWorkloadReview                     = [bool]$SkipTargetWorkloadReview
+  NoiseThreshold                               = $NoiseThreshold
+  PreviousTrialSummaryCsv                      = $PreviousTrialSummaryCsv
+  CurrentTrialSummaryCsv                       = $CurrentTrialSummaryCsv
+  PreviousWorkloadSummaryCsv                   = $PreviousWorkloadSummaryCsv
+  CurrentWorkloadSummaryCsv                    = $CurrentWorkloadSummaryCsv
+  PreviousCountOnlySummaryCsv                  = $PreviousCountOnlySummaryCsv
+  CurrentCountOnlyWorkloadSummaryCsv           = $CurrentCountOnlyWorkloadSummaryCsv
+  PreviousMaterializationSummaryCsv            = $PreviousMaterializationSummaryCsv
+  CurrentMaterializationSummaryCsv             = $CurrentMaterializationSummaryCsv
+  CurrentMaterializationSummaryNotes           = $CurrentMaterializationSummaryNotes
+  CurrentTypedArchiveLoadSummaryCsv            = $CurrentTypedArchiveLoadSummaryCsv
+  CurrentTypedArchiveLoadSummaryNotes          = $CurrentTypedArchiveLoadSummaryNotes
+  CurrentTypedArchiveAppendRebuildSummaryCsv   = $CurrentTypedArchiveAppendRebuildSummaryCsv
+  CurrentTypedArchiveAppendRebuildSummaryNotes = $CurrentTypedArchiveAppendRebuildSummaryNotes
+  CurrentTypedQueryIndexArchive                = $CurrentTypedQueryIndexArchive
+  CurrentMaterializationComparisonCsv          = $CurrentMaterializationComparisonCsv
+  CurrentMaterializationComparisonNotes        = $CurrentMaterializationComparisonNotes
+  PreviousTargetSummaryCsv                     = $PreviousTargetSummaryCsv
+  CurrentTargetSummaryCsv                      = $CurrentTargetSummaryCsv
 }
 
 Write-BenchmarkReviewRunManifest -Context $ReviewManifestContext
