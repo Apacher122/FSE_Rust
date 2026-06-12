@@ -16,6 +16,7 @@ use super::super::execution::{
 };
 use super::evaluator::evaluate_typed_predicate;
 use super::plan::TypedQueryPlan;
+use super::tombstone::TypedRowTombstoneSet;
 
 /// Error returned when indexed typed query execution cannot resolve row identity.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -203,6 +204,22 @@ pub fn evaluate_indexed_typed_query_plan(
     Ok(evaluate_indexed_typed_query_plan_with_stats(index, batch, plan)?.row_ids)
 }
 
+/// Evaluates a typed query plan through a row-mapped FSE index and excludes
+/// tombstoned row identifiers.
+pub fn evaluate_indexed_typed_query_plan_excluding_tombstones(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Result<Vec<RowId>, IndexedTypedQueryError> {
+    Ok(
+        evaluate_indexed_typed_query_plan_with_stats_excluding_tombstones(
+            index, batch, plan, tombstones,
+        )?
+        .row_ids,
+    )
+}
+
 /// Evaluates a typed query plan through a row-mapped FSE index with statistics.
 ///
 /// # Runtime Role
@@ -214,6 +231,26 @@ pub fn evaluate_indexed_typed_query_plan_with_stats(
     index: &RowMappedFSEIndex,
     batch: &FSERecordBatch,
     plan: &TypedQueryPlan,
+) -> Result<IndexedTypedQueryReport, IndexedTypedQueryError> {
+    evaluate_indexed_typed_query_plan_with_tombstone_filter(index, batch, plan, None)
+}
+
+/// Evaluates a typed query plan through a row-mapped FSE index with statistics
+/// and excludes tombstoned row identifiers.
+pub fn evaluate_indexed_typed_query_plan_with_stats_excluding_tombstones(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Result<IndexedTypedQueryReport, IndexedTypedQueryError> {
+    evaluate_indexed_typed_query_plan_with_tombstone_filter(index, batch, plan, Some(tombstones))
+}
+
+fn evaluate_indexed_typed_query_plan_with_tombstone_filter(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: Option<&TypedRowTombstoneSet>,
 ) -> Result<IndexedTypedQueryReport, IndexedTypedQueryError> {
     if plan.is_unsatisfiable() {
         return Ok(IndexedTypedQueryReport {
@@ -227,6 +264,10 @@ pub fn evaluate_indexed_typed_query_plan_with_stats(
 
     for reference in reference_report.matches {
         let row_id = row_id_for_reference(index, reference)?;
+        if row_is_tombstoned(row_id, tombstones) {
+            continue;
+        }
+
         let record = record_for_row_id(batch, row_id)?;
 
         if record_matches_plan(record, plan) {
@@ -249,6 +290,22 @@ pub fn count_indexed_typed_query_matches(
     Ok(count_indexed_typed_query_matches_with_stats(index, batch, plan)?.matched_records)
 }
 
+/// Counts records that satisfy an indexed typed query plan while excluding
+/// tombstoned row identifiers.
+pub fn count_indexed_typed_query_matches_excluding_tombstones(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Result<usize, IndexedTypedQueryError> {
+    Ok(
+        count_indexed_typed_query_matches_with_stats_excluding_tombstones(
+            index, batch, plan, tombstones,
+        )?
+        .matched_records,
+    )
+}
+
 /// Counts records that satisfy an indexed typed query plan and returns statistics.
 ///
 /// # Runtime Role
@@ -261,7 +318,35 @@ pub fn count_indexed_typed_query_matches_with_stats(
     batch: &FSERecordBatch,
     plan: &TypedQueryPlan,
 ) -> Result<QueryCountReport, IndexedTypedQueryError> {
-    let stats = visit_indexed_typed_query_rows(index, batch, plan, |_row_id, _record| {})?;
+    let stats = visit_indexed_typed_query_rows_with_tombstone_filter(
+        index,
+        batch,
+        plan,
+        None,
+        |_row_id, _record| {},
+    )?;
+
+    Ok(QueryCountReport {
+        matched_records: stats.matched_records,
+        stats,
+    })
+}
+
+/// Counts records that satisfy an indexed typed query plan with statistics
+/// while excluding tombstoned row identifiers.
+pub fn count_indexed_typed_query_matches_with_stats_excluding_tombstones(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Result<QueryCountReport, IndexedTypedQueryError> {
+    let stats = visit_indexed_typed_query_rows_with_tombstone_filter(
+        index,
+        batch,
+        plan,
+        Some(tombstones),
+        |_row_id, _record| {},
+    )?;
 
     Ok(QueryCountReport {
         matched_records: stats.matched_records,
@@ -278,6 +363,22 @@ pub fn indexed_typed_query_has_match(
     Ok(indexed_typed_query_has_match_with_stats(index, batch, plan)?.has_match)
 }
 
+/// Returns true when an indexed typed query plan matches at least one
+/// non-tombstoned record.
+pub fn indexed_typed_query_has_match_excluding_tombstones(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Result<bool, IndexedTypedQueryError> {
+    Ok(
+        indexed_typed_query_has_match_with_stats_excluding_tombstones(
+            index, batch, plan, tombstones,
+        )?
+        .has_match,
+    )
+}
+
 /// Returns indexed typed existence with execution statistics.
 ///
 /// # Runtime Role
@@ -288,6 +389,26 @@ pub fn indexed_typed_query_has_match_with_stats(
     index: &RowMappedFSEIndex,
     batch: &FSERecordBatch,
     plan: &TypedQueryPlan,
+) -> Result<QueryExistenceReport, IndexedTypedQueryError> {
+    indexed_typed_query_has_match_with_tombstone_filter(index, batch, plan, None)
+}
+
+/// Returns indexed typed existence with execution statistics while excluding
+/// tombstoned row identifiers.
+pub fn indexed_typed_query_has_match_with_stats_excluding_tombstones(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Result<QueryExistenceReport, IndexedTypedQueryError> {
+    indexed_typed_query_has_match_with_tombstone_filter(index, batch, plan, Some(tombstones))
+}
+
+fn indexed_typed_query_has_match_with_tombstone_filter(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: Option<&TypedRowTombstoneSet>,
 ) -> Result<QueryExistenceReport, IndexedTypedQueryError> {
     if plan.is_unsatisfiable() {
         return Ok(QueryExistenceReport {
@@ -305,6 +426,10 @@ pub fn indexed_typed_query_has_match_with_stats(
         inspected_records += 1;
 
         let row_id = row_id_for_reference(index, reference)?;
+        if row_is_tombstoned(row_id, tombstones) {
+            continue;
+        }
+
         let record = record_for_row_id(batch, row_id)?;
 
         if record_matches_plan(record, plan) {
@@ -345,6 +470,29 @@ where
     })
 }
 
+/// Visits matching row identifiers for an indexed typed query plan while
+/// excluding tombstoned row identifiers.
+pub fn visit_indexed_typed_query_row_ids_excluding_tombstones<F>(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    mut visitor: F,
+) -> Result<QueryExecutionStats, IndexedTypedQueryError>
+where
+    F: FnMut(RowId),
+{
+    visit_indexed_typed_query_rows_with_tombstone_filter(
+        index,
+        batch,
+        plan,
+        Some(tombstones),
+        |row_id, _record| {
+            visitor(row_id);
+        },
+    )
+}
+
 /// Visits matching typed records for an indexed typed query plan.
 ///
 /// # Runtime Role
@@ -360,6 +508,50 @@ pub fn visit_indexed_typed_query_rows<F>(
 where
     F: FnMut(RowId, &FSERecord),
 {
+    visit_indexed_typed_query_rows_with_tombstone_filter(
+        index,
+        batch,
+        plan,
+        None,
+        |row_id, record| {
+            visitor(row_id, record);
+        },
+    )
+}
+
+/// Visits matching typed records for an indexed typed query plan while excluding
+/// tombstoned row identifiers.
+pub fn visit_indexed_typed_query_rows_excluding_tombstones<F>(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    mut visitor: F,
+) -> Result<QueryExecutionStats, IndexedTypedQueryError>
+where
+    F: FnMut(RowId, &FSERecord),
+{
+    visit_indexed_typed_query_rows_with_tombstone_filter(
+        index,
+        batch,
+        plan,
+        Some(tombstones),
+        |row_id, record| {
+            visitor(row_id, record);
+        },
+    )
+}
+
+fn visit_indexed_typed_query_rows_with_tombstone_filter<F>(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: Option<&TypedRowTombstoneSet>,
+    mut visitor: F,
+) -> Result<QueryExecutionStats, IndexedTypedQueryError>
+where
+    F: FnMut(RowId, &FSERecord),
+{
     if plan.is_unsatisfiable() {
         return Ok(unsatisfiable_plan_stats(index));
     }
@@ -369,6 +561,10 @@ where
 
     for reference in reference_report.matches {
         let row_id = row_id_for_reference(index, reference)?;
+        if row_is_tombstoned(row_id, tombstones) {
+            continue;
+        }
+
         let record = record_for_row_id(batch, row_id)?;
 
         if record_matches_plan(record, plan) {
@@ -396,6 +592,22 @@ pub fn evaluate_indexed_typed_query_plan_rows(
     Ok(evaluate_indexed_typed_query_plan_rows_with_stats(index, batch, plan)?.rows)
 }
 
+/// Evaluates a typed query plan through a row-mapped FSE index, returns rows,
+/// and excludes tombstoned row identifiers.
+pub fn evaluate_indexed_typed_query_plan_rows_excluding_tombstones(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Result<Vec<TypedQueryResultRow>, IndexedTypedQueryError> {
+    Ok(
+        evaluate_indexed_typed_query_plan_rows_with_stats_excluding_tombstones(
+            index, batch, plan, tombstones,
+        )?
+        .rows,
+    )
+}
+
 /// Evaluates a typed query plan through a row-mapped FSE index and returns rows
 /// with statistics.
 pub fn evaluate_indexed_typed_query_plan_rows_with_stats(
@@ -403,27 +615,41 @@ pub fn evaluate_indexed_typed_query_plan_rows_with_stats(
     batch: &FSERecordBatch,
     plan: &TypedQueryPlan,
 ) -> Result<IndexedTypedQueryRowReport, IndexedTypedQueryError> {
-    if plan.is_unsatisfiable() {
-        return Ok(IndexedTypedQueryRowReport {
-            rows: Vec::new(),
-            stats: unsatisfiable_plan_stats(index),
-        });
-    }
+    evaluate_indexed_typed_query_plan_rows_with_tombstone_filter(index, batch, plan, None)
+}
 
-    let reference_report = execute_query_references_with_stats(index.index(), plan.query_region());
-    let mut rows = Vec::with_capacity(reference_report.matches.len());
+/// Evaluates a typed query plan through a row-mapped FSE index, returns rows
+/// with statistics, and excludes tombstoned row identifiers.
+pub fn evaluate_indexed_typed_query_plan_rows_with_stats_excluding_tombstones(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Result<IndexedTypedQueryRowReport, IndexedTypedQueryError> {
+    evaluate_indexed_typed_query_plan_rows_with_tombstone_filter(
+        index,
+        batch,
+        plan,
+        Some(tombstones),
+    )
+}
 
-    for reference in reference_report.matches {
-        let row_id = row_id_for_reference(index, reference)?;
-        let record = record_for_row_id(batch, row_id)?;
-
-        if record_matches_plan(record, plan) {
+fn evaluate_indexed_typed_query_plan_rows_with_tombstone_filter(
+    index: &RowMappedFSEIndex,
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: Option<&TypedRowTombstoneSet>,
+) -> Result<IndexedTypedQueryRowReport, IndexedTypedQueryError> {
+    let mut rows = Vec::new();
+    let stats = visit_indexed_typed_query_rows_with_tombstone_filter(
+        index,
+        batch,
+        plan,
+        tombstones,
+        |row_id, record| {
             rows.push(TypedQueryResultRow::new(row_id, record.clone()));
-        }
-    }
-
-    let mut stats = reference_report.stats;
-    stats.matched_records = rows.len();
+        },
+    )?;
 
     Ok(IndexedTypedQueryRowReport { rows, stats })
 }
@@ -461,6 +687,10 @@ fn record_matches_plan(record: &FSERecord, plan: &TypedQueryPlan) -> bool {
     plan.predicates()
         .iter()
         .all(|predicate| evaluate_typed_predicate(record, predicate))
+}
+
+fn row_is_tombstoned(row_id: RowId, tombstones: Option<&TypedRowTombstoneSet>) -> bool {
+    tombstones.is_some_and(|tombstones| tombstones.contains(row_id))
 }
 
 fn candidate_ratio(inspected_records: usize, total_records: usize) -> Scalar {

@@ -12,12 +12,20 @@ use super::execution::{
     IndexedTypedQueryError, IndexedTypedQueryReport, IndexedTypedQueryRowReport,
     TypedQueryResultRow, count_indexed_typed_query_matches,
     count_indexed_typed_query_matches_with_stats, evaluate_indexed_typed_query_plan,
-    evaluate_indexed_typed_query_plan_rows, evaluate_indexed_typed_query_plan_rows_with_stats,
-    evaluate_indexed_typed_query_plan_with_stats, indexed_typed_query_has_match,
-    indexed_typed_query_has_match_with_stats, visit_indexed_typed_query_row_ids,
-    visit_indexed_typed_query_rows,
+    evaluate_indexed_typed_query_plan_rows,
+    evaluate_indexed_typed_query_plan_rows_excluding_tombstones,
+    evaluate_indexed_typed_query_plan_rows_with_stats,
+    evaluate_indexed_typed_query_plan_rows_with_stats_excluding_tombstones,
+    evaluate_indexed_typed_query_plan_with_stats,
+    evaluate_indexed_typed_query_plan_with_stats_excluding_tombstones,
+    indexed_typed_query_has_match, indexed_typed_query_has_match_excluding_tombstones,
+    indexed_typed_query_has_match_with_stats,
+    indexed_typed_query_has_match_with_stats_excluding_tombstones,
+    visit_indexed_typed_query_row_ids, visit_indexed_typed_query_row_ids_excluding_tombstones,
+    visit_indexed_typed_query_rows, visit_indexed_typed_query_rows_excluding_tombstones,
 };
 use super::plan::TypedQueryPlan;
+use super::tombstone::TypedRowTombstoneSet;
 
 /// Error returned when typed indexed query construction fails.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -168,6 +176,35 @@ impl TypedQueryIndex {
         evaluate_indexed_typed_query_plan_with_stats(&self.index, &self.batch, plan)
     }
 
+    /// Evaluates a typed query plan and excludes tombstoned row identifiers.
+    pub fn query_row_ids_excluding_tombstones(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+    ) -> Result<Vec<RowId>, IndexedTypedQueryError> {
+        super::execution::evaluate_indexed_typed_query_plan_excluding_tombstones(
+            &self.index,
+            &self.batch,
+            plan,
+            tombstones,
+        )
+    }
+
+    /// Evaluates a typed query plan with statistics and excludes tombstoned row
+    /// identifiers.
+    pub fn query_row_ids_with_stats_excluding_tombstones(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+    ) -> Result<IndexedTypedQueryReport, IndexedTypedQueryError> {
+        evaluate_indexed_typed_query_plan_with_stats_excluding_tombstones(
+            &self.index,
+            &self.batch,
+            plan,
+            tombstones,
+        )
+    }
+
     /// Evaluates a typed query plan and returns matching typed rows.
     pub fn query_rows(
         &self,
@@ -184,6 +221,36 @@ impl TypedQueryIndex {
         evaluate_indexed_typed_query_plan_rows_with_stats(&self.index, &self.batch, plan)
     }
 
+    /// Evaluates a typed query plan, returns typed rows, and excludes
+    /// tombstoned row identifiers.
+    pub fn query_rows_excluding_tombstones(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+    ) -> Result<Vec<TypedQueryResultRow>, IndexedTypedQueryError> {
+        evaluate_indexed_typed_query_plan_rows_excluding_tombstones(
+            &self.index,
+            &self.batch,
+            plan,
+            tombstones,
+        )
+    }
+
+    /// Evaluates a typed query plan with row statistics and excludes tombstoned
+    /// row identifiers.
+    pub fn query_rows_with_stats_excluding_tombstones(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+    ) -> Result<IndexedTypedQueryRowReport, IndexedTypedQueryError> {
+        evaluate_indexed_typed_query_plan_rows_with_stats_excluding_tombstones(
+            &self.index,
+            &self.batch,
+            plan,
+            tombstones,
+        )
+    }
+
     /// Counts records that satisfy a typed query plan.
     pub fn count_matches(&self, plan: &TypedQueryPlan) -> Result<usize, IndexedTypedQueryError> {
         count_indexed_typed_query_matches(&self.index, &self.batch, plan)
@@ -195,6 +262,36 @@ impl TypedQueryIndex {
         plan: &TypedQueryPlan,
     ) -> Result<QueryCountReport, IndexedTypedQueryError> {
         count_indexed_typed_query_matches_with_stats(&self.index, &self.batch, plan)
+    }
+
+    /// Counts records that satisfy a typed query plan while excluding
+    /// tombstoned row identifiers.
+    pub fn count_matches_excluding_tombstones(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+    ) -> Result<usize, IndexedTypedQueryError> {
+        super::execution::count_indexed_typed_query_matches_excluding_tombstones(
+            &self.index,
+            &self.batch,
+            plan,
+            tombstones,
+        )
+    }
+
+    /// Counts records that satisfy a typed query plan with statistics while
+    /// excluding tombstoned row identifiers.
+    pub fn count_matches_with_stats_excluding_tombstones(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+    ) -> Result<QueryCountReport, IndexedTypedQueryError> {
+        super::execution::count_indexed_typed_query_matches_with_stats_excluding_tombstones(
+            &self.index,
+            &self.batch,
+            plan,
+            tombstones,
+        )
     }
 
     /// Returns true when a typed query plan matches at least one record.
@@ -210,6 +307,36 @@ impl TypedQueryIndex {
         indexed_typed_query_has_match_with_stats(&self.index, &self.batch, plan)
     }
 
+    /// Returns true when a typed query plan matches at least one
+    /// non-tombstoned record.
+    pub fn has_match_excluding_tombstones(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+    ) -> Result<bool, IndexedTypedQueryError> {
+        indexed_typed_query_has_match_excluding_tombstones(
+            &self.index,
+            &self.batch,
+            plan,
+            tombstones,
+        )
+    }
+
+    /// Returns typed existence with execution statistics while excluding
+    /// tombstoned row identifiers.
+    pub fn has_match_with_stats_excluding_tombstones(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+    ) -> Result<QueryExistenceReport, IndexedTypedQueryError> {
+        indexed_typed_query_has_match_with_stats_excluding_tombstones(
+            &self.index,
+            &self.batch,
+            plan,
+            tombstones,
+        )
+    }
+
     /// Visits matching row identifiers for a typed query plan.
     pub fn visit_row_ids<F>(
         &self,
@@ -222,6 +349,26 @@ impl TypedQueryIndex {
         visit_indexed_typed_query_row_ids(&self.index, &self.batch, plan, visitor)
     }
 
+    /// Visits matching row identifiers for a typed query plan while excluding
+    /// tombstoned row identifiers.
+    pub fn visit_row_ids_excluding_tombstones<F>(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+        visitor: F,
+    ) -> Result<QueryExecutionStats, IndexedTypedQueryError>
+    where
+        F: FnMut(RowId),
+    {
+        visit_indexed_typed_query_row_ids_excluding_tombstones(
+            &self.index,
+            &self.batch,
+            plan,
+            tombstones,
+            visitor,
+        )
+    }
+
     /// Visits matching typed records for a typed query plan.
     pub fn visit_rows<F>(
         &self,
@@ -232,5 +379,25 @@ impl TypedQueryIndex {
         F: FnMut(RowId, &FSERecord),
     {
         visit_indexed_typed_query_rows(&self.index, &self.batch, plan, visitor)
+    }
+
+    /// Visits matching typed records for a typed query plan while excluding
+    /// tombstoned row identifiers.
+    pub fn visit_rows_excluding_tombstones<F>(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+        visitor: F,
+    ) -> Result<QueryExecutionStats, IndexedTypedQueryError>
+    where
+        F: FnMut(RowId, &FSERecord),
+    {
+        visit_indexed_typed_query_rows_excluding_tombstones(
+            &self.index,
+            &self.batch,
+            plan,
+            tombstones,
+            visitor,
+        )
     }
 }
