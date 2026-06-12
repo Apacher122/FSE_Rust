@@ -27,6 +27,9 @@ pub enum FSEArchivePayloadKind {
 
     /// Typed query index archive.
     TypedQueryIndex,
+
+    /// Typed row tombstone archive.
+    TypedRowTombstone,
 }
 
 impl FSEArchivePayloadKind {
@@ -36,6 +39,7 @@ impl FSEArchivePayloadKind {
             Self::RowMappedIndex => 2,
             Self::TypedRecordBatch => 3,
             Self::TypedQueryIndex => 4,
+            Self::TypedRowTombstone => 5,
         }
     }
 
@@ -45,6 +49,7 @@ impl FSEArchivePayloadKind {
             2 => Ok(Self::RowMappedIndex),
             3 => Ok(Self::TypedRecordBatch),
             4 => Ok(Self::TypedQueryIndex),
+            5 => Ok(Self::TypedRowTombstone),
             value => Err(FSEArchivePayloadHeaderError::UnknownPayloadKind { value }),
         }
     }

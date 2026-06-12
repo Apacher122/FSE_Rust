@@ -14,6 +14,8 @@ mod typed_query_index_snapshot_tests;
 mod typed_record_batch_codec_tests;
 mod typed_record_batch_file_tests;
 mod typed_record_batch_tests;
+mod typed_row_tombstone_codec_tests;
+mod typed_row_tombstone_file_tests;
 mod typed_row_tombstone_tests;
 
 use crate::persistence::{FSEArchivePayloadKind, encode_archive_payload};

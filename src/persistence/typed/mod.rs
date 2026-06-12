@@ -7,6 +7,8 @@ mod index_file;
 mod index_snapshot;
 mod snapshot;
 mod tombstone;
+mod tombstone_codec;
+mod tombstone_file;
 
 pub use codec::{
     FSETypedRecordBatchArchiveCodecError, decode_typed_record_batch_archive_snapshot,
@@ -37,4 +39,13 @@ pub use snapshot::{
 };
 pub use tombstone::{
     FSETypedRowTombstoneArchiveSnapshot, FSETypedRowTombstoneArchiveSnapshotError,
+};
+pub use tombstone_codec::{
+    FSETypedRowTombstoneArchiveCodecError, decode_typed_row_tombstone_archive_snapshot,
+    encode_typed_row_tombstone_archive_snapshot,
+};
+pub use tombstone_file::{
+    FSETypedRowTombstoneArchiveError, FSETypedRowTombstoneArchiveFileError,
+    load_typed_row_tombstone_archive_file, read_typed_row_tombstone_archive_snapshot_file,
+    save_typed_row_tombstone_archive_file, write_typed_row_tombstone_archive_snapshot_file,
 };

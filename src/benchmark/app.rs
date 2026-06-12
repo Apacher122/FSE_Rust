@@ -121,6 +121,7 @@ fn archive_payload_kind_name(kind: FSEArchivePayloadKind) -> &'static str {
         FSEArchivePayloadKind::RowMappedIndex => "row_mapped_index",
         FSEArchivePayloadKind::TypedRecordBatch => "typed_record_batch",
         FSEArchivePayloadKind::TypedQueryIndex => "typed_query_index",
+        FSEArchivePayloadKind::TypedRowTombstone => "typed_row_tombstone",
     }
 }
 

@@ -18,6 +18,19 @@ fn archive_payload_round_trips_non_empty_payload() {
 }
 
 #[test]
+fn archive_payload_round_trips_typed_row_tombstone_payload_kind() {
+    let payload = [9_u8, 8, 7];
+    let encoded = encode_archive_payload(FSEArchivePayloadKind::TypedRowTombstone, &payload);
+    let metadata = inspect_archive_payload(&encoded).unwrap();
+
+    assert_eq!(metadata.kind, FSEArchivePayloadKind::TypedRowTombstone);
+    assert_eq!(
+        decode_archive_payload(FSEArchivePayloadKind::TypedRowTombstone, &encoded),
+        Ok(payload.to_vec())
+    );
+}
+
+#[test]
 fn archive_payload_exposes_valid_payload_metadata() {
     let payload = [7_u8, 8, 9];
     let encoded = encode_archive_payload(FSEArchivePayloadKind::TypedQueryIndex, &payload);
