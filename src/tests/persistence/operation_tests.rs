@@ -1,7 +1,9 @@
 use crate::persistence::{
-    FSEArchiveAppendOperationMetadata, FSEArchiveAppendOperationMetadataError, FSEArchiveManifest,
-    FSEArchiveManifestError, FSEArchivePayloadKind, FSEArchiveRebuildPlanMetadata,
-    FSEArchiveRebuildPlanMetadataError, FSEArchiveRebuildReason, FSEArchiveSections,
+    FSEArchiveAppendOperationMetadata, FSEArchiveAppendOperationMetadataError,
+    FSEArchiveCompactionOperationMetadata, FSEArchiveCompactionOperationMetadataError,
+    FSEArchiveManifest, FSEArchiveManifestError, FSEArchivePayloadKind,
+    FSEArchiveRebuildPlanMetadata, FSEArchiveRebuildPlanMetadataError, FSEArchiveRebuildReason,
+    FSEArchiveSections,
 };
 
 #[test]
@@ -108,6 +110,169 @@ fn append_operation_metadata_reports_result_count_mismatch() {
                 appended_record_count: 5,
                 resulting_record_count: 66,
                 expected_resulting_record_count: 65
+            }
+        )
+    );
+}
+
+#[test]
+fn compaction_operation_metadata_records_count_transition() {
+    let metadata = FSEArchiveCompactionOperationMetadata::try_new(
+        FSEArchivePayloadKind::TypedQueryIndex,
+        60,
+        15,
+        15,
+    )
+    .unwrap();
+
+    assert_eq!(
+        metadata.payload_kind,
+        FSEArchivePayloadKind::TypedQueryIndex
+    );
+    assert_eq!(metadata.base_record_count, 60);
+    assert_eq!(metadata.tombstone_count, 15);
+    assert_eq!(metadata.removed_record_count, 15);
+    assert_eq!(metadata.retained_record_count, 45);
+    assert_eq!(metadata.validate(), Ok(()));
+}
+
+#[test]
+fn compaction_operation_metadata_allows_stale_tombstones() {
+    let metadata = FSEArchiveCompactionOperationMetadata::try_new(
+        FSEArchivePayloadKind::TypedQueryIndex,
+        60,
+        3,
+        0,
+    )
+    .unwrap();
+
+    assert_eq!(metadata.base_record_count, 60);
+    assert_eq!(metadata.tombstone_count, 3);
+    assert_eq!(metadata.removed_record_count, 0);
+    assert_eq!(metadata.retained_record_count, 60);
+}
+
+#[test]
+fn compaction_operation_metadata_can_be_created_from_manifest() {
+    let manifest = FSEArchiveManifest::try_new(2, 60, 23, 0, FSEArchiveSections::typed()).unwrap();
+
+    let metadata = FSEArchiveCompactionOperationMetadata::from_manifest(
+        FSEArchivePayloadKind::TypedQueryIndex,
+        &manifest,
+        15,
+        12,
+    )
+    .unwrap();
+
+    assert_eq!(
+        metadata.payload_kind,
+        FSEArchivePayloadKind::TypedQueryIndex
+    );
+    assert_eq!(metadata.base_record_count, 60);
+    assert_eq!(metadata.tombstone_count, 15);
+    assert_eq!(metadata.removed_record_count, 12);
+    assert_eq!(metadata.retained_record_count, 48);
+}
+
+#[test]
+fn compaction_operation_metadata_reports_invalid_manifest() {
+    let mut manifest =
+        FSEArchiveManifest::try_new(2, 60, 23, 0, FSEArchiveSections::typed()).unwrap();
+    manifest.record_count = 0;
+
+    assert_eq!(
+        FSEArchiveCompactionOperationMetadata::from_manifest(
+            FSEArchivePayloadKind::TypedQueryIndex,
+            &manifest,
+            5,
+            1,
+        ),
+        Err(FSEArchiveCompactionOperationMetadataError::Manifest(
+            FSEArchiveManifestError::ZeroRecordCount
+        ))
+    );
+}
+
+#[test]
+fn compaction_operation_metadata_reports_zero_base_record_count() {
+    assert_eq!(
+        FSEArchiveCompactionOperationMetadata::try_new(
+            FSEArchivePayloadKind::TypedQueryIndex,
+            0,
+            5,
+            1,
+        ),
+        Err(FSEArchiveCompactionOperationMetadataError::ZeroBaseRecordCount)
+    );
+}
+
+#[test]
+fn compaction_operation_metadata_reports_zero_tombstone_count() {
+    assert_eq!(
+        FSEArchiveCompactionOperationMetadata::try_new(
+            FSEArchivePayloadKind::TypedQueryIndex,
+            60,
+            0,
+            1,
+        ),
+        Err(FSEArchiveCompactionOperationMetadataError::ZeroTombstoneCount)
+    );
+}
+
+#[test]
+fn compaction_operation_metadata_reports_removed_record_count_above_base() {
+    assert_eq!(
+        FSEArchiveCompactionOperationMetadata::try_new(
+            FSEArchivePayloadKind::TypedQueryIndex,
+            60,
+            61,
+            61,
+        ),
+        Err(
+            FSEArchiveCompactionOperationMetadataError::RemovedRecordCountExceedsBase {
+                base_record_count: 60,
+                removed_record_count: 61
+            }
+        )
+    );
+}
+
+#[test]
+fn compaction_operation_metadata_reports_empty_retained_record_set() {
+    assert_eq!(
+        FSEArchiveCompactionOperationMetadata::try_new(
+            FSEArchivePayloadKind::TypedQueryIndex,
+            60,
+            60,
+            60,
+        ),
+        Err(
+            FSEArchiveCompactionOperationMetadataError::EmptyRetainedRecordSet {
+                base_record_count: 60,
+                removed_record_count: 60
+            }
+        )
+    );
+}
+
+#[test]
+fn compaction_operation_metadata_reports_retained_record_count_mismatch() {
+    let metadata = FSEArchiveCompactionOperationMetadata {
+        payload_kind: FSEArchivePayloadKind::TypedQueryIndex,
+        base_record_count: 60,
+        tombstone_count: 15,
+        removed_record_count: 15,
+        retained_record_count: 44,
+    };
+
+    assert_eq!(
+        metadata.validate(),
+        Err(
+            FSEArchiveCompactionOperationMetadataError::RetainedRecordCountMismatch {
+                base_record_count: 60,
+                removed_record_count: 15,
+                retained_record_count: 44,
+                expected_retained_record_count: 45
             }
         )
     );

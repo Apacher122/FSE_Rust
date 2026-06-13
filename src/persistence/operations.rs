@@ -1,4 +1,4 @@
-//! Append operation metadata for FSE archives.
+//! Archive operation metadata for FSE archives.
 
 use std::error::Error;
 use std::fmt;
@@ -75,6 +75,94 @@ impl Error for FSEArchiveAppendOperationMetadataError {
 }
 
 impl From<FSEArchiveManifestError> for FSEArchiveAppendOperationMetadataError {
+    fn from(error: FSEArchiveManifestError) -> Self {
+        Self::Manifest(error)
+    }
+}
+
+/// Error returned when archive compaction operation metadata is invalid.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FSEArchiveCompactionOperationMetadataError {
+    /// The source archive manifest is invalid.
+    Manifest(FSEArchiveManifestError),
+
+    /// The source archive record count was zero.
+    ZeroBaseRecordCount,
+
+    /// The compaction tombstone count was zero.
+    ZeroTombstoneCount,
+
+    /// The removed record count exceeded the source record count.
+    RemovedRecordCountExceedsBase {
+        /// Number of records in the source archive.
+        base_record_count: u64,
+
+        /// Number of source records removed by compaction.
+        removed_record_count: u64,
+    },
+
+    /// Compaction would retain no records.
+    EmptyRetainedRecordSet {
+        /// Number of records in the source archive.
+        base_record_count: u64,
+
+        /// Number of source records removed by compaction.
+        removed_record_count: u64,
+    },
+
+    /// The retained record count did not match the source and removed counts.
+    RetainedRecordCountMismatch {
+        /// Number of records in the source archive.
+        base_record_count: u64,
+
+        /// Number of source records removed by compaction.
+        removed_record_count: u64,
+
+        /// Retained record count stored in the metadata.
+        retained_record_count: u64,
+
+        /// Retained record count computed from source and removed counts.
+        expected_retained_record_count: u64,
+    },
+}
+
+impl fmt::Display for FSEArchiveCompactionOperationMetadataError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Manifest(error) => error.fmt(formatter),
+            Self::ZeroBaseRecordCount => {
+                formatter.write_str("compaction operation base record count must be greater than zero")
+            }
+            Self::ZeroTombstoneCount => {
+                formatter.write_str("compaction operation tombstone count must be greater than zero")
+            }
+            Self::RemovedRecordCountExceedsBase { .. } => formatter.write_str(
+                "compaction operation removed record count cannot exceed base record count",
+            ),
+            Self::EmptyRetainedRecordSet { .. } => {
+                formatter.write_str("compaction operation retained no records")
+            }
+            Self::RetainedRecordCountMismatch { .. } => formatter.write_str(
+                "compaction operation retained record count must equal base records minus removed records",
+            ),
+        }
+    }
+}
+
+impl Error for FSEArchiveCompactionOperationMetadataError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Manifest(error) => Some(error),
+            Self::ZeroBaseRecordCount
+            | Self::ZeroTombstoneCount
+            | Self::RemovedRecordCountExceedsBase { .. }
+            | Self::EmptyRetainedRecordSet { .. }
+            | Self::RetainedRecordCountMismatch { .. } => None,
+        }
+    }
+}
+
+impl From<FSEArchiveManifestError> for FSEArchiveCompactionOperationMetadataError {
     fn from(error: FSEArchiveManifestError) -> Self {
         Self::Manifest(error)
     }
@@ -169,6 +257,104 @@ pub struct FSEArchiveAppendOperationMetadata {
 
     /// Number of records expected after the append operation.
     pub resulting_record_count: u64,
+}
+
+/// Checked metadata for an archive compaction operation.
+///
+/// The metadata records the logical record-count transition when tombstones are
+/// applied to a persisted archive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FSEArchiveCompactionOperationMetadata {
+    /// Payload kind of the source archive.
+    pub payload_kind: FSEArchivePayloadKind,
+
+    /// Number of records in the source archive.
+    pub base_record_count: u64,
+
+    /// Number of tombstones used by the compaction operation.
+    pub tombstone_count: u64,
+
+    /// Number of source records removed by compaction.
+    pub removed_record_count: u64,
+
+    /// Number of source records retained after compaction.
+    pub retained_record_count: u64,
+}
+
+impl FSEArchiveCompactionOperationMetadata {
+    /// Creates compaction metadata and returns an error when counts are invalid.
+    pub fn try_new(
+        payload_kind: FSEArchivePayloadKind,
+        base_record_count: u64,
+        tombstone_count: u64,
+        removed_record_count: u64,
+    ) -> Result<Self, FSEArchiveCompactionOperationMetadataError> {
+        let retained_record_count = base_record_count.saturating_sub(removed_record_count);
+        let metadata = Self {
+            payload_kind,
+            base_record_count,
+            tombstone_count,
+            removed_record_count,
+            retained_record_count,
+        };
+
+        metadata.validate()?;
+
+        Ok(metadata)
+    }
+
+    /// Creates compaction metadata from a validated archive manifest.
+    pub fn from_manifest(
+        payload_kind: FSEArchivePayloadKind,
+        manifest: &FSEArchiveManifest,
+        tombstone_count: u64,
+        removed_record_count: u64,
+    ) -> Result<Self, FSEArchiveCompactionOperationMetadataError> {
+        manifest.validate()?;
+
+        Self::try_new(
+            payload_kind,
+            manifest.record_count,
+            tombstone_count,
+            removed_record_count,
+        )
+    }
+
+    /// Validates compaction operation metadata.
+    pub fn validate(&self) -> Result<(), FSEArchiveCompactionOperationMetadataError> {
+        if self.base_record_count == 0 {
+            return Err(FSEArchiveCompactionOperationMetadataError::ZeroBaseRecordCount);
+        }
+
+        if self.tombstone_count == 0 {
+            return Err(FSEArchiveCompactionOperationMetadataError::ZeroTombstoneCount);
+        }
+
+        let expected_retained_record_count =
+            checked_retained_record_count(self.base_record_count, self.removed_record_count)?;
+
+        if expected_retained_record_count == 0 {
+            return Err(
+                FSEArchiveCompactionOperationMetadataError::EmptyRetainedRecordSet {
+                    base_record_count: self.base_record_count,
+                    removed_record_count: self.removed_record_count,
+                },
+            );
+        }
+
+        if self.retained_record_count != expected_retained_record_count {
+            return Err(
+                FSEArchiveCompactionOperationMetadataError::RetainedRecordCountMismatch {
+                    base_record_count: self.base_record_count,
+                    removed_record_count: self.removed_record_count,
+                    retained_record_count: self.retained_record_count,
+                    expected_retained_record_count,
+                },
+            );
+        }
+
+        Ok(())
+    }
 }
 
 impl FSEArchiveAppendOperationMetadata {
@@ -308,6 +494,18 @@ fn checked_resulting_record_count(
         FSEArchiveAppendOperationMetadataError::ResultingRecordCountOverflow {
             base_record_count,
             appended_record_count,
+        },
+    )
+}
+
+fn checked_retained_record_count(
+    base_record_count: u64,
+    removed_record_count: u64,
+) -> Result<u64, FSEArchiveCompactionOperationMetadataError> {
+    base_record_count.checked_sub(removed_record_count).ok_or(
+        FSEArchiveCompactionOperationMetadataError::RemovedRecordCountExceedsBase {
+            base_record_count,
+            removed_record_count,
         },
     )
 }

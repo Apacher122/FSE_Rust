@@ -1,8 +1,8 @@
-mod append_tests;
 mod codec_tests;
 mod file_tests;
 mod index_file_tests;
 mod manifest_tests;
+mod operation_tests;
 mod payload_tests;
 mod row_mapping_codec_tests;
 mod row_mapping_file_tests;

@@ -4,17 +4,13 @@
 //! row-mapped archive metadata, and typed record archive metadata used by
 //! durable FSE storage.
 
-mod append;
 mod archive;
 mod manifest;
+mod operations;
 mod payload;
 mod row_mapped;
 mod typed;
 
-pub use append::{
-    FSEArchiveAppendOperationMetadata, FSEArchiveAppendOperationMetadataError,
-    FSEArchiveRebuildPlanMetadata, FSEArchiveRebuildPlanMetadataError, FSEArchiveRebuildReason,
-};
 pub use archive::{
     FSEArchiveCodecError, FSEArchiveFileError, FSEArchiveFileOperation, FSEArchiveSnapshotError,
     FSEIndexArchiveError, FSEIndexArchiveSnapshot, FSEPartitionNodeArchiveRecord,
@@ -25,6 +21,11 @@ pub use archive::{
 pub use manifest::{
     FSE_ARCHIVE_FILE_EXTENSION, FSE_ARCHIVE_FORMAT_VERSION, FSE_ARCHIVE_MAGIC, FSEArchiveManifest,
     FSEArchiveManifestError, FSEArchiveSections,
+};
+pub use operations::{
+    FSEArchiveAppendOperationMetadata, FSEArchiveAppendOperationMetadataError,
+    FSEArchiveCompactionOperationMetadata, FSEArchiveCompactionOperationMetadataError,
+    FSEArchiveRebuildPlanMetadata, FSEArchiveRebuildPlanMetadataError, FSEArchiveRebuildReason,
 };
 pub use payload::{
     FSE_ARCHIVE_PAYLOAD_HEADER_VERSION, FSE_ARCHIVE_PAYLOAD_MAGIC, FSEArchivePayloadHeaderError,
