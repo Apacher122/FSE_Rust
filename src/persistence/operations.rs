@@ -173,6 +173,19 @@ impl From<FSEArchiveManifestError> for FSEArchiveCompactionOperationMetadataErro
 pub enum FSEArchiveRebuildReason {
     /// Append records into an existing archive by rebuilding the persisted index.
     Append,
+
+    /// Compact tombstoned records by rebuilding the persisted archive.
+    Compaction,
+}
+
+/// Operation metadata used to plan an archive rebuild.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FSEArchiveRebuildOperationMetadata {
+    /// Append operation metadata.
+    Append(FSEArchiveAppendOperationMetadata),
+
+    /// Compaction operation metadata.
+    Compaction(FSEArchiveCompactionOperationMetadata),
 }
 
 /// Error returned when archive rebuild plan metadata is invalid.
@@ -181,22 +194,34 @@ pub enum FSEArchiveRebuildPlanMetadataError {
     /// Append operation metadata is invalid.
     Append(FSEArchiveAppendOperationMetadataError),
 
-    /// The plan payload kind did not match the append operation payload kind.
+    /// Compaction operation metadata is invalid.
+    Compaction(FSEArchiveCompactionOperationMetadataError),
+
+    /// The plan reason did not match the operation metadata.
+    ReasonMismatch {
+        /// Reason stored on the rebuild plan.
+        plan_reason: FSEArchiveRebuildReason,
+
+        /// Reason derived from the rebuild operation.
+        operation_reason: FSEArchiveRebuildReason,
+    },
+
+    /// The plan payload kind did not match the operation payload kind.
     PayloadKindMismatch {
         /// Payload kind stored on the rebuild plan.
         plan_payload_kind: FSEArchivePayloadKind,
 
-        /// Payload kind stored on the append operation.
-        append_payload_kind: FSEArchivePayloadKind,
+        /// Payload kind stored on the rebuild operation.
+        operation_payload_kind: FSEArchivePayloadKind,
     },
 
-    /// The plan resulting record count did not match the append operation.
+    /// The plan resulting record count did not match the operation metadata.
     ResultingRecordCountMismatch {
         /// Resulting record count stored on the rebuild plan.
         plan_resulting_record_count: u64,
 
-        /// Resulting record count stored on the append operation.
-        append_resulting_record_count: u64,
+        /// Resulting record count derived from the rebuild operation.
+        operation_resulting_record_count: u64,
     },
 
     /// The current plan requires a full archive rebuild.
@@ -210,11 +235,14 @@ impl fmt::Display for FSEArchiveRebuildPlanMetadataError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Append(error) => error.fmt(formatter),
-            Self::PayloadKindMismatch { .. } => {
-                formatter.write_str("archive rebuild plan payload kind must match append metadata")
+            Self::Compaction(error) => error.fmt(formatter),
+            Self::ReasonMismatch { .. } => {
+                formatter.write_str("archive rebuild plan reason must match operation metadata")
             }
+            Self::PayloadKindMismatch { .. } => formatter
+                .write_str("archive rebuild plan payload kind must match operation metadata"),
             Self::ResultingRecordCountMismatch { .. } => formatter.write_str(
-                "archive rebuild plan resulting record count must match append metadata",
+                "archive rebuild plan resulting record count must match operation metadata",
             ),
             Self::FullArchiveRebuildRequired { .. } => {
                 formatter.write_str("archive rebuild plan requires a full archive rebuild")
@@ -227,7 +255,9 @@ impl Error for FSEArchiveRebuildPlanMetadataError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Append(error) => Some(error),
-            Self::PayloadKindMismatch { .. }
+            Self::Compaction(error) => Some(error),
+            Self::ReasonMismatch { .. }
+            | Self::PayloadKindMismatch { .. }
             | Self::ResultingRecordCountMismatch { .. }
             | Self::FullArchiveRebuildRequired { .. } => None,
         }
@@ -237,6 +267,46 @@ impl Error for FSEArchiveRebuildPlanMetadataError {
 impl From<FSEArchiveAppendOperationMetadataError> for FSEArchiveRebuildPlanMetadataError {
     fn from(error: FSEArchiveAppendOperationMetadataError) -> Self {
         Self::Append(error)
+    }
+}
+
+impl From<FSEArchiveCompactionOperationMetadataError> for FSEArchiveRebuildPlanMetadataError {
+    fn from(error: FSEArchiveCompactionOperationMetadataError) -> Self {
+        Self::Compaction(error)
+    }
+}
+
+impl FSEArchiveRebuildOperationMetadata {
+    /// Returns the rebuild reason represented by the operation metadata.
+    pub fn reason(&self) -> FSEArchiveRebuildReason {
+        match self {
+            Self::Append(_) => FSEArchiveRebuildReason::Append,
+            Self::Compaction(_) => FSEArchiveRebuildReason::Compaction,
+        }
+    }
+
+    /// Returns the archive payload kind represented by the operation metadata.
+    pub fn payload_kind(&self) -> FSEArchivePayloadKind {
+        match self {
+            Self::Append(metadata) => metadata.payload_kind,
+            Self::Compaction(metadata) => metadata.payload_kind,
+        }
+    }
+
+    /// Returns the record count expected after the rebuild.
+    pub fn resulting_record_count(&self) -> u64 {
+        match self {
+            Self::Append(metadata) => metadata.resulting_record_count,
+            Self::Compaction(metadata) => metadata.retained_record_count,
+        }
+    }
+
+    /// Validates the operation metadata used by the rebuild plan.
+    pub fn validate(&self) -> Result<(), FSEArchiveRebuildPlanMetadataError> {
+        match self {
+            Self::Append(metadata) => metadata.validate().map_err(Into::into),
+            Self::Compaction(metadata) => metadata.validate().map_err(Into::into),
+        }
     }
 }
 
@@ -426,8 +496,8 @@ pub struct FSEArchiveRebuildPlanMetadata {
     /// Payload kind of the archive being rebuilt.
     pub payload_kind: FSEArchivePayloadKind,
 
-    /// Append operation metadata that requires the rebuild.
-    pub append: FSEArchiveAppendOperationMetadata,
+    /// Operation metadata that requires the rebuild.
+    pub operation: FSEArchiveRebuildOperationMetadata,
 
     /// Whether the operation requires rebuilding the full archive.
     pub requires_full_archive_rebuild: bool,
@@ -441,12 +511,31 @@ impl FSEArchiveRebuildPlanMetadata {
     pub fn for_append(
         append: FSEArchiveAppendOperationMetadata,
     ) -> Result<Self, FSEArchiveRebuildPlanMetadataError> {
+        let operation = FSEArchiveRebuildOperationMetadata::Append(append);
         let plan = Self {
-            reason: FSEArchiveRebuildReason::Append,
-            payload_kind: append.payload_kind,
-            append,
+            reason: operation.reason(),
+            payload_kind: operation.payload_kind(),
+            operation,
             requires_full_archive_rebuild: true,
-            resulting_record_count: append.resulting_record_count,
+            resulting_record_count: operation.resulting_record_count(),
+        };
+
+        plan.validate()?;
+
+        Ok(plan)
+    }
+
+    /// Creates rebuild plan metadata for a compaction operation.
+    pub fn for_compaction(
+        compaction: FSEArchiveCompactionOperationMetadata,
+    ) -> Result<Self, FSEArchiveRebuildPlanMetadataError> {
+        let operation = FSEArchiveRebuildOperationMetadata::Compaction(compaction);
+        let plan = Self {
+            reason: operation.reason(),
+            payload_kind: operation.payload_kind(),
+            operation,
+            requires_full_archive_rebuild: true,
+            resulting_record_count: operation.resulting_record_count(),
         };
 
         plan.validate()?;
@@ -456,20 +545,30 @@ impl FSEArchiveRebuildPlanMetadata {
 
     /// Validates archive rebuild plan metadata.
     pub fn validate(&self) -> Result<(), FSEArchiveRebuildPlanMetadataError> {
-        self.append.validate()?;
+        self.operation.validate()?;
 
-        if self.payload_kind != self.append.payload_kind {
-            return Err(FSEArchiveRebuildPlanMetadataError::PayloadKindMismatch {
-                plan_payload_kind: self.payload_kind,
-                append_payload_kind: self.append.payload_kind,
+        let operation_reason = self.operation.reason();
+        if self.reason != operation_reason {
+            return Err(FSEArchiveRebuildPlanMetadataError::ReasonMismatch {
+                plan_reason: self.reason,
+                operation_reason,
             });
         }
 
-        if self.resulting_record_count != self.append.resulting_record_count {
+        let operation_payload_kind = self.operation.payload_kind();
+        if self.payload_kind != operation_payload_kind {
+            return Err(FSEArchiveRebuildPlanMetadataError::PayloadKindMismatch {
+                plan_payload_kind: self.payload_kind,
+                operation_payload_kind,
+            });
+        }
+
+        let operation_resulting_record_count = self.operation.resulting_record_count();
+        if self.resulting_record_count != operation_resulting_record_count {
             return Err(
                 FSEArchiveRebuildPlanMetadataError::ResultingRecordCountMismatch {
                     plan_resulting_record_count: self.resulting_record_count,
-                    append_resulting_record_count: self.append.resulting_record_count,
+                    operation_resulting_record_count,
                 },
             );
         }

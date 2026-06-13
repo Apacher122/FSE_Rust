@@ -197,6 +197,9 @@ pub enum FSETypedQueryIndexArchiveCompactionError {
     /// Compaction operation metadata validation failed.
     CompactionMetadata(FSEArchiveCompactionOperationMetadataError),
 
+    /// Archive rebuild plan metadata validation failed.
+    RebuildPlan(FSEArchiveRebuildPlanMetadataError),
+
     /// Saving the compacted typed query index archive failed.
     SaveIndex(FSETypedQueryIndexArchiveError),
 
@@ -210,6 +213,7 @@ impl fmt::Display for FSETypedQueryIndexArchiveCompactionError {
             Self::Load(error) => error.fmt(formatter),
             Self::Compaction(error) => error.fmt(formatter),
             Self::CompactionMetadata(error) => error.fmt(formatter),
+            Self::RebuildPlan(error) => error.fmt(formatter),
             Self::SaveIndex(error) => error.fmt(formatter),
             Self::SaveTombstones(error) => error.fmt(formatter),
         }
@@ -222,6 +226,7 @@ impl Error for FSETypedQueryIndexArchiveCompactionError {
             Self::Load(error) => Some(error),
             Self::Compaction(error) => Some(error),
             Self::CompactionMetadata(error) => Some(error),
+            Self::RebuildPlan(error) => Some(error),
             Self::SaveIndex(error) => Some(error),
             Self::SaveTombstones(error) => Some(error),
         }
@@ -234,6 +239,12 @@ impl From<FSEArchiveCompactionOperationMetadataError> for FSETypedQueryIndexArch
     }
 }
 
+impl From<FSEArchiveRebuildPlanMetadataError> for FSETypedQueryIndexArchiveCompactionError {
+    fn from(error: FSEArchiveRebuildPlanMetadataError) -> Self {
+        Self::RebuildPlan(error)
+    }
+}
+
 /// Result returned after compacting a typed query index archive file.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FSETypedQueryIndexArchiveCompactionResult {
@@ -242,6 +253,9 @@ pub struct FSETypedQueryIndexArchiveCompactionResult {
 
     /// Compaction operation metadata for the archive update.
     pub compaction_metadata: FSEArchiveCompactionOperationMetadata,
+
+    /// Rebuild plan metadata used by the archive update.
+    pub rebuild_plan: FSEArchiveRebuildPlanMetadata,
 
     /// Number of tombstones removed from the tombstone archive.
     pub cleared_tombstone_count: usize,
@@ -374,6 +388,7 @@ where
         compaction.tombstone_count as u64,
         compaction.removed_record_count as u64,
     )?;
+    let rebuild_plan = FSEArchiveRebuildPlanMetadata::for_compaction(compaction_metadata)?;
 
     save_typed_query_index_archive_file(query_index_path, &compaction.query_index)
         .map_err(FSETypedQueryIndexArchiveCompactionError::SaveIndex)?;
@@ -383,6 +398,7 @@ where
     Ok(FSETypedQueryIndexArchiveCompactionResult {
         compaction,
         compaction_metadata,
+        rebuild_plan,
         cleared_tombstone_count,
         remaining_tombstone_count: 0,
     })

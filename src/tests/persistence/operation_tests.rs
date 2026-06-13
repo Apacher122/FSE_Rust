@@ -2,8 +2,8 @@ use crate::persistence::{
     FSEArchiveAppendOperationMetadata, FSEArchiveAppendOperationMetadataError,
     FSEArchiveCompactionOperationMetadata, FSEArchiveCompactionOperationMetadataError,
     FSEArchiveManifest, FSEArchiveManifestError, FSEArchivePayloadKind,
-    FSEArchiveRebuildPlanMetadata, FSEArchiveRebuildPlanMetadataError, FSEArchiveRebuildReason,
-    FSEArchiveSections,
+    FSEArchiveRebuildOperationMetadata, FSEArchiveRebuildPlanMetadata,
+    FSEArchiveRebuildPlanMetadataError, FSEArchiveRebuildReason, FSEArchiveSections,
 };
 
 #[test]
@@ -288,9 +288,35 @@ fn archive_rebuild_plan_metadata_records_append_rebuild_intent() {
 
     assert_eq!(plan.reason, FSEArchiveRebuildReason::Append);
     assert_eq!(plan.payload_kind, FSEArchivePayloadKind::TypedQueryIndex);
-    assert_eq!(plan.append, append);
+    assert_eq!(
+        plan.operation,
+        FSEArchiveRebuildOperationMetadata::Append(append)
+    );
     assert!(plan.requires_full_archive_rebuild);
     assert_eq!(plan.resulting_record_count, 65);
+    assert_eq!(plan.validate(), Ok(()));
+}
+
+#[test]
+fn archive_rebuild_plan_metadata_records_compaction_rebuild_intent() {
+    let compaction = FSEArchiveCompactionOperationMetadata::try_new(
+        FSEArchivePayloadKind::TypedQueryIndex,
+        60,
+        15,
+        15,
+    )
+    .unwrap();
+
+    let plan = FSEArchiveRebuildPlanMetadata::for_compaction(compaction).unwrap();
+
+    assert_eq!(plan.reason, FSEArchiveRebuildReason::Compaction);
+    assert_eq!(plan.payload_kind, FSEArchivePayloadKind::TypedQueryIndex);
+    assert_eq!(
+        plan.operation,
+        FSEArchiveRebuildOperationMetadata::Compaction(compaction)
+    );
+    assert!(plan.requires_full_archive_rebuild);
+    assert_eq!(plan.resulting_record_count, 45);
     assert_eq!(plan.validate(), Ok(()));
 }
 
@@ -305,7 +331,7 @@ fn archive_rebuild_plan_metadata_reports_invalid_append_metadata() {
     let plan = FSEArchiveRebuildPlanMetadata {
         reason: FSEArchiveRebuildReason::Append,
         payload_kind: FSEArchivePayloadKind::TypedQueryIndex,
-        append,
+        operation: FSEArchiveRebuildOperationMetadata::Append(append),
         requires_full_archive_rebuild: true,
         resulting_record_count: 60,
     };
@@ -319,6 +345,57 @@ fn archive_rebuild_plan_metadata_reports_invalid_append_metadata() {
 }
 
 #[test]
+fn archive_rebuild_plan_metadata_reports_invalid_compaction_metadata() {
+    let compaction = FSEArchiveCompactionOperationMetadata {
+        payload_kind: FSEArchivePayloadKind::TypedQueryIndex,
+        base_record_count: 60,
+        tombstone_count: 0,
+        removed_record_count: 0,
+        retained_record_count: 60,
+    };
+    let plan = FSEArchiveRebuildPlanMetadata {
+        reason: FSEArchiveRebuildReason::Compaction,
+        payload_kind: FSEArchivePayloadKind::TypedQueryIndex,
+        operation: FSEArchiveRebuildOperationMetadata::Compaction(compaction),
+        requires_full_archive_rebuild: true,
+        resulting_record_count: 60,
+    };
+
+    assert_eq!(
+        plan.validate(),
+        Err(FSEArchiveRebuildPlanMetadataError::Compaction(
+            FSEArchiveCompactionOperationMetadataError::ZeroTombstoneCount
+        ))
+    );
+}
+
+#[test]
+fn archive_rebuild_plan_metadata_reports_reason_mismatch() {
+    let compaction = FSEArchiveCompactionOperationMetadata::try_new(
+        FSEArchivePayloadKind::TypedQueryIndex,
+        60,
+        15,
+        15,
+    )
+    .unwrap();
+    let plan = FSEArchiveRebuildPlanMetadata {
+        reason: FSEArchiveRebuildReason::Append,
+        payload_kind: FSEArchivePayloadKind::TypedQueryIndex,
+        operation: FSEArchiveRebuildOperationMetadata::Compaction(compaction),
+        requires_full_archive_rebuild: true,
+        resulting_record_count: compaction.retained_record_count,
+    };
+
+    assert_eq!(
+        plan.validate(),
+        Err(FSEArchiveRebuildPlanMetadataError::ReasonMismatch {
+            plan_reason: FSEArchiveRebuildReason::Append,
+            operation_reason: FSEArchiveRebuildReason::Compaction
+        })
+    );
+}
+
+#[test]
 fn archive_rebuild_plan_metadata_reports_payload_kind_mismatch() {
     let append =
         FSEArchiveAppendOperationMetadata::try_new(FSEArchivePayloadKind::TypedQueryIndex, 60, 5)
@@ -326,7 +403,7 @@ fn archive_rebuild_plan_metadata_reports_payload_kind_mismatch() {
     let plan = FSEArchiveRebuildPlanMetadata {
         reason: FSEArchiveRebuildReason::Append,
         payload_kind: FSEArchivePayloadKind::TypedRecordBatch,
-        append,
+        operation: FSEArchiveRebuildOperationMetadata::Append(append),
         requires_full_archive_rebuild: true,
         resulting_record_count: append.resulting_record_count,
     };
@@ -335,7 +412,7 @@ fn archive_rebuild_plan_metadata_reports_payload_kind_mismatch() {
         plan.validate(),
         Err(FSEArchiveRebuildPlanMetadataError::PayloadKindMismatch {
             plan_payload_kind: FSEArchivePayloadKind::TypedRecordBatch,
-            append_payload_kind: FSEArchivePayloadKind::TypedQueryIndex
+            operation_payload_kind: FSEArchivePayloadKind::TypedQueryIndex
         })
     );
 }
@@ -348,7 +425,7 @@ fn archive_rebuild_plan_metadata_reports_resulting_record_count_mismatch() {
     let plan = FSEArchiveRebuildPlanMetadata {
         reason: FSEArchiveRebuildReason::Append,
         payload_kind: FSEArchivePayloadKind::TypedQueryIndex,
-        append,
+        operation: FSEArchiveRebuildOperationMetadata::Append(append),
         requires_full_archive_rebuild: true,
         resulting_record_count: 66,
     };
@@ -358,7 +435,7 @@ fn archive_rebuild_plan_metadata_reports_resulting_record_count_mismatch() {
         Err(
             FSEArchiveRebuildPlanMetadataError::ResultingRecordCountMismatch {
                 plan_resulting_record_count: 66,
-                append_resulting_record_count: 65
+                operation_resulting_record_count: 65
             }
         )
     );
@@ -372,7 +449,7 @@ fn archive_rebuild_plan_metadata_reports_missing_full_rebuild_requirement() {
     let plan = FSEArchiveRebuildPlanMetadata {
         reason: FSEArchiveRebuildReason::Append,
         payload_kind: FSEArchivePayloadKind::TypedQueryIndex,
-        append,
+        operation: FSEArchiveRebuildOperationMetadata::Append(append),
         requires_full_archive_rebuild: false,
         resulting_record_count: append.resulting_record_count,
     };

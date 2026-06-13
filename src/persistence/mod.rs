@@ -25,7 +25,8 @@ pub use manifest::{
 pub use operations::{
     FSEArchiveAppendOperationMetadata, FSEArchiveAppendOperationMetadataError,
     FSEArchiveCompactionOperationMetadata, FSEArchiveCompactionOperationMetadataError,
-    FSEArchiveRebuildPlanMetadata, FSEArchiveRebuildPlanMetadataError, FSEArchiveRebuildReason,
+    FSEArchiveRebuildOperationMetadata, FSEArchiveRebuildPlanMetadata,
+    FSEArchiveRebuildPlanMetadataError, FSEArchiveRebuildReason,
 };
 pub use payload::{
     FSE_ARCHIVE_PAYLOAD_HEADER_VERSION, FSE_ARCHIVE_PAYLOAD_MAGIC, FSEArchivePayloadHeaderError,

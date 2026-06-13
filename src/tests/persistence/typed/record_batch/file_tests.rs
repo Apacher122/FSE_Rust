@@ -8,8 +8,8 @@ use crate::data::{
 };
 use crate::persistence::{
     FSEArchiveAppendOperationMetadataError, FSEArchiveFileOperation, FSEArchivePayloadHeaderError,
-    FSEArchivePayloadKind, FSEArchiveRebuildReason, FSERecordBatchArchiveError,
-    FSERecordBatchArchiveFileError, FSERecordBatchArchiveSnapshot,
+    FSEArchivePayloadKind, FSEArchiveRebuildOperationMetadata, FSEArchiveRebuildReason,
+    FSERecordBatchArchiveError, FSERecordBatchArchiveFileError, FSERecordBatchArchiveSnapshot,
     append_typed_record_batch_archive_file, encode_archive_payload,
     load_typed_record_batch_archive_file, read_typed_record_batch_archive_snapshot_file,
     save_typed_record_batch_archive_file, write_typed_record_batch_archive_snapshot_file,
@@ -81,6 +81,10 @@ fn typed_record_batch_archive_file_appends_batch_and_rebuilds_archive() {
     assert_eq!(result.append_metadata.appended_record_count, 2);
     assert_eq!(result.append_metadata.resulting_record_count, 4);
     assert_eq!(result.rebuild_plan.reason, FSEArchiveRebuildReason::Append);
+    assert_eq!(
+        result.rebuild_plan.operation,
+        FSEArchiveRebuildOperationMetadata::Append(result.append_metadata)
+    );
     assert!(result.rebuild_plan.requires_full_archive_rebuild);
     assert_eq!(result.record_batch, loaded);
     assert_eq!(
