@@ -7,9 +7,9 @@ use crate::persistence::{
     FSEArchiveFileOperation, FSEArchivePayloadHeaderError, FSEArchivePayloadKind,
     FSETypedRowTombstoneArchiveError, FSETypedRowTombstoneArchiveFileError,
     FSETypedRowTombstoneArchiveSnapshot, FSETypedRowTombstoneArchiveSnapshotError,
-    decode_archive_payload, encode_archive_payload, load_typed_row_tombstone_archive_file,
-    read_typed_row_tombstone_archive_snapshot_file, save_typed_row_tombstone_archive_file,
-    write_typed_row_tombstone_archive_snapshot_file,
+    append_typed_row_tombstone_archive_file, decode_archive_payload, encode_archive_payload,
+    load_typed_row_tombstone_archive_file, read_typed_row_tombstone_archive_snapshot_file,
+    save_typed_row_tombstone_archive_file, write_typed_row_tombstone_archive_snapshot_file,
 };
 
 use super::corrupted_archive_payload;
@@ -51,6 +51,127 @@ fn typed_row_tombstone_archive_file_saves_and_loads_row_ids() {
     assert_eq!(loaded, row_ids);
 
     let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_row_tombstone_archive_file_appends_new_row_ids() {
+    let path = temp_archive_path("append-new-row-ids", ".fse");
+
+    save_typed_row_tombstone_archive_file(&path, &[RowId::new(100), RowId::new(104)]).unwrap();
+    let result =
+        append_typed_row_tombstone_archive_file(&path, &[RowId::new(109), RowId::new(111)])
+            .unwrap();
+    let loaded = load_typed_row_tombstone_archive_file(&path).unwrap();
+
+    assert_eq!(result.base_tombstone_count, 2);
+    assert_eq!(result.requested_tombstone_count, 2);
+    assert_eq!(result.appended_tombstone_count, 2);
+    assert_eq!(result.resulting_tombstone_count, 4);
+    assert_eq!(
+        result.row_ids,
+        vec![
+            RowId::new(100),
+            RowId::new(104),
+            RowId::new(109),
+            RowId::new(111)
+        ]
+    );
+    assert_eq!(loaded, result.row_ids);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_row_tombstone_archive_file_append_is_idempotent_for_existing_row_ids() {
+    let path = temp_archive_path("append-existing-row-ids", ".fse");
+
+    save_typed_row_tombstone_archive_file(&path, &[RowId::new(100), RowId::new(104)]).unwrap();
+    let result =
+        append_typed_row_tombstone_archive_file(&path, &[RowId::new(104), RowId::new(109)])
+            .unwrap();
+    let loaded = load_typed_row_tombstone_archive_file(&path).unwrap();
+
+    assert_eq!(result.base_tombstone_count, 2);
+    assert_eq!(result.requested_tombstone_count, 2);
+    assert_eq!(result.appended_tombstone_count, 1);
+    assert_eq!(result.resulting_tombstone_count, 3);
+    assert_eq!(
+        loaded,
+        vec![RowId::new(100), RowId::new(104), RowId::new(109)]
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_row_tombstone_archive_file_append_all_existing_row_ids_is_no_op() {
+    let path = temp_archive_path("append-all-existing-row-ids", ".fse");
+
+    save_typed_row_tombstone_archive_file(&path, &[RowId::new(100), RowId::new(104)]).unwrap();
+    let result = append_typed_row_tombstone_archive_file(&path, &[RowId::new(104)]).unwrap();
+    let loaded = load_typed_row_tombstone_archive_file(&path).unwrap();
+
+    assert_eq!(result.base_tombstone_count, 2);
+    assert_eq!(result.requested_tombstone_count, 1);
+    assert_eq!(result.appended_tombstone_count, 0);
+    assert_eq!(result.resulting_tombstone_count, 2);
+    assert_eq!(loaded, vec![RowId::new(100), RowId::new(104)]);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_row_tombstone_archive_file_append_reports_empty_input() {
+    let path = temp_archive_path("append-empty-input", ".fse");
+
+    save_typed_row_tombstone_archive_file(&path, &[RowId::new(100)]).unwrap();
+
+    assert_eq!(
+        append_typed_row_tombstone_archive_file(&path, &[]),
+        Err(FSETypedRowTombstoneArchiveError::EmptyAppend)
+    );
+    assert_eq!(
+        load_typed_row_tombstone_archive_file(&path).unwrap(),
+        vec![RowId::new(100)]
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_row_tombstone_archive_file_append_reports_duplicate_input() {
+    let path = temp_archive_path("append-duplicate-input", ".fse");
+
+    save_typed_row_tombstone_archive_file(&path, &[RowId::new(100)]).unwrap();
+
+    assert_eq!(
+        append_typed_row_tombstone_archive_file(&path, &[RowId::new(104), RowId::new(104)]),
+        Err(FSETypedRowTombstoneArchiveError::DuplicateAppendedRowId {
+            row_id: RowId::new(104),
+        })
+    );
+    assert_eq!(
+        load_typed_row_tombstone_archive_file(&path).unwrap(),
+        vec![RowId::new(100)]
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_row_tombstone_archive_file_append_reports_missing_file() {
+    let path = temp_archive_path("append-missing-file", ".fse");
+
+    assert_eq!(
+        append_typed_row_tombstone_archive_file(&path, &[RowId::new(100)]),
+        Err(FSETypedRowTombstoneArchiveError::File(
+            FSETypedRowTombstoneArchiveFileError::Io {
+                operation: FSEArchiveFileOperation::Read,
+                path,
+                kind: io::ErrorKind::NotFound,
+            },
+        ))
+    );
 }
 
 #[test]

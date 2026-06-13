@@ -45,7 +45,8 @@ pub use tombstone_codec::{
     encode_typed_row_tombstone_archive_snapshot,
 };
 pub use tombstone_file::{
-    FSETypedRowTombstoneArchiveError, FSETypedRowTombstoneArchiveFileError,
+    FSETypedRowTombstoneArchiveAppendResult, FSETypedRowTombstoneArchiveError,
+    FSETypedRowTombstoneArchiveFileError, append_typed_row_tombstone_archive_file,
     load_typed_row_tombstone_archive_file, read_typed_row_tombstone_archive_snapshot_file,
     save_typed_row_tombstone_archive_file, write_typed_row_tombstone_archive_snapshot_file,
 };

@@ -94,6 +94,15 @@ pub enum FSETypedRowTombstoneArchiveError {
     /// Building or reconstructing a typed row tombstone archive snapshot failed.
     Snapshot(FSETypedRowTombstoneArchiveSnapshotError),
 
+    /// The append operation did not contain any row identifiers.
+    EmptyAppend,
+
+    /// The append operation contained a row identifier more than once.
+    DuplicateAppendedRowId {
+        /// Duplicate row identifier.
+        row_id: RowId,
+    },
+
     /// Typed row tombstone archive file access failed.
     File(FSETypedRowTombstoneArchiveFileError),
 }
@@ -102,6 +111,11 @@ impl fmt::Display for FSETypedRowTombstoneArchiveError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Snapshot(error) => error.fmt(formatter),
+            Self::EmptyAppend => {
+                formatter.write_str("typed row tombstone archive append requires row identifiers")
+            }
+            Self::DuplicateAppendedRowId { .. } => formatter
+                .write_str("typed row tombstone archive append row identifiers must be unique"),
             Self::File(error) => error.fmt(formatter),
         }
     }
@@ -111,6 +125,7 @@ impl Error for FSETypedRowTombstoneArchiveError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Snapshot(error) => Some(error),
+            Self::EmptyAppend | Self::DuplicateAppendedRowId { .. } => None,
             Self::File(error) => Some(error),
         }
     }
@@ -126,6 +141,25 @@ impl From<FSETypedRowTombstoneArchiveFileError> for FSETypedRowTombstoneArchiveE
     fn from(error: FSETypedRowTombstoneArchiveFileError) -> Self {
         Self::File(error)
     }
+}
+
+/// Result returned after appending typed row tombstones.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FSETypedRowTombstoneArchiveAppendResult {
+    /// Number of tombstones stored before the append.
+    pub base_tombstone_count: usize,
+
+    /// Number of row identifiers provided by the append request.
+    pub requested_tombstone_count: usize,
+
+    /// Number of row identifiers added by the append request.
+    pub appended_tombstone_count: usize,
+
+    /// Number of tombstones stored after the append.
+    pub resulting_tombstone_count: usize,
+
+    /// Tombstones saved to the archive after the append.
+    pub row_ids: Vec<RowId>,
 }
 
 /// Writes a typed row tombstone archive snapshot to a `.fse` file.
@@ -198,6 +232,35 @@ where
         .map_err(FSETypedRowTombstoneArchiveError::Snapshot)
 }
 
+/// Appends typed row tombstones to a `.fse` archive file.
+pub fn append_typed_row_tombstone_archive_file<P>(
+    path: P,
+    appended: &[RowId],
+) -> Result<FSETypedRowTombstoneArchiveAppendResult, FSETypedRowTombstoneArchiveError>
+where
+    P: AsRef<Path>,
+{
+    validate_append_row_ids(appended)?;
+
+    let path = path.as_ref();
+    let base = load_typed_row_tombstone_archive_file(path)?;
+    let base_tombstone_count = base.len();
+    let requested_tombstone_count = appended.len();
+    let row_ids = merge_tombstones(base, appended);
+    let resulting_tombstone_count = row_ids.len();
+    let appended_tombstone_count = resulting_tombstone_count - base_tombstone_count;
+
+    save_typed_row_tombstone_archive_file(path, &row_ids)?;
+
+    Ok(FSETypedRowTombstoneArchiveAppendResult {
+        base_tombstone_count,
+        requested_tombstone_count,
+        appended_tombstone_count,
+        resulting_tombstone_count,
+        row_ids,
+    })
+}
+
 impl FSETypedRowTombstoneArchiveSnapshot {
     /// Writes this typed row tombstone snapshot to a `.fse` file.
     pub fn write_to_archive_file<P>(
@@ -217,6 +280,32 @@ impl FSETypedRowTombstoneArchiveSnapshot {
     {
         read_typed_row_tombstone_archive_snapshot_file(path)
     }
+}
+
+fn validate_append_row_ids(row_ids: &[RowId]) -> Result<(), FSETypedRowTombstoneArchiveError> {
+    if row_ids.is_empty() {
+        return Err(FSETypedRowTombstoneArchiveError::EmptyAppend);
+    }
+
+    let mut sorted = row_ids.to_vec();
+    sorted.sort_unstable();
+
+    for pair in sorted.windows(2) {
+        if pair[0] == pair[1] {
+            return Err(FSETypedRowTombstoneArchiveError::DuplicateAppendedRowId {
+                row_id: pair[0],
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn merge_tombstones(mut base: Vec<RowId>, appended: &[RowId]) -> Vec<RowId> {
+    base.extend_from_slice(appended);
+    base.sort_unstable();
+    base.dedup();
+    base
 }
 
 fn validate_archive_file_extension(
