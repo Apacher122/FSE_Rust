@@ -15,10 +15,12 @@ pub use compaction::{
     compact_tombstoned_typed_query_index,
 };
 pub use file::{
-    FSETypedQueryIndexArchiveAppendResult, FSETypedQueryIndexArchiveError,
+    FSETypedQueryIndexArchiveAppendResult, FSETypedQueryIndexArchiveCompactionError,
+    FSETypedQueryIndexArchiveCompactionResult, FSETypedQueryIndexArchiveError,
     FSETypedQueryIndexArchiveFileError, append_typed_query_index_archive_file,
-    load_typed_query_index_archive_file, read_typed_query_index_archive_snapshot_file,
-    save_typed_query_index_archive_file, write_typed_query_index_archive_snapshot_file,
+    compact_typed_query_index_archive_file, load_typed_query_index_archive_file,
+    read_typed_query_index_archive_snapshot_file, save_typed_query_index_archive_file,
+    write_typed_query_index_archive_snapshot_file,
 };
 pub use snapshot::{FSETypedQueryIndexArchiveSnapshot, FSETypedQueryIndexArchiveSnapshotError};
 pub use tombstoned::{

@@ -17,10 +17,15 @@ use crate::persistence::{
 };
 use crate::query::{TypedQueryIndex, TypedQueryIndexAppendError};
 
+use super::super::tombstone::{
+    FSETypedRowTombstoneArchiveError, save_typed_row_tombstone_archive_file,
+};
 use super::{
-    FSETypedQueryIndexArchiveCodecError, FSETypedQueryIndexArchiveSnapshot,
-    FSETypedQueryIndexArchiveSnapshotError, decode_typed_query_index_archive_snapshot,
-    encode_typed_query_index_archive_snapshot,
+    FSETombstonedTypedQueryIndexArchiveError, FSETypedQueryIndexArchiveCodecError,
+    FSETypedQueryIndexArchiveSnapshot, FSETypedQueryIndexArchiveSnapshotError,
+    FSETypedQueryIndexCompactionError, FSETypedQueryIndexCompactionResult,
+    compact_tombstoned_typed_query_index, decode_typed_query_index_archive_snapshot,
+    encode_typed_query_index_archive_snapshot, load_typed_query_index_archive_with_tombstones,
 };
 
 /// Error returned when typed query index archive file access fails.
@@ -179,6 +184,57 @@ pub struct FSETypedQueryIndexArchiveAppendResult {
     pub query_index: TypedQueryIndex,
 }
 
+/// Error returned when compacting a typed query index archive file fails.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FSETypedQueryIndexArchiveCompactionError {
+    /// Loading the typed query index archive with tombstones failed.
+    Load(FSETombstonedTypedQueryIndexArchiveError),
+
+    /// Typed query index compaction failed.
+    Compaction(FSETypedQueryIndexCompactionError),
+
+    /// Saving the compacted typed query index archive failed.
+    SaveIndex(FSETypedQueryIndexArchiveError),
+
+    /// Saving the cleared typed row tombstone archive failed.
+    SaveTombstones(FSETypedRowTombstoneArchiveError),
+}
+
+impl fmt::Display for FSETypedQueryIndexArchiveCompactionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Load(error) => error.fmt(formatter),
+            Self::Compaction(error) => error.fmt(formatter),
+            Self::SaveIndex(error) => error.fmt(formatter),
+            Self::SaveTombstones(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for FSETypedQueryIndexArchiveCompactionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Load(error) => Some(error),
+            Self::Compaction(error) => Some(error),
+            Self::SaveIndex(error) => Some(error),
+            Self::SaveTombstones(error) => Some(error),
+        }
+    }
+}
+
+/// Result returned after compacting a typed query index archive file.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FSETypedQueryIndexArchiveCompactionResult {
+    /// In-memory typed query index compaction result.
+    pub compaction: FSETypedQueryIndexCompactionResult,
+
+    /// Number of tombstones removed from the tombstone archive.
+    pub cleared_tombstone_count: usize,
+
+    /// Number of tombstones remaining after archive compaction.
+    pub remaining_tombstone_count: usize,
+}
+
 /// Writes a typed query index archive snapshot to a `.fse` file.
 pub fn write_typed_query_index_archive_snapshot_file<P>(
     path: P,
@@ -275,6 +331,38 @@ where
         append_metadata,
         rebuild_plan,
         query_index,
+    })
+}
+
+/// Compacts a typed query index `.fse` archive file and clears its tombstone archive.
+pub fn compact_typed_query_index_archive_file<P, Q>(
+    query_index_path: P,
+    tombstone_path: Q,
+    encoder: &impl FSERecordEncoder,
+    builder: &FSEBuilder,
+) -> Result<FSETypedQueryIndexArchiveCompactionResult, FSETypedQueryIndexArchiveCompactionError>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+{
+    let query_index_path = query_index_path.as_ref();
+    let tombstone_path = tombstone_path.as_ref();
+    let tombstoned =
+        load_typed_query_index_archive_with_tombstones(query_index_path, tombstone_path)
+            .map_err(FSETypedQueryIndexArchiveCompactionError::Load)?;
+    let cleared_tombstone_count = tombstoned.tombstones().len();
+    let compaction = compact_tombstoned_typed_query_index(&tombstoned, encoder, builder)
+        .map_err(FSETypedQueryIndexArchiveCompactionError::Compaction)?;
+
+    save_typed_query_index_archive_file(query_index_path, &compaction.query_index)
+        .map_err(FSETypedQueryIndexArchiveCompactionError::SaveIndex)?;
+    save_typed_row_tombstone_archive_file(tombstone_path, &[])
+        .map_err(FSETypedQueryIndexArchiveCompactionError::SaveTombstones)?;
+
+    Ok(FSETypedQueryIndexArchiveCompactionResult {
+        compaction,
+        cleared_tombstone_count,
+        remaining_tombstone_count: 0,
     })
 }
 
