@@ -11,6 +11,7 @@ mod snapshot_tests;
 mod typed_query_index_codec_tests;
 mod typed_query_index_file_tests;
 mod typed_query_index_snapshot_tests;
+mod typed_query_index_tombstone_file_tests;
 mod typed_record_batch_codec_tests;
 mod typed_record_batch_file_tests;
 mod typed_record_batch_tests;
