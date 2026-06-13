@@ -128,6 +128,8 @@ $CurrentTypedArchiveLoadSummaryCsv = $ReviewPaths.CurrentTypedArchiveLoadSummary
 $CurrentTypedArchiveLoadSummaryNotes = $ReviewPaths.CurrentTypedArchiveLoadSummaryNotes
 $CurrentTypedArchiveAppendRebuildSummaryCsv = $ReviewPaths.CurrentTypedArchiveAppendRebuildSummaryCsv
 $CurrentTypedArchiveAppendRebuildSummaryNotes = $ReviewPaths.CurrentTypedArchiveAppendRebuildSummaryNotes
+$CurrentTypedArchiveCompactionSummaryCsv = $ReviewPaths.CurrentTypedArchiveCompactionSummaryCsv
+$CurrentTypedArchiveCompactionSummaryNotes = $ReviewPaths.CurrentTypedArchiveCompactionSummaryNotes
 $CurrentTypedQueryIndexArchive = $ReviewPaths.CurrentTypedQueryIndexArchive
 $CurrentMaterializationComparisonCsv = $ReviewPaths.CurrentMaterializationComparisonCsv
 $CurrentMaterializationComparisonNotes = $ReviewPaths.CurrentMaterializationComparisonNotes
@@ -278,6 +280,8 @@ Add-ReviewLine "typed archive load summary: $CurrentTypedArchiveLoadSummaryCsv"
 Add-ReviewLine "typed archive load notes: $CurrentTypedArchiveLoadSummaryNotes"
 Add-ReviewLine "typed archive append rebuild summary: $CurrentTypedArchiveAppendRebuildSummaryCsv"
 Add-ReviewLine "typed archive append rebuild notes: $CurrentTypedArchiveAppendRebuildSummaryNotes"
+Add-ReviewLine "typed archive compaction summary: $CurrentTypedArchiveCompactionSummaryCsv"
+Add-ReviewLine "typed archive compaction notes: $CurrentTypedArchiveCompactionSummaryNotes"
 Add-ReviewLine "typed query index archive: $CurrentTypedQueryIndexArchive"
 
 if ($PreviousLowSelectivityGapInput.Exists) {
@@ -552,6 +556,8 @@ $ReviewManifestContext = [PSCustomObject]@{
   CurrentTypedArchiveLoadSummaryNotes          = $CurrentTypedArchiveLoadSummaryNotes
   CurrentTypedArchiveAppendRebuildSummaryCsv   = $CurrentTypedArchiveAppendRebuildSummaryCsv
   CurrentTypedArchiveAppendRebuildSummaryNotes = $CurrentTypedArchiveAppendRebuildSummaryNotes
+  CurrentTypedArchiveCompactionSummaryCsv      = $CurrentTypedArchiveCompactionSummaryCsv
+  CurrentTypedArchiveCompactionSummaryNotes    = $CurrentTypedArchiveCompactionSummaryNotes
   CurrentTypedQueryIndexArchive                = $CurrentTypedQueryIndexArchive
   CurrentMaterializationComparisonCsv          = $CurrentMaterializationComparisonCsv
   CurrentMaterializationComparisonNotes        = $CurrentMaterializationComparisonNotes

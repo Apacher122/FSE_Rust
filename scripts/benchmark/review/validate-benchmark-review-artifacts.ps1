@@ -132,6 +132,8 @@ $TypedArchiveLoadSummaryEntry = $ResolvedArtifacts.TypedArchiveLoadSummary
 $TypedArchiveLoadNotesEntry = $ResolvedArtifacts.TypedArchiveLoadNotes
 $TypedArchiveAppendRebuildSummaryEntry = $ResolvedArtifacts.TypedArchiveAppendRebuildSummary
 $TypedArchiveAppendRebuildNotesEntry = $ResolvedArtifacts.TypedArchiveAppendRebuildNotes
+$TypedArchiveCompactionSummaryEntry = $ResolvedArtifacts.TypedArchiveCompactionSummary
+$TypedArchiveCompactionNotesEntry = $ResolvedArtifacts.TypedArchiveCompactionNotes
 $TypedQueryIndexArchiveEntry = $ResolvedArtifacts.TypedQueryIndexArchive
 $LowGapEntry = $ResolvedArtifacts.LowGap
 $RegressionNotesEntry = $ResolvedArtifacts.RegressionNotes
@@ -154,6 +156,7 @@ Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $CountO
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $MaterializationNotesEntry -Description "materialization mode notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveLoadNotesEntry -Description "typed archive load notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveAppendRebuildNotesEntry -Description "typed archive append rebuild notes"
+Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveCompactionNotesEntry -Description "typed archive compaction notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedQueryIndexArchiveEntry -Description "typed query index archive"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $RegressionNotesEntry -Description "low-gap regression notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TrialNotesEntry -Description "low-gap trial notes"
@@ -291,6 +294,36 @@ Test-BenchmarkReviewTextColumnAllEquals `
   -ColumnName "agreement" `
   -ExpectedValue "pass" `
   -Description "typed archive append rebuild summary"
+
+$TypedArchiveCompactionSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv `
+  -Entry $TypedArchiveCompactionSummaryEntry `
+  -Description "typed archive compaction summary" `
+  -RequiredColumns @(
+  "dataset",
+  "max_depth",
+  "workload_name",
+  "base_record_count",
+  "tombstone_count",
+  "removed_record_count",
+  "retained_record_count",
+  "index_bytes_before_compaction",
+  "index_bytes_after_compaction",
+  "index_byte_delta",
+  "tombstone_bytes_before_compaction",
+  "tombstone_bytes_after_compaction",
+  "tombstone_byte_delta",
+  "matched_records_after_compaction",
+  "compaction_elapsed",
+  "agreement"
+) `
+  -MinimumRows 1 `
+  -OnFailure $AddValidationFailure
+
+Test-BenchmarkReviewTextColumnAllEquals `
+  -Rows $TypedArchiveCompactionSummaryRows `
+  -ColumnName "agreement" `
+  -ExpectedValue "pass" `
+  -Description "typed archive compaction summary"
 
 Invoke-BenchmarkReviewPolicyCsvValidation -OnFailure $AddValidationFailure `
   -Entry $LowGapEntry `

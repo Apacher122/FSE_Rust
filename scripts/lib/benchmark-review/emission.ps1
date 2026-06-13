@@ -153,6 +153,16 @@ function New-BenchmarkReviewRunManifestArtifacts {
       -Skipped $false
 
     New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.TypedArchiveCompactionSummary `
+      -Path $Context.CurrentTypedArchiveCompactionSummaryCsv `
+      -Skipped $false
+
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.TypedArchiveCompactionNotes `
+      -Path $Context.CurrentTypedArchiveCompactionSummaryNotes `
+      -Skipped $false
+
+    New-BenchmarkReviewManifestArtifact `
       -Name $BenchmarkReviewArtifactNames.TypedQueryIndexArchive `
       -Path $Context.CurrentTypedQueryIndexArchive `
       -Skipped $false

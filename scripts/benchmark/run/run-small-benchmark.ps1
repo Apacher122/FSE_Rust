@@ -60,6 +60,8 @@ $TypedArchiveLoadSummaryCsvPath = Join-Path $OutputDir "typed-archive-load-summa
 $TypedArchiveLoadSummaryNotesPath = Join-Path $OutputDir "typed-archive-load-summary-$Label.txt"
 $TypedArchiveAppendRebuildSummaryCsvPath = Join-Path $OutputDir "typed-archive-append-rebuild-summary-$Label.csv"
 $TypedArchiveAppendRebuildSummaryNotesPath = Join-Path $OutputDir "typed-archive-append-rebuild-summary-$Label.txt"
+$TypedArchiveCompactionSummaryCsvPath = Join-Path $OutputDir "typed-archive-compaction-summary-$Label.csv"
+$TypedArchiveCompactionSummaryNotesPath = Join-Path $OutputDir "typed-archive-compaction-summary-$Label.txt"
 $TypedQueryIndexArchivePath = Join-Path $OutputDir "typed-query-index-archive-$Label.fse"
 $LowSelectivityGapCsvPath = Join-Path $OutputDir "low-selectivity-gap-$Label.csv"
 $LowGapRegressionNotesPath = Join-Path $OutputDir "low-gap-regression-notes-$Label.txt"
@@ -70,6 +72,7 @@ $ExistenceTimingSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summa
 $TypedIndexedComparisonSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-indexed-comparison-summary.ps1"
 $TypedArchiveLoadSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-archive-load-summary.ps1"
 $TypedArchiveAppendRebuildSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-archive-append-rebuild-summary.ps1"
+$TypedArchiveCompactionSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-archive-compaction-summary.ps1"
 
 
 function Write-BenchmarkSection {
@@ -490,6 +493,24 @@ if ($LASTEXITCODE -ne 0) {
     throw "typed archive append rebuild summary failed with exit code $LASTEXITCODE"
 }
 
+if (!(Test-Path -LiteralPath $TypedArchiveCompactionSummaryScript)) {
+    throw "required script was not found: $TypedArchiveCompactionSummaryScript"
+}
+
+$TypedArchiveCompactionSummaryArguments = @{
+    DebugOutputPath = $DebugOutputPath
+    OutputCsv       = $TypedArchiveCompactionSummaryCsvPath
+    OutputNotesPath = $TypedArchiveCompactionSummaryNotesPath
+    Dataset         = $Dataset
+    MaxDepth        = $EffectiveMaxDepthText
+}
+
+& $TypedArchiveCompactionSummaryScript @TypedArchiveCompactionSummaryArguments
+
+if ($LASTEXITCODE -ne 0) {
+    throw "typed archive compaction summary failed with exit code $LASTEXITCODE"
+}
+
 Add-Utf8Text -Path $TextOutputPath -Text "`r`n---`r`n`r`nArtifacts:`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Dataset:                        $Dataset`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Max depth:                      $EffectiveMaxDepth`r`n"
@@ -509,6 +530,8 @@ Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive load summary CSV: $Typ
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive load notes:       $TypedArchiveLoadSummaryNotesPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive append CSV:       $TypedArchiveAppendRebuildSummaryCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive append notes:     $TypedArchiveAppendRebuildSummaryNotesPath`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive compaction CSV:   $TypedArchiveCompactionSummaryCsvPath`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive compaction notes: $TypedArchiveCompactionSummaryNotesPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed query index archive:      $TypedQueryIndexArchivePath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Low-selectivity gap CSV:        $LowSelectivityGapCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Low-gap regression notes:       $LowGapRegressionNotesPath`r`n"
@@ -532,6 +555,8 @@ Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive load summary CSV: $Ty
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive load notes:       $TypedArchiveLoadSummaryNotesPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive append CSV:       $TypedArchiveAppendRebuildSummaryCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive append notes:     $TypedArchiveAppendRebuildSummaryNotesPath`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive compaction CSV:   $TypedArchiveCompactionSummaryCsvPath`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive compaction notes: $TypedArchiveCompactionSummaryNotesPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed query index archive:      $TypedQueryIndexArchivePath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Low-selectivity gap CSV:        $LowSelectivityGapCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Low-gap regression notes:       $LowGapRegressionNotesPath`r`n"
@@ -556,6 +581,8 @@ Write-Host "  $TypedArchiveLoadSummaryCsvPath"
 Write-Host "  $TypedArchiveLoadSummaryNotesPath"
 Write-Host "  $TypedArchiveAppendRebuildSummaryCsvPath"
 Write-Host "  $TypedArchiveAppendRebuildSummaryNotesPath"
+Write-Host "  $TypedArchiveCompactionSummaryCsvPath"
+Write-Host "  $TypedArchiveCompactionSummaryNotesPath"
 Write-Host "  $TypedQueryIndexArchivePath"
 Write-Host "  $LowSelectivityGapCsvPath"
 Write-Host "  $LowGapRegressionNotesPath"
