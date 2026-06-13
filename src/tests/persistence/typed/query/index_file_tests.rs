@@ -12,15 +12,16 @@ use crate::encoding::{
     FSERecordBatchEncodingError, FloatEncoder, IntegerEncoder, TimestampMillisEncoder,
 };
 use crate::persistence::{
-    FSEArchiveFileOperation, FSEArchivePayloadHeaderError, FSEArchivePayloadKind,
-    FSEArchiveRebuildReason, FSETypedQueryIndexArchiveCompactionError,
-    FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveFileError,
-    FSETypedQueryIndexArchiveSnapshot, FSETypedQueryIndexCompactionError,
-    append_typed_query_index_archive_file, compact_typed_query_index_archive_file,
-    encode_archive_payload, load_typed_query_index_archive_file,
-    load_typed_query_index_archive_with_tombstones, load_typed_row_tombstone_archive_file,
-    read_typed_query_index_archive_snapshot_file, save_typed_query_index_archive_file,
-    save_typed_row_tombstone_archive_file, write_typed_query_index_archive_snapshot_file,
+    FSEArchiveCompactionOperationMetadataError, FSEArchiveFileOperation,
+    FSEArchivePayloadHeaderError, FSEArchivePayloadKind, FSEArchiveRebuildReason,
+    FSETypedQueryIndexArchiveCompactionError, FSETypedQueryIndexArchiveError,
+    FSETypedQueryIndexArchiveFileError, FSETypedQueryIndexArchiveSnapshot,
+    FSETypedQueryIndexCompactionError, append_typed_query_index_archive_file,
+    compact_typed_query_index_archive_file, encode_archive_payload,
+    load_typed_query_index_archive_file, load_typed_query_index_archive_with_tombstones,
+    load_typed_row_tombstone_archive_file, read_typed_query_index_archive_snapshot_file,
+    save_typed_query_index_archive_file, save_typed_row_tombstone_archive_file,
+    write_typed_query_index_archive_snapshot_file,
 };
 use crate::query::{
     FSEPredicate, FSEPredicateField, TypedQueryIndex, TypedQueryIndexAppendError,
@@ -276,6 +277,14 @@ fn typed_query_index_archive_file_compacts_tombstoned_archive_and_clears_tombsto
     assert_eq!(result.compaction.tombstone_count, 1);
     assert_eq!(result.compaction.removed_record_count, 1);
     assert_eq!(result.compaction.retained_record_count, 3);
+    assert_eq!(
+        result.compaction_metadata.payload_kind,
+        FSEArchivePayloadKind::TypedQueryIndex
+    );
+    assert_eq!(result.compaction_metadata.base_record_count, 4);
+    assert_eq!(result.compaction_metadata.tombstone_count, 1);
+    assert_eq!(result.compaction_metadata.removed_record_count, 1);
+    assert_eq!(result.compaction_metadata.retained_record_count, 3);
     assert_eq!(result.cleared_tombstone_count, 1);
     assert_eq!(result.remaining_tombstone_count, 0);
     assert_eq!(
@@ -284,6 +293,44 @@ fn typed_query_index_archive_file_compacts_tombstoned_archive_and_clears_tombsto
     );
     assert_eq!(tombstones, Vec::new());
     assert_eq!(after_matches, expected_matches);
+
+    let _ = fs::remove_file(query_index_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
+fn typed_query_index_archive_file_reports_noop_compaction_and_preserves_files() {
+    let schema = entity_schema();
+    let encoder = entity_encoder(&schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let query_index = typed_query_index();
+    let query_index_path = temp_archive_path("compact-noop-index", ".fse");
+    let tombstone_path = temp_archive_path("compact-noop-tombstones", ".fse");
+
+    save_typed_query_index_archive_file(&query_index_path, &query_index).unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[]).unwrap();
+
+    assert_eq!(
+        compact_typed_query_index_archive_file(
+            &query_index_path,
+            &tombstone_path,
+            &encoder,
+            &builder,
+        ),
+        Err(
+            FSETypedQueryIndexArchiveCompactionError::CompactionMetadata(
+                FSEArchiveCompactionOperationMetadataError::ZeroTombstoneCount
+            )
+        )
+    );
+    assert_eq!(
+        load_typed_query_index_archive_file(&query_index_path).unwrap(),
+        query_index
+    );
+    assert_eq!(
+        load_typed_row_tombstone_archive_file(&tombstone_path).unwrap(),
+        Vec::new()
+    );
 
     let _ = fs::remove_file(query_index_path);
     let _ = fs::remove_file(tombstone_path);
