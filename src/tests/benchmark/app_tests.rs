@@ -283,9 +283,11 @@ fn benchmark_application_renderer_uses_detailed_output_for_debug_report() {
     assert!(output.contains("Target workload typed indexed comparison"));
     assert!(output.contains("Target workload typed archive load timing"));
     assert!(output.contains("Target workload typed archive append rebuild timing"));
+    assert!(output.contains("Target workload typed archive compaction timing"));
     assert!(output.contains("Workload typed indexed comparison summary"));
     assert!(output.contains("Workload typed archive load timing summary"));
     assert!(output.contains("Workload typed archive append rebuild timing summary"));
+    assert!(output.contains("Workload typed archive compaction timing summary"));
 }
 
 #[test]
@@ -410,6 +412,11 @@ fn benchmark_application_runs_debug_report_configuration() {
     assert!(
         output
             .terminal_output
+            .contains("Target workload typed archive compaction timing")
+    );
+    assert!(
+        output
+            .terminal_output
             .contains("Workload typed indexed comparison summary")
     );
     assert!(
@@ -421,6 +428,16 @@ fn benchmark_application_runs_debug_report_configuration() {
         output
             .terminal_output
             .contains("Workload typed archive append rebuild timing summary")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("Workload typed archive compaction timing summary")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("cluster_boundary_range | 60 | 15 | 15 | 45")
     );
     assert!(
         output

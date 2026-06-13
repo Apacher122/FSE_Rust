@@ -2,6 +2,7 @@ use std::fs;
 
 use crate::benchmark::reports::{
     RepeatedTimingConfig, compare_typed_archive_append_rebuild_execution_repeated,
+    compare_typed_archive_compaction_execution_repeated,
     compare_typed_archive_load_execution_repeated,
 };
 use crate::build::{BuildConfig, FSEBuilder};
@@ -95,6 +96,68 @@ fn typed_archive_append_rebuild_timing_reports_rebuilt_archive() {
     assert!(path.exists());
 
     fs::remove_file(path).expect("test archive file should be removable");
+}
+
+#[test]
+fn typed_archive_compaction_timing_reports_compacted_archive() {
+    let fixture = typed_fixture();
+    let tombstone_row_ids = vec![RowId::new(10)];
+    let encoder = entity_encoder(&fixture.schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let predicate = FSEPredicate::range(
+        FSEPredicateField::name("score"),
+        FSEValue::Float(10.0),
+        FSEValue::Float(11.0),
+    );
+    let plan = TypedQueryPlan::numeric(&predicate, &fixture.schema, &fixture.mapping)
+        .expect("numeric predicate should produce a plan");
+    let timing_config = RepeatedTimingConfig::new(3);
+    let query_archive_path =
+        archive_path("typed_archive_compaction_timing_reports_compacted_archive-index");
+    let tombstone_archive_path =
+        archive_path("typed_archive_compaction_timing_reports_compacted_archive-tombstones");
+
+    let _ = fs::remove_file(&query_archive_path);
+    let _ = fs::remove_file(&tombstone_archive_path);
+
+    let report = compare_typed_archive_compaction_execution_repeated(
+        &query_archive_path,
+        &tombstone_archive_path,
+        &fixture.query_index,
+        &tombstone_row_ids,
+        &encoder,
+        &builder,
+        &plan,
+        &timing_config,
+    )
+    .expect("typed archive compaction timing should execute");
+
+    assert_eq!(report.base_record_count, 4);
+    assert_eq!(report.tombstone_count, 1);
+    assert_eq!(report.removed_record_count, 1);
+    assert_eq!(report.retained_record_count, 3);
+    assert!(report.query_archive_bytes_before_compaction > 0);
+    assert!(report.query_archive_bytes_after_compaction > 0);
+    assert!(report.tombstone_archive_bytes_before_compaction > 0);
+    assert!(report.tombstone_archive_bytes_after_compaction > 0);
+    assert_eq!(
+        report.query_archive_byte_delta,
+        i128::from(report.query_archive_bytes_after_compaction)
+            - i128::from(report.query_archive_bytes_before_compaction)
+    );
+    assert_eq!(
+        report.tombstone_archive_byte_delta,
+        i128::from(report.tombstone_archive_bytes_after_compaction)
+            - i128::from(report.tombstone_archive_bytes_before_compaction)
+    );
+    assert_eq!(report.matched_records_after_compaction, 1);
+    assert_eq!(report.compaction_timing.iterations, 3);
+    assert!(query_archive_path.exists());
+    assert!(tombstone_archive_path.exists());
+
+    fs::remove_file(query_archive_path).expect("test query archive file should be removable");
+    fs::remove_file(tombstone_archive_path)
+        .expect("test tombstone archive file should be removable");
 }
 
 struct TypedFixture {

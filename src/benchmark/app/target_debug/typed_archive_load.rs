@@ -14,8 +14,10 @@ use super::target::{
 use super::typed_workload::{TypedBenchmarkContext, typed_x_range_plan};
 use crate::benchmark::reports::output::format_duration_ascii;
 use crate::benchmark::reports::{
-    TypedArchiveAppendRebuildTimingReport, TypedArchiveLoadTimingError,
-    TypedArchiveLoadTimingReport, compare_typed_archive_append_rebuild_execution_repeated,
+    TypedArchiveAppendRebuildTimingReport, TypedArchiveCompactionTimingReport,
+    TypedArchiveLoadTimingError, TypedArchiveLoadTimingReport,
+    compare_typed_archive_append_rebuild_execution_repeated,
+    compare_typed_archive_compaction_execution_repeated,
     compare_typed_archive_load_execution_repeated,
 };
 use crate::benchmark::workloads::QueryWorkloadCase;
@@ -27,6 +29,8 @@ use crate::persistence::{
 };
 
 static ARCHIVE_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
+const COMPACTION_TOMBSTONE_FRACTION_DENOMINATOR: usize = 4;
+const COMPACTION_TOMBSTONE_LIMIT: usize = 64;
 
 impl BenchmarkApplicationRenderer {
     pub(crate) fn append_target_workload_typed_archive_load_debug_output(
@@ -126,6 +130,62 @@ impl BenchmarkApplicationRenderer {
                 report.archive_byte_growth,
                 report.matched_records_after_append,
                 format_duration_ascii(report.append_rebuild_timing.average_elapsed),
+            ));
+        }
+
+        output.push('\n');
+    }
+
+    pub(crate) fn append_target_workload_typed_archive_compaction_debug_output(
+        &self,
+        output: &mut String,
+        context: &BenchmarkApplicationContext,
+    ) {
+        let typed_context = TypedBenchmarkContext::from_benchmark_context(context);
+
+        append_target_workload_debug_section(
+            output,
+            context,
+            "Target workload typed archive compaction timing",
+            |output, context, workload| {
+                let report = typed_archive_compaction_report(context, &typed_context, workload);
+
+                append_target_typed_archive_compaction_report(output, &report);
+            },
+        );
+    }
+
+    pub(crate) fn append_workload_typed_archive_compaction_summary_debug_output(
+        &self,
+        output: &mut String,
+        context: &BenchmarkApplicationContext,
+    ) {
+        let typed_context = TypedBenchmarkContext::from_benchmark_context(context);
+
+        output.push_str("Workload typed archive compaction timing summary\n");
+        output.push_str("-----------------------------------------------\n");
+        output.push_str(
+            "workload | base records | tombstones | removed records | retained records | index before bytes | index after bytes | index byte delta | tombstone before bytes | tombstone after bytes | tombstone byte delta | matched after compaction | compaction | agreement\n",
+        );
+
+        for workload in &context.workloads {
+            let report = typed_archive_compaction_report(context, &typed_context, workload);
+
+            output.push_str(&format!(
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
+                workload.name,
+                report.base_record_count,
+                report.tombstone_count,
+                report.removed_record_count,
+                report.retained_record_count,
+                report.query_archive_bytes_before_compaction,
+                report.query_archive_bytes_after_compaction,
+                report.query_archive_byte_delta,
+                report.tombstone_archive_bytes_before_compaction,
+                report.tombstone_archive_bytes_after_compaction,
+                report.tombstone_archive_byte_delta,
+                report.matched_records_after_compaction,
+                format_duration_ascii(report.compaction_timing.average_elapsed),
             ));
         }
 
@@ -238,6 +298,57 @@ fn append_target_typed_archive_append_rebuild_report(
     append_debug_line(output, "typed archive append rebuild agreement", "pass");
 }
 
+fn append_target_typed_archive_compaction_report(
+    output: &mut String,
+    report: &TypedArchiveCompactionTimingReport,
+) {
+    append_debug_line(output, "base records", report.base_record_count);
+    append_debug_line(output, "tombstones", report.tombstone_count);
+    append_debug_line(output, "removed records", report.removed_record_count);
+    append_debug_line(output, "retained records", report.retained_record_count);
+    append_debug_line(
+        output,
+        "query archive bytes before compaction",
+        report.query_archive_bytes_before_compaction,
+    );
+    append_debug_line(
+        output,
+        "query archive bytes after compaction",
+        report.query_archive_bytes_after_compaction,
+    );
+    append_debug_line(
+        output,
+        "query archive byte delta",
+        report.query_archive_byte_delta,
+    );
+    append_debug_line(
+        output,
+        "tombstone archive bytes before compaction",
+        report.tombstone_archive_bytes_before_compaction,
+    );
+    append_debug_line(
+        output,
+        "tombstone archive bytes after compaction",
+        report.tombstone_archive_bytes_after_compaction,
+    );
+    append_debug_line(
+        output,
+        "tombstone archive byte delta",
+        report.tombstone_archive_byte_delta,
+    );
+    append_debug_line(
+        output,
+        "matched records after compaction",
+        report.matched_records_after_compaction,
+    );
+    append_debug_duration_line(
+        output,
+        "compaction average elapsed",
+        report.compaction_timing.average_elapsed,
+    );
+    append_debug_line(output, "typed archive compaction agreement", "pass");
+}
+
 fn typed_archive_load_report(
     context: &BenchmarkApplicationContext,
     typed_context: &TypedBenchmarkContext,
@@ -282,10 +393,62 @@ fn typed_archive_append_rebuild_report(
     report.expect("typed archive append rebuild timing should execute")
 }
 
+fn typed_archive_compaction_report(
+    context: &BenchmarkApplicationContext,
+    typed_context: &TypedBenchmarkContext,
+    workload: &QueryWorkloadCase,
+) -> TypedArchiveCompactionTimingReport {
+    let plan = typed_x_range_plan(typed_context, workload);
+    let query_index_path = typed_archive_temporary_path(workload);
+    let tombstone_path = typed_tombstone_archive_temporary_path(workload);
+    let tombstone_row_ids = typed_archive_compaction_tombstones(typed_context);
+    let encoder = typed_context.encoder();
+    let builder = FSEBuilder::new(context.suite_config.build_config());
+    let report = compare_typed_archive_compaction_execution_repeated(
+        &query_index_path,
+        &tombstone_path,
+        typed_context.query_index(),
+        &tombstone_row_ids,
+        &encoder,
+        &builder,
+        &plan,
+        &context.timing_config,
+    );
+
+    let _ = fs::remove_file(&query_index_path);
+    let _ = fs::remove_file(&tombstone_path);
+
+    report.expect("typed archive compaction timing should execute")
+}
+
+fn typed_archive_compaction_tombstones(typed_context: &TypedBenchmarkContext) -> Vec<RowId> {
+    let row_ids = typed_context.query_index().batch().row_ids();
+    let retained_record_guard = row_ids.len().saturating_sub(1);
+    let tombstone_count = (row_ids.len() / COMPACTION_TOMBSTONE_FRACTION_DENOMINATOR)
+        .max(1)
+        .min(COMPACTION_TOMBSTONE_LIMIT)
+        .min(retained_record_guard);
+
+    row_ids.iter().copied().take(tombstone_count).collect()
+}
+
 fn typed_archive_temporary_path(workload: &QueryWorkloadCase) -> PathBuf {
     let path_id = ARCHIVE_PATH_COUNTER.fetch_add(1, Ordering::Relaxed);
     let file_name = format!(
         "fse-typed-archive-load-{}-{}-{}{}",
+        std::process::id(),
+        path_id,
+        sanitize_workload_name(&workload.name),
+        FSE_ARCHIVE_FILE_EXTENSION
+    );
+
+    std::env::temp_dir().join(file_name)
+}
+
+fn typed_tombstone_archive_temporary_path(workload: &QueryWorkloadCase) -> PathBuf {
+    let path_id = ARCHIVE_PATH_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let file_name = format!(
+        "fse-typed-tombstone-archive-{}-{}-{}{}",
         std::process::id(),
         path_id,
         sanitize_workload_name(&workload.name),

@@ -16,8 +16,11 @@ use crate::data::FSERecordBatch;
 use crate::data::RowId;
 use crate::encoding::FSERecordEncoder;
 use crate::persistence::{
-    FSETypedQueryIndexArchiveError, append_typed_query_index_archive_file,
-    load_typed_query_index_archive_file, save_typed_query_index_archive_file,
+    FSETombstonedTypedQueryIndexArchiveError, FSETypedQueryIndexArchiveCompactionError,
+    FSETypedQueryIndexArchiveError, FSETypedRowTombstoneArchiveError,
+    append_typed_query_index_archive_file, compact_typed_query_index_archive_file,
+    load_typed_query_index_archive_file, load_typed_query_index_archive_with_tombstones,
+    save_typed_query_index_archive_file, save_typed_row_tombstone_archive_file,
 };
 use crate::query::{IndexedTypedQueryError, TypedQueryIndex, TypedQueryPlan};
 
@@ -26,6 +29,15 @@ use crate::query::{IndexedTypedQueryError, TypedQueryIndex, TypedQueryPlan};
 pub enum TypedArchiveLoadTimingError {
     /// Saving or loading the typed query index archive failed.
     Archive(FSETypedQueryIndexArchiveError),
+
+    /// Saving or loading the typed row tombstone archive failed.
+    Tombstones(FSETypedRowTombstoneArchiveError),
+
+    /// Compacting the typed query index archive failed.
+    ArchiveCompaction(FSETypedQueryIndexArchiveCompactionError),
+
+    /// Loading a typed query index archive with tombstones failed.
+    TombstonedArchive(FSETombstonedTypedQueryIndexArchiveError),
 
     /// Typed indexed query execution failed.
     Query(IndexedTypedQueryError),
@@ -59,6 +71,9 @@ impl fmt::Display for TypedArchiveLoadTimingError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Archive(error) => error.fmt(formatter),
+            Self::Tombstones(error) => error.fmt(formatter),
+            Self::ArchiveCompaction(error) => error.fmt(formatter),
+            Self::TombstonedArchive(error) => error.fmt(formatter),
             Self::Query(error) => error.fmt(formatter),
             Self::ArchiveFileMetadata { .. } => {
                 formatter.write_str("typed archive file metadata could not be read")
@@ -79,6 +94,9 @@ impl Error for TypedArchiveLoadTimingError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Archive(error) => Some(error),
+            Self::Tombstones(error) => Some(error),
+            Self::ArchiveCompaction(error) => Some(error),
+            Self::TombstonedArchive(error) => Some(error),
             Self::Query(error) => Some(error),
             Self::ArchiveFileMetadata { .. } => None,
             Self::ResultMismatch { .. } => None,
@@ -89,6 +107,24 @@ impl Error for TypedArchiveLoadTimingError {
 impl From<FSETypedQueryIndexArchiveError> for TypedArchiveLoadTimingError {
     fn from(error: FSETypedQueryIndexArchiveError) -> Self {
         Self::Archive(error)
+    }
+}
+
+impl From<FSETypedRowTombstoneArchiveError> for TypedArchiveLoadTimingError {
+    fn from(error: FSETypedRowTombstoneArchiveError) -> Self {
+        Self::Tombstones(error)
+    }
+}
+
+impl From<FSETypedQueryIndexArchiveCompactionError> for TypedArchiveLoadTimingError {
+    fn from(error: FSETypedQueryIndexArchiveCompactionError) -> Self {
+        Self::ArchiveCompaction(error)
+    }
+}
+
+impl From<FSETombstonedTypedQueryIndexArchiveError> for TypedArchiveLoadTimingError {
+    fn from(error: FSETombstonedTypedQueryIndexArchiveError) -> Self {
+        Self::TombstonedArchive(error)
     }
 }
 
@@ -149,6 +185,46 @@ pub struct TypedArchiveAppendRebuildTimingReport {
 
     /// Timing for append, rebuild, and archive write.
     pub append_rebuild_timing: RepeatedTimingReport,
+}
+
+/// Timing report for compacting a tombstoned typed query index archive.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedArchiveCompactionTimingReport {
+    /// Number of records in the source archive.
+    pub base_record_count: usize,
+
+    /// Number of tombstones used during compaction.
+    pub tombstone_count: usize,
+
+    /// Number of source records removed by compaction.
+    pub removed_record_count: usize,
+
+    /// Number of source records retained by compaction.
+    pub retained_record_count: usize,
+
+    /// Typed query index archive byte length before compaction.
+    pub query_archive_bytes_before_compaction: u64,
+
+    /// Typed query index archive byte length after compaction.
+    pub query_archive_bytes_after_compaction: u64,
+
+    /// Typed query index archive byte delta after compaction.
+    pub query_archive_byte_delta: i128,
+
+    /// Tombstone archive byte length before compaction.
+    pub tombstone_archive_bytes_before_compaction: u64,
+
+    /// Tombstone archive byte length after compaction.
+    pub tombstone_archive_bytes_after_compaction: u64,
+
+    /// Tombstone archive byte delta after compaction.
+    pub tombstone_archive_byte_delta: i128,
+
+    /// Number of records matched by the typed query plan after compaction.
+    pub matched_records_after_compaction: usize,
+
+    /// Timing for compaction and archive writes.
+    pub compaction_timing: RepeatedTimingReport,
 }
 
 /// Measures typed archive load timing with the default repeated timing configuration.
@@ -308,6 +384,89 @@ where
     })
 }
 
+/// Measures typed query index archive compaction timing with repeated timing.
+///
+/// # Runtime Role
+///
+/// The function writes a typed query index archive and a tombstone archive,
+/// validates the tombstoned result set, compacts the archives, and reports
+/// repeated timing for compaction and archive writes.
+pub fn compare_typed_archive_compaction_execution_repeated<P, Q>(
+    query_archive_path: P,
+    tombstone_archive_path: Q,
+    query_index: &TypedQueryIndex,
+    tombstone_row_ids: &[RowId],
+    encoder: &impl FSERecordEncoder,
+    builder: &FSEBuilder,
+    plan: &TypedQueryPlan,
+    timing_config: &RepeatedTimingConfig,
+) -> Result<TypedArchiveCompactionTimingReport, TypedArchiveLoadTimingError>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+{
+    let query_archive_path = query_archive_path.as_ref();
+    let tombstone_archive_path = tombstone_archive_path.as_ref();
+
+    save_typed_query_index_archive_file(query_archive_path, query_index)?;
+    save_typed_row_tombstone_archive_file(tombstone_archive_path, tombstone_row_ids)?;
+
+    let tombstoned_index =
+        load_typed_query_index_archive_with_tombstones(query_archive_path, tombstone_archive_path)?;
+    let tombstoned_row_ids = tombstoned_index.query_row_ids(plan)?;
+    let query_archive_bytes_before_compaction = archive_file_len(query_archive_path)?;
+    let tombstone_archive_bytes_before_compaction = archive_file_len(tombstone_archive_path)?;
+    let compaction_result = compact_typed_query_index_archive_file(
+        query_archive_path,
+        tombstone_archive_path,
+        encoder,
+        builder,
+    )?;
+    let query_archive_bytes_after_compaction = archive_file_len(query_archive_path)?;
+    let tombstone_archive_bytes_after_compaction = archive_file_len(tombstone_archive_path)?;
+    let compacted_index =
+        load_typed_query_index_archive_with_tombstones(query_archive_path, tombstone_archive_path)?;
+    let compacted_row_ids = compacted_index.query_row_ids(plan)?;
+
+    validate_same_row_id_set(
+        "tombstoned typed archive",
+        &tombstoned_row_ids,
+        "compacted typed archive",
+        &compacted_row_ids,
+    )?;
+
+    let compaction_timing = measure_repeated_archive_compaction(
+        query_archive_path,
+        tombstone_archive_path,
+        query_index,
+        tombstone_row_ids,
+        encoder,
+        builder,
+        timing_config,
+    )?;
+
+    Ok(TypedArchiveCompactionTimingReport {
+        base_record_count: compaction_result.compaction.base_record_count,
+        tombstone_count: compaction_result.compaction.tombstone_count,
+        removed_record_count: compaction_result.compaction.removed_record_count,
+        retained_record_count: compaction_result.compaction.retained_record_count,
+        query_archive_byte_delta: byte_delta(
+            query_archive_bytes_before_compaction,
+            query_archive_bytes_after_compaction,
+        ),
+        query_archive_bytes_before_compaction,
+        query_archive_bytes_after_compaction,
+        tombstone_archive_byte_delta: byte_delta(
+            tombstone_archive_bytes_before_compaction,
+            tombstone_archive_bytes_after_compaction,
+        ),
+        tombstone_archive_bytes_before_compaction,
+        tombstone_archive_bytes_after_compaction,
+        matched_records_after_compaction: compacted_row_ids.len(),
+        compaction_timing,
+    })
+}
+
 fn measure_repeated_archive_append_rebuild<P>(
     archive_path: P,
     query_index: &TypedQueryIndex,
@@ -340,6 +499,47 @@ where
     })
 }
 
+fn measure_repeated_archive_compaction<P, Q>(
+    query_archive_path: P,
+    tombstone_archive_path: Q,
+    query_index: &TypedQueryIndex,
+    tombstone_row_ids: &[RowId],
+    encoder: &impl FSERecordEncoder,
+    builder: &FSEBuilder,
+    timing_config: &RepeatedTimingConfig,
+) -> Result<RepeatedTimingReport, TypedArchiveLoadTimingError>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+{
+    let query_archive_path = query_archive_path.as_ref();
+    let tombstone_archive_path = tombstone_archive_path.as_ref();
+    let mut total_elapsed = Duration::ZERO;
+
+    for _ in 0..timing_config.iterations {
+        save_typed_query_index_archive_file(query_archive_path, query_index)?;
+        save_typed_row_tombstone_archive_file(tombstone_archive_path, tombstone_row_ids)?;
+        let (compaction_result, elapsed) = measure_elapsed(|| {
+            compact_typed_query_index_archive_file(
+                query_archive_path,
+                tombstone_archive_path,
+                encoder,
+                builder,
+            )
+        });
+        let compaction_result = compaction_result?;
+
+        std::hint::black_box(compaction_result.compaction.retained_record_count);
+        total_elapsed += elapsed;
+    }
+
+    Ok(RepeatedTimingReport {
+        iterations: timing_config.iterations,
+        total_elapsed,
+        average_elapsed: duration_div(total_elapsed, timing_config.iterations),
+    })
+}
+
 fn archive_file_len(path: &Path) -> Result<u64, TypedArchiveLoadTimingError> {
     fs::metadata(path)
         .map(|metadata| metadata.len())
@@ -347,6 +547,10 @@ fn archive_file_len(path: &Path) -> Result<u64, TypedArchiveLoadTimingError> {
             path: path.to_path_buf(),
             kind: error.kind(),
         })
+}
+
+fn byte_delta(before: u64, after: u64) -> i128 {
+    i128::from(after) - i128::from(before)
 }
 
 fn validate_same_row_id_set(
