@@ -9,10 +9,12 @@ pub use query_index::{
     FSETypedQueryIndexArchiveAppendResult, FSETypedQueryIndexArchiveCodecError,
     FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveFileError,
     FSETypedQueryIndexArchiveSnapshot, FSETypedQueryIndexArchiveSnapshotError,
-    append_typed_query_index_archive_file, decode_typed_query_index_archive_snapshot,
-    encode_typed_query_index_archive_snapshot, load_typed_query_index_archive_file,
-    load_typed_query_index_archive_with_tombstones, read_typed_query_index_archive_snapshot_file,
-    save_typed_query_index_archive_file, write_typed_query_index_archive_snapshot_file,
+    FSETypedQueryIndexCompactionError, FSETypedQueryIndexCompactionResult,
+    append_typed_query_index_archive_file, compact_tombstoned_typed_query_index,
+    decode_typed_query_index_archive_snapshot, encode_typed_query_index_archive_snapshot,
+    load_typed_query_index_archive_file, load_typed_query_index_archive_with_tombstones,
+    read_typed_query_index_archive_snapshot_file, save_typed_query_index_archive_file,
+    write_typed_query_index_archive_snapshot_file,
 };
 pub use record_batch::{
     FSEFieldArchiveRecord, FSEFieldTypeArchiveTag, FSERecordArchiveRecord,

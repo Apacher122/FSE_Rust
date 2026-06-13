@@ -12,7 +12,7 @@ use crate::persistence::{
     save_typed_row_tombstone_archive_file, write_typed_row_tombstone_archive_snapshot_file,
 };
 
-use super::corrupted_archive_payload;
+use super::super::corrupted_archive_payload;
 
 #[test]
 fn typed_row_tombstone_archive_file_round_trips_snapshot_through_fse_file() {

@@ -24,7 +24,7 @@ use crate::query::{
     TypedQueryIndexBuildError, TypedQueryPlanBuilder,
 };
 
-use super::corrupted_archive_payload;
+use super::super::corrupted_archive_payload;
 
 #[test]
 fn typed_query_index_archive_file_round_trips_snapshot_through_fse_file() {
