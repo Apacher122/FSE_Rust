@@ -657,6 +657,59 @@ fn typed_query_index_archive_file_maintenance_rebuilds_append_and_compaction_wor
 }
 
 #[test]
+fn typed_query_index_archive_file_maintenance_preserves_files_when_combined_rebuild_fails() {
+    let schema = entity_schema();
+    let encoder = entity_encoder(&schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let policy = FSEArchiveMaintenancePolicy::try_new(10, 1, 9_000).unwrap();
+    let query_index = typed_query_index();
+    let appended = appended_entity_batch(&schema);
+    let tombstone_row_ids = vec![
+        RowId::new(100),
+        RowId::new(101),
+        RowId::new(102),
+        RowId::new(103),
+        RowId::new(104),
+        RowId::new(105),
+    ];
+    let query_index_path = temp_archive_path("maintenance-rebuild-failure-index", ".fse");
+    let tombstone_path = temp_archive_path("maintenance-rebuild-failure-tombstones", ".fse");
+
+    save_typed_query_index_archive_file(&query_index_path, &query_index).unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &tombstone_row_ids).unwrap();
+
+    assert_eq!(
+        maintain_typed_query_index_archive_file(
+            &query_index_path,
+            &tombstone_path,
+            Some(&appended),
+            &encoder,
+            &builder,
+            &policy,
+        ),
+        Err(FSETypedQueryIndexArchiveMaintenanceError::Compaction(
+            FSETypedQueryIndexArchiveCompactionError::Compaction(
+                FSETypedQueryIndexCompactionError::EmptyRetainedRecordSet {
+                    base_record_count: 6,
+                    tombstone_count: 6
+                }
+            )
+        ))
+    );
+    assert_eq!(
+        load_typed_query_index_archive_file(&query_index_path).unwrap(),
+        query_index
+    );
+    assert_eq!(
+        load_typed_row_tombstone_archive_file(&tombstone_path).unwrap(),
+        tombstone_row_ids
+    );
+
+    let _ = fs::remove_file(query_index_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
 fn typed_query_index_archive_file_maintenance_reports_invalid_policy() {
     let schema = entity_schema();
     let encoder = entity_encoder(&schema);

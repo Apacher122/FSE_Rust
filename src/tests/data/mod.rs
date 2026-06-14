@@ -1,6 +1,7 @@
 //! Data tests.
 
 mod batch_tests;
+mod csv_tests;
 mod dataset_tests;
 mod mapping_tests;
 mod record_tests;
