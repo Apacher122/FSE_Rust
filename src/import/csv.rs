@@ -9,7 +9,10 @@ use crate::data::{
     FSECsvFileImportError, FSECsvImportOptions, FSESchema, record_batch_from_csv_file,
 };
 use crate::encoding::FSERecordEncoder;
-use crate::persistence::{FSETypedQueryIndexArchiveError, build_typed_query_index_archive_file};
+use crate::persistence::{
+    FSETypedQueryIndexArchiveAppendResult, FSETypedQueryIndexArchiveError,
+    append_typed_query_index_archive_file, build_typed_query_index_archive_file,
+};
 use crate::query::TypedQueryIndex;
 
 /// Error returned when CSV archive import fails.
@@ -18,7 +21,7 @@ pub enum FSECsvArchiveImportError {
     /// Reading or parsing the CSV file failed.
     Csv(FSECsvFileImportError),
 
-    /// Building or writing the typed query index archive failed.
+    /// Building, appending, or writing the typed query index archive failed.
     Archive(FSETypedQueryIndexArchiveError),
 }
 
@@ -73,6 +76,33 @@ where
     Ok(build_typed_query_index_archive_file(
         archive_path,
         batch,
+        encoder,
+        builder,
+    )?)
+}
+
+/// Appends CSV records to an existing typed query index archive.
+///
+/// The CSV file is parsed with the caller supplied schema and row-id options.
+/// The parsed record batch is appended to the archive through the typed query
+/// index archive append workflow.
+pub fn append_typed_query_index_archive_from_csv_file<C, A>(
+    csv_path: C,
+    archive_path: A,
+    schema: &FSESchema,
+    options: &FSECsvImportOptions,
+    encoder: &impl FSERecordEncoder,
+    builder: &FSEBuilder,
+) -> Result<FSETypedQueryIndexArchiveAppendResult, FSECsvArchiveImportError>
+where
+    C: AsRef<Path>,
+    A: AsRef<Path>,
+{
+    let batch = record_batch_from_csv_file(csv_path, schema, options)?;
+
+    Ok(append_typed_query_index_archive_file(
+        archive_path,
+        &batch,
         encoder,
         builder,
     )?)

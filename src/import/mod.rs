@@ -5,4 +5,7 @@
 
 mod csv;
 
-pub use csv::{FSECsvArchiveImportError, build_typed_query_index_archive_from_csv_file};
+pub use csv::{
+    FSECsvArchiveImportError, append_typed_query_index_archive_from_csv_file,
+    build_typed_query_index_archive_from_csv_file,
+};

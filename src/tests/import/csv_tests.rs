@@ -5,18 +5,24 @@ use std::path::PathBuf;
 use crate::build::{BuildConfig, FSEBuilder};
 use crate::data::{
     FSECsvFileImportError, FSECsvImportError, FSECsvImportOptions, FSEDimensionMapping, FSEField,
-    FSEFieldType, FSESchema, FSESchemaDimensionMapping, FSEValue, RowId,
+    FSEFieldType, FSERecordBatchError, FSESchema, FSESchemaDimensionMapping, FSEValue, RowId,
 };
 use crate::encoding::{
     CategoricalDictionaryEncoder, ComposedRecordEncoder, FloatEncoder, IntegerEncoder,
     TimestampMillisEncoder,
 };
-use crate::import::{FSECsvArchiveImportError, build_typed_query_index_archive_from_csv_file};
+use crate::import::{
+    FSECsvArchiveImportError, append_typed_query_index_archive_from_csv_file,
+    build_typed_query_index_archive_from_csv_file,
+};
 use crate::persistence::{
-    FSEArchiveFileOperation, FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveFileError,
+    FSEArchiveFileOperation, FSEArchivePayloadKind, FSEArchiveRebuildOperationMetadata,
+    FSEArchiveRebuildReason, FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveFileError,
     load_typed_query_index_archive_file,
 };
-use crate::query::{FSEPredicate, FSEPredicateField, TypedQueryPlanBuilder};
+use crate::query::{
+    FSEPredicate, FSEPredicateField, TypedQueryIndexAppendError, TypedQueryPlanBuilder,
+};
 
 #[test]
 fn csv_archive_import_builds_queryable_fse_file() {
@@ -49,6 +55,68 @@ fn csv_archive_import_builds_queryable_fse_file() {
     );
 
     let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(archive_path);
+}
+
+#[test]
+fn csv_archive_import_appends_csv_records_to_fse_file() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let encoder = entity_encoder(&schema);
+    let builder = builder();
+    let csv_path = temp_csv_path("append-base");
+    let append_csv_path = temp_csv_path("append-records");
+    let archive_path = temp_archive_path("append-records", ".fse");
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+    fs::write(&append_csv_path, appended_entity_csv()).unwrap();
+
+    build_typed_query_index_archive_from_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &encoder,
+        &builder,
+    )
+    .unwrap();
+
+    let result = append_typed_query_index_archive_from_csv_file(
+        &append_csv_path,
+        &archive_path,
+        &schema,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &encoder,
+        &builder,
+    )
+    .unwrap();
+    let loaded = load_typed_query_index_archive_file(&archive_path).unwrap();
+    let plan = score_and_class_plan(&schema, &mapping);
+    let mut matches = loaded.query_row_ids(&plan).unwrap();
+    matches.sort();
+
+    assert_eq!(
+        result.append_metadata.payload_kind,
+        FSEArchivePayloadKind::TypedQueryIndex
+    );
+    assert_eq!(result.append_metadata.base_record_count, 4);
+    assert_eq!(result.append_metadata.appended_record_count, 2);
+    assert_eq!(result.append_metadata.resulting_record_count, 6);
+    assert_eq!(result.rebuild_plan.reason, FSEArchiveRebuildReason::Append);
+    assert_eq!(
+        result.rebuild_plan.operation,
+        FSEArchiveRebuildOperationMetadata::Append(result.append_metadata)
+    );
+    assert!(result.rebuild_plan.requires_full_archive_rebuild);
+    assert_eq!(result.query_index, loaded);
+    assert_eq!(loaded.batch().len(), 6);
+    assert_eq!(
+        matches,
+        vec![RowId::new(100), RowId::new(103), RowId::new(104)]
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(append_csv_path);
     let _ = fs::remove_file(archive_path);
 }
 
@@ -124,6 +192,120 @@ entity_id,score,class,observed_at
     assert!(!archive_path.exists());
 
     let _ = fs::remove_file(csv_path);
+}
+
+#[test]
+fn csv_archive_import_append_reports_csv_parse_error_and_preserves_archive() {
+    let schema = entity_schema();
+    let encoder = entity_encoder(&schema);
+    let builder = builder();
+    let csv_path = temp_csv_path("append-parse-base");
+    let append_csv_path = temp_csv_path("append-parse-error");
+    let archive_path = temp_archive_path("append-parse-error", ".fse");
+    let csv = "\
+entity_id,score,class,observed_at
+104,north,alpha,1400
+";
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+    fs::write(&append_csv_path, csv).unwrap();
+
+    let base_query_index = build_typed_query_index_archive_from_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &encoder,
+        &builder,
+    )
+    .unwrap();
+
+    let error = append_typed_query_index_archive_from_csv_file(
+        &append_csv_path,
+        &archive_path,
+        &schema,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &encoder,
+        &builder,
+    )
+    .unwrap_err();
+
+    match error {
+        FSECsvArchiveImportError::Csv(FSECsvFileImportError::Import(
+            FSECsvImportError::InvalidValue {
+                line,
+                field,
+                expected,
+                value,
+            },
+        )) => {
+            assert_eq!(line, 2);
+            assert_eq!(field, "score");
+            assert_eq!(expected, FSEFieldType::Float);
+            assert_eq!(value, "north");
+        }
+        other => panic!("expected CSV parse error, got {other}"),
+    }
+    assert_eq!(
+        load_typed_query_index_archive_file(&archive_path).unwrap(),
+        base_query_index
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(append_csv_path);
+    let _ = fs::remove_file(archive_path);
+}
+
+#[test]
+fn csv_archive_import_append_reports_archive_error_and_preserves_archive() {
+    let schema = entity_schema();
+    let encoder = entity_encoder(&schema);
+    let builder = builder();
+    let csv_path = temp_csv_path("append-archive-base");
+    let append_csv_path = temp_csv_path("append-archive-error");
+    let archive_path = temp_archive_path("append-archive-error", ".fse");
+    let csv = "\
+entity_id,score,class,observed_at
+100,16.0,alpha,1400
+";
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+    fs::write(&append_csv_path, csv).unwrap();
+
+    let base_query_index = build_typed_query_index_archive_from_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &encoder,
+        &builder,
+    )
+    .unwrap();
+
+    let error = append_typed_query_index_archive_from_csv_file(
+        &append_csv_path,
+        &archive_path,
+        &schema,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &encoder,
+        &builder,
+    )
+    .unwrap_err();
+
+    match error {
+        FSECsvArchiveImportError::Archive(FSETypedQueryIndexArchiveError::Append(
+            TypedQueryIndexAppendError::RecordBatch(FSERecordBatchError::DuplicateRowId { row_id }),
+        )) => assert_eq!(row_id, RowId::new(100)),
+        other => panic!("expected archive append error, got {other}"),
+    }
+    assert_eq!(
+        load_typed_query_index_archive_file(&archive_path).unwrap(),
+        base_query_index
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(append_csv_path);
+    let _ = fs::remove_file(archive_path);
 }
 
 #[test]
@@ -263,6 +445,14 @@ entity_id,score,class,observed_at
 101,12.5,beta,1100
 102,25.0,alpha,1200
 103,18.0,alpha,1300
+"
+}
+
+fn appended_entity_csv() -> &'static str {
+    "\
+entity_id,score,class,observed_at
+104,16.0,alpha,1400
+105,80.0,beta,1500
 "
 }
 
