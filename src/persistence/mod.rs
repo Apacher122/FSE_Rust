@@ -25,6 +25,8 @@ pub use manifest::{
 pub use operations::{
     FSEArchiveAppendOperationMetadata, FSEArchiveAppendOperationMetadataError,
     FSEArchiveCompactionOperationMetadata, FSEArchiveCompactionOperationMetadataError,
+    FSEArchiveMaintenanceAction, FSEArchiveMaintenanceDecision, FSEArchiveMaintenanceError,
+    FSEArchiveMaintenanceInput, FSEArchiveMaintenancePolicy, FSEArchiveMaintenanceReason,
     FSEArchiveRebuildOperationMetadata, FSEArchiveRebuildPlanMetadata,
     FSEArchiveRebuildPlanMetadataError, FSEArchiveRebuildReason,
 };

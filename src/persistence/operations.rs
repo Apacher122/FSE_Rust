@@ -585,6 +585,290 @@ impl FSEArchiveRebuildPlanMetadata {
     }
 }
 
+/// Maintenance action selected for an archive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FSEArchiveMaintenanceAction {
+    /// No archive maintenance is currently selected.
+    NoMaintenance,
+
+    /// Apply pending appended records.
+    Append,
+
+    /// Compact tombstoned records.
+    Compact,
+
+    /// Rebuild the archive from pending maintenance work.
+    Rebuild,
+}
+
+/// Reason an archive maintenance action was selected.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FSEArchiveMaintenanceReason {
+    /// The archive has no pending maintenance work.
+    NoPendingMaintenance,
+
+    /// Pending appended records should be applied.
+    PendingAppendRecords,
+
+    /// Pending appended records reached the rebuild threshold.
+    AppendRebuildThresholdReached,
+
+    /// Tombstone count reached the compaction threshold.
+    CompactionTombstoneCountThresholdReached,
+
+    /// Tombstone ratio reached the compaction threshold.
+    CompactionTombstoneRatioThresholdReached,
+
+    /// Append and compaction work should be applied by one rebuild.
+    AppendAndCompactionThresholdsReached,
+}
+
+/// Error returned when archive maintenance policy metadata is invalid.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FSEArchiveMaintenanceError {
+    /// The source archive record count was zero.
+    ZeroBaseRecordCount,
+
+    /// The pending append count overflowed the archive record count.
+    ResultingRecordCountOverflow {
+        /// Number of records in the source archive.
+        base_record_count: u64,
+
+        /// Number of pending appended records.
+        pending_append_record_count: u64,
+    },
+
+    /// Append rebuild threshold was zero.
+    ZeroAppendRebuildRecordCountThreshold,
+
+    /// Compaction tombstone count threshold was zero.
+    ZeroCompactionTombstoneCountThreshold,
+
+    /// Compaction tombstone ratio threshold was zero.
+    ZeroCompactionTombstoneRatioThreshold,
+}
+
+impl fmt::Display for FSEArchiveMaintenanceError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ZeroBaseRecordCount => {
+                formatter.write_str("archive maintenance base record count must be greater than zero")
+            }
+            Self::ResultingRecordCountOverflow { .. } => {
+                formatter.write_str("archive maintenance resulting record count overflowed")
+            }
+            Self::ZeroAppendRebuildRecordCountThreshold => {
+                formatter.write_str("archive maintenance append rebuild threshold must be greater than zero")
+            }
+            Self::ZeroCompactionTombstoneCountThreshold => formatter.write_str(
+                "archive maintenance compaction tombstone count threshold must be greater than zero",
+            ),
+            Self::ZeroCompactionTombstoneRatioThreshold => formatter.write_str(
+                "archive maintenance compaction tombstone ratio threshold must be greater than zero",
+            ),
+        }
+    }
+}
+
+impl Error for FSEArchiveMaintenanceError {}
+
+/// Thresholds used to select archive maintenance actions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FSEArchiveMaintenancePolicy {
+    /// Pending append count that selects a full archive rebuild.
+    pub append_rebuild_record_count_threshold: u64,
+
+    /// Tombstone count that selects archive compaction.
+    pub compaction_tombstone_count_threshold: u64,
+
+    /// Tombstone-to-base-record ratio, in basis points, that selects compaction.
+    pub compaction_tombstone_ratio_threshold_basis_points: u64,
+}
+
+impl Default for FSEArchiveMaintenancePolicy {
+    fn default() -> Self {
+        Self {
+            append_rebuild_record_count_threshold: 1_024,
+            compaction_tombstone_count_threshold: 1_024,
+            compaction_tombstone_ratio_threshold_basis_points: 2_500,
+        }
+    }
+}
+
+impl FSEArchiveMaintenancePolicy {
+    /// Creates archive maintenance policy metadata.
+    pub fn try_new(
+        append_rebuild_record_count_threshold: u64,
+        compaction_tombstone_count_threshold: u64,
+        compaction_tombstone_ratio_threshold_basis_points: u64,
+    ) -> Result<Self, FSEArchiveMaintenanceError> {
+        let policy = Self {
+            append_rebuild_record_count_threshold,
+            compaction_tombstone_count_threshold,
+            compaction_tombstone_ratio_threshold_basis_points,
+        };
+
+        policy.validate()?;
+
+        Ok(policy)
+    }
+
+    /// Validates archive maintenance policy metadata.
+    pub fn validate(&self) -> Result<(), FSEArchiveMaintenanceError> {
+        if self.append_rebuild_record_count_threshold == 0 {
+            return Err(FSEArchiveMaintenanceError::ZeroAppendRebuildRecordCountThreshold);
+        }
+
+        if self.compaction_tombstone_count_threshold == 0 {
+            return Err(FSEArchiveMaintenanceError::ZeroCompactionTombstoneCountThreshold);
+        }
+
+        if self.compaction_tombstone_ratio_threshold_basis_points == 0 {
+            return Err(FSEArchiveMaintenanceError::ZeroCompactionTombstoneRatioThreshold);
+        }
+
+        Ok(())
+    }
+
+    /// Evaluates the maintenance action for an archive.
+    pub fn evaluate(
+        &self,
+        input: FSEArchiveMaintenanceInput,
+    ) -> Result<FSEArchiveMaintenanceDecision, FSEArchiveMaintenanceError> {
+        self.validate()?;
+        input.validate()?;
+
+        let tombstone_ratio_basis_points = input.tombstone_ratio_basis_points();
+        let has_pending_append = input.pending_append_record_count > 0;
+        let append_rebuild_threshold_reached =
+            input.pending_append_record_count >= self.append_rebuild_record_count_threshold;
+        let compaction_reason = self.compaction_reason(input, tombstone_ratio_basis_points);
+
+        let (action, reason) = match (
+            has_pending_append,
+            append_rebuild_threshold_reached,
+            compaction_reason,
+        ) {
+            (true, true, Some(_)) | (true, false, Some(_)) => (
+                FSEArchiveMaintenanceAction::Rebuild,
+                FSEArchiveMaintenanceReason::AppendAndCompactionThresholdsReached,
+            ),
+            (true, true, None) => (
+                FSEArchiveMaintenanceAction::Rebuild,
+                FSEArchiveMaintenanceReason::AppendRebuildThresholdReached,
+            ),
+            (true, false, None) => (
+                FSEArchiveMaintenanceAction::Append,
+                FSEArchiveMaintenanceReason::PendingAppendRecords,
+            ),
+            (false, _, Some(reason)) => (FSEArchiveMaintenanceAction::Compact, reason),
+            (false, _, None) => (
+                FSEArchiveMaintenanceAction::NoMaintenance,
+                FSEArchiveMaintenanceReason::NoPendingMaintenance,
+            ),
+        };
+
+        Ok(FSEArchiveMaintenanceDecision {
+            action,
+            reason,
+            input,
+            tombstone_ratio_basis_points,
+        })
+    }
+
+    fn compaction_reason(
+        &self,
+        input: FSEArchiveMaintenanceInput,
+        tombstone_ratio_basis_points: u64,
+    ) -> Option<FSEArchiveMaintenanceReason> {
+        if input.tombstone_count >= self.compaction_tombstone_count_threshold {
+            return Some(FSEArchiveMaintenanceReason::CompactionTombstoneCountThresholdReached);
+        }
+
+        if tombstone_ratio_basis_points >= self.compaction_tombstone_ratio_threshold_basis_points {
+            return Some(FSEArchiveMaintenanceReason::CompactionTombstoneRatioThresholdReached);
+        }
+
+        None
+    }
+}
+
+/// Archive state used to evaluate maintenance policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FSEArchiveMaintenanceInput {
+    /// Number of records in the current archive.
+    pub base_record_count: u64,
+
+    /// Number of records waiting to be appended.
+    pub pending_append_record_count: u64,
+
+    /// Number of row tombstones waiting to be applied.
+    pub tombstone_count: u64,
+}
+
+impl FSEArchiveMaintenanceInput {
+    /// Creates archive maintenance input metadata.
+    pub fn try_new(
+        base_record_count: u64,
+        pending_append_record_count: u64,
+        tombstone_count: u64,
+    ) -> Result<Self, FSEArchiveMaintenanceError> {
+        let input = Self {
+            base_record_count,
+            pending_append_record_count,
+            tombstone_count,
+        };
+
+        input.validate()?;
+
+        Ok(input)
+    }
+
+    /// Validates archive maintenance input metadata.
+    pub fn validate(&self) -> Result<(), FSEArchiveMaintenanceError> {
+        if self.base_record_count == 0 {
+            return Err(FSEArchiveMaintenanceError::ZeroBaseRecordCount);
+        }
+
+        self.base_record_count
+            .checked_add(self.pending_append_record_count)
+            .ok_or(FSEArchiveMaintenanceError::ResultingRecordCountOverflow {
+                base_record_count: self.base_record_count,
+                pending_append_record_count: self.pending_append_record_count,
+            })?;
+
+        Ok(())
+    }
+
+    /// Returns tombstones per base record in basis points.
+    pub fn tombstone_ratio_basis_points(&self) -> u64 {
+        ((self.tombstone_count as u128 * 10_000) / self.base_record_count as u128) as u64
+    }
+}
+
+/// Result of archive maintenance policy evaluation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FSEArchiveMaintenanceDecision {
+    /// Selected maintenance action.
+    pub action: FSEArchiveMaintenanceAction,
+
+    /// Reason the maintenance action was selected.
+    pub reason: FSEArchiveMaintenanceReason,
+
+    /// Archive state used by the policy.
+    pub input: FSEArchiveMaintenanceInput,
+
+    /// Tombstone-to-base-record ratio used by the policy.
+    pub tombstone_ratio_basis_points: u64,
+}
+
+impl FSEArchiveMaintenanceDecision {
+    /// Returns whether the decision selects an archive write.
+    pub fn requires_archive_write(&self) -> bool {
+        self.action != FSEArchiveMaintenanceAction::NoMaintenance
+    }
+}
+
 fn checked_resulting_record_count(
     base_record_count: u64,
     appended_record_count: u64,

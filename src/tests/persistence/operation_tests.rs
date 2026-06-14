@@ -1,6 +1,8 @@
 use crate::persistence::{
     FSEArchiveAppendOperationMetadata, FSEArchiveAppendOperationMetadataError,
     FSEArchiveCompactionOperationMetadata, FSEArchiveCompactionOperationMetadataError,
+    FSEArchiveMaintenanceAction, FSEArchiveMaintenanceDecision, FSEArchiveMaintenanceError,
+    FSEArchiveMaintenanceInput, FSEArchiveMaintenancePolicy, FSEArchiveMaintenanceReason,
     FSEArchiveManifest, FSEArchiveManifestError, FSEArchivePayloadKind,
     FSEArchiveRebuildOperationMetadata, FSEArchiveRebuildPlanMetadata,
     FSEArchiveRebuildPlanMetadataError, FSEArchiveRebuildReason, FSEArchiveSections,
@@ -462,4 +464,160 @@ fn archive_rebuild_plan_metadata_reports_missing_full_rebuild_requirement() {
             }
         )
     );
+}
+
+#[test]
+fn archive_maintenance_policy_default_is_valid() {
+    let policy = FSEArchiveMaintenancePolicy::default();
+
+    assert_eq!(policy.append_rebuild_record_count_threshold, 1_024);
+    assert_eq!(policy.compaction_tombstone_count_threshold, 1_024);
+    assert_eq!(
+        policy.compaction_tombstone_ratio_threshold_basis_points,
+        2_500
+    );
+    assert_eq!(policy.validate(), Ok(()));
+}
+
+#[test]
+fn archive_maintenance_policy_reports_zero_append_rebuild_threshold() {
+    assert_eq!(
+        FSEArchiveMaintenancePolicy::try_new(0, 1_024, 2_500),
+        Err(FSEArchiveMaintenanceError::ZeroAppendRebuildRecordCountThreshold)
+    );
+}
+
+#[test]
+fn archive_maintenance_policy_reports_zero_compaction_count_threshold() {
+    assert_eq!(
+        FSEArchiveMaintenancePolicy::try_new(1_024, 0, 2_500),
+        Err(FSEArchiveMaintenanceError::ZeroCompactionTombstoneCountThreshold)
+    );
+}
+
+#[test]
+fn archive_maintenance_policy_reports_zero_compaction_ratio_threshold() {
+    assert_eq!(
+        FSEArchiveMaintenancePolicy::try_new(1_024, 1_024, 0),
+        Err(FSEArchiveMaintenanceError::ZeroCompactionTombstoneRatioThreshold)
+    );
+}
+
+#[test]
+fn archive_maintenance_input_reports_zero_base_record_count() {
+    assert_eq!(
+        FSEArchiveMaintenanceInput::try_new(0, 1, 0),
+        Err(FSEArchiveMaintenanceError::ZeroBaseRecordCount)
+    );
+}
+
+#[test]
+fn archive_maintenance_input_reports_append_record_count_overflow() {
+    assert_eq!(
+        FSEArchiveMaintenanceInput::try_new(u64::MAX, 1, 0),
+        Err(FSEArchiveMaintenanceError::ResultingRecordCountOverflow {
+            base_record_count: u64::MAX,
+            pending_append_record_count: 1
+        })
+    );
+}
+
+#[test]
+fn archive_maintenance_input_reports_tombstone_ratio_basis_points() {
+    let input = FSEArchiveMaintenanceInput::try_new(200, 0, 50).unwrap();
+
+    assert_eq!(input.tombstone_ratio_basis_points(), 2_500);
+}
+
+#[test]
+fn archive_maintenance_policy_selects_no_maintenance_for_clean_archive() {
+    let policy = FSEArchiveMaintenancePolicy::try_new(100, 20, 2_500).unwrap();
+    let input = FSEArchiveMaintenanceInput::try_new(1_000, 0, 0).unwrap();
+
+    let decision = policy.evaluate(input).unwrap();
+
+    assert_eq!(
+        decision,
+        FSEArchiveMaintenanceDecision {
+            action: FSEArchiveMaintenanceAction::NoMaintenance,
+            reason: FSEArchiveMaintenanceReason::NoPendingMaintenance,
+            input,
+            tombstone_ratio_basis_points: 0
+        }
+    );
+    assert!(!decision.requires_archive_write());
+}
+
+#[test]
+fn archive_maintenance_policy_selects_append_for_pending_records_below_rebuild_threshold() {
+    let policy = FSEArchiveMaintenancePolicy::try_new(100, 20, 2_500).unwrap();
+    let input = FSEArchiveMaintenanceInput::try_new(1_000, 10, 0).unwrap();
+
+    let decision = policy.evaluate(input).unwrap();
+
+    assert_eq!(decision.action, FSEArchiveMaintenanceAction::Append);
+    assert_eq!(
+        decision.reason,
+        FSEArchiveMaintenanceReason::PendingAppendRecords
+    );
+    assert!(decision.requires_archive_write());
+}
+
+#[test]
+fn archive_maintenance_policy_selects_rebuild_for_pending_records_at_threshold() {
+    let policy = FSEArchiveMaintenancePolicy::try_new(100, 20, 2_500).unwrap();
+    let input = FSEArchiveMaintenanceInput::try_new(1_000, 100, 0).unwrap();
+
+    let decision = policy.evaluate(input).unwrap();
+
+    assert_eq!(decision.action, FSEArchiveMaintenanceAction::Rebuild);
+    assert_eq!(
+        decision.reason,
+        FSEArchiveMaintenanceReason::AppendRebuildThresholdReached
+    );
+}
+
+#[test]
+fn archive_maintenance_policy_selects_compaction_for_tombstone_count_threshold() {
+    let policy = FSEArchiveMaintenancePolicy::try_new(100, 20, 9_000).unwrap();
+    let input = FSEArchiveMaintenanceInput::try_new(1_000, 0, 20).unwrap();
+
+    let decision = policy.evaluate(input).unwrap();
+
+    assert_eq!(decision.action, FSEArchiveMaintenanceAction::Compact);
+    assert_eq!(
+        decision.reason,
+        FSEArchiveMaintenanceReason::CompactionTombstoneCountThresholdReached
+    );
+    assert_eq!(decision.tombstone_ratio_basis_points, 200);
+}
+
+#[test]
+fn archive_maintenance_policy_selects_compaction_for_tombstone_ratio_threshold() {
+    let policy = FSEArchiveMaintenancePolicy::try_new(100, 500, 2_500).unwrap();
+    let input = FSEArchiveMaintenanceInput::try_new(1_000, 0, 250).unwrap();
+
+    let decision = policy.evaluate(input).unwrap();
+
+    assert_eq!(decision.action, FSEArchiveMaintenanceAction::Compact);
+    assert_eq!(
+        decision.reason,
+        FSEArchiveMaintenanceReason::CompactionTombstoneRatioThresholdReached
+    );
+    assert_eq!(decision.tombstone_ratio_basis_points, 2_500);
+}
+
+#[test]
+fn archive_maintenance_policy_selects_rebuild_for_append_and_compaction_work() {
+    let policy = FSEArchiveMaintenancePolicy::try_new(100, 20, 2_500).unwrap();
+    let input = FSEArchiveMaintenanceInput::try_new(1_000, 10, 250).unwrap();
+
+    let decision = policy.evaluate(input).unwrap();
+
+    assert_eq!(decision.action, FSEArchiveMaintenanceAction::Rebuild);
+    assert_eq!(
+        decision.reason,
+        FSEArchiveMaintenanceReason::AppendAndCompactionThresholdsReached
+    );
+    assert_eq!(decision.tombstone_ratio_basis_points, 2_500);
 }
