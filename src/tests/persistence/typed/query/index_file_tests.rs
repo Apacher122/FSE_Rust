@@ -4,8 +4,9 @@ use std::path::PathBuf;
 
 use crate::build::{BuildConfig, FSEBuilder};
 use crate::data::{
-    FSEDimensionMapping, FSEField, FSEFieldType, FSERecord, FSERecordBatch, FSERecordBatchError,
-    FSESchema, FSESchemaDimensionMapping, FSEValue, RowId,
+    FSECsvImportOptions, FSEDimensionMapping, FSEField, FSEFieldType, FSERecord, FSERecordBatch,
+    FSERecordBatchError, FSESchema, FSESchemaDimensionMapping, FSEValue, RowId,
+    record_batch_from_csv_file,
 };
 use crate::encoding::{
     CategoricalDictionaryEncoder, ComposedRecordEncoder, FSEEncodingError,
@@ -19,12 +20,12 @@ use crate::persistence::{
     FSETypedQueryIndexArchiveCompactionError, FSETypedQueryIndexArchiveError,
     FSETypedQueryIndexArchiveFileError, FSETypedQueryIndexArchiveMaintenanceError,
     FSETypedQueryIndexArchiveSnapshot, FSETypedQueryIndexCompactionError,
-    append_typed_query_index_archive_file, compact_typed_query_index_archive_file,
-    encode_archive_payload, load_typed_query_index_archive_file,
-    load_typed_query_index_archive_with_tombstones, load_typed_row_tombstone_archive_file,
-    maintain_typed_query_index_archive_file, read_typed_query_index_archive_snapshot_file,
-    save_typed_query_index_archive_file, save_typed_row_tombstone_archive_file,
-    write_typed_query_index_archive_snapshot_file,
+    append_typed_query_index_archive_file, build_typed_query_index_archive_file,
+    compact_typed_query_index_archive_file, encode_archive_payload,
+    load_typed_query_index_archive_file, load_typed_query_index_archive_with_tombstones,
+    load_typed_row_tombstone_archive_file, maintain_typed_query_index_archive_file,
+    read_typed_query_index_archive_snapshot_file, save_typed_query_index_archive_file,
+    save_typed_row_tombstone_archive_file, write_typed_query_index_archive_snapshot_file,
 };
 use crate::query::{
     FSEPredicate, FSEPredicateField, TypedQueryIndex, TypedQueryIndexAppendError,
@@ -84,6 +85,115 @@ fn typed_query_index_archive_file_saves_and_loads_query_equivalent_index() {
     );
 
     let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_query_index_archive_file_builds_index_and_writes_fse_file() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let plan = score_and_class_plan(&schema, &mapping);
+    let path = temp_archive_path("build-index", ".fse");
+
+    let query_index =
+        build_typed_query_index_archive_file(&path, batch, &encoder, &builder).unwrap();
+    let loaded = load_typed_query_index_archive_file(&path).unwrap();
+
+    assert!(path.exists());
+    assert_eq!(loaded, query_index);
+    assert_eq!(
+        loaded.query_row_ids(&plan).unwrap(),
+        vec![RowId::new(100), RowId::new(103)]
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_query_index_archive_file_builds_fse_file_from_csv_record_batch() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let encoder = entity_encoder(&schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let csv_path = temp_csv_path("build-index-from-csv");
+    let archive_path = temp_archive_path("build-index-from-csv", ".fse");
+    let csv = "\
+entity_id,score,class,observed_at
+100,12.5,alpha,1000
+101,12.5,beta,1100
+102,25.0,alpha,1200
+103,18.0,alpha,1300
+";
+    fs::write(&csv_path, csv).unwrap();
+
+    let batch = record_batch_from_csv_file(
+        &csv_path,
+        &schema,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+    )
+    .unwrap();
+    let query_index =
+        build_typed_query_index_archive_file(&archive_path, batch, &encoder, &builder).unwrap();
+    let loaded = load_typed_query_index_archive_file(&archive_path).unwrap();
+    let plan = score_and_class_plan(&schema, &mapping);
+
+    assert_eq!(loaded, query_index);
+    assert_eq!(
+        loaded.query_row_ids(&plan).unwrap(),
+        vec![RowId::new(100), RowId::new(103)]
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(archive_path);
+}
+
+#[test]
+fn typed_query_index_archive_file_build_reports_encoding_errors() {
+    let schema = entity_schema();
+    let encoder = entity_encoder(&schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let batch = FSERecordBatch::new(
+        schema.clone(),
+        vec![RowId::new(100)],
+        vec![entity_record(&schema, 1, 12.5, "gamma", 1_000)],
+    );
+    let path = temp_archive_path("build-encoding-error", ".fse");
+
+    assert_eq!(
+        build_typed_query_index_archive_file(&path, batch, &encoder, &builder),
+        Err(FSETypedQueryIndexArchiveError::Build(
+            TypedQueryIndexBuildError::Encoding(FSERecordBatchEncodingError::RecordEncoding {
+                record: 0,
+                row_id: RowId::new(100),
+                source: FSEEncodingError::UnsupportedValue {
+                    reason: "category 'gamma' is not in dictionary".to_string(),
+                },
+            })
+        ))
+    );
+    assert!(!path.exists());
+}
+
+#[test]
+fn typed_query_index_archive_file_build_reports_invalid_extension_before_building() {
+    let schema = entity_schema();
+    let encoder = entity_encoder(&schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let batch = FSERecordBatch::new(
+        schema.clone(),
+        vec![RowId::new(100)],
+        vec![entity_record(&schema, 1, 12.5, "gamma", 1_000)],
+    );
+    let path = temp_archive_path("build-invalid-extension", ".bin");
+
+    assert_eq!(
+        build_typed_query_index_archive_file(&path, batch, &encoder, &builder),
+        Err(FSETypedQueryIndexArchiveError::File(
+            FSETypedQueryIndexArchiveFileError::InvalidFileExtension { path }
+        ))
+    );
 }
 
 #[test]
@@ -957,6 +1067,17 @@ fn temp_archive_path(name: &str, extension: &str) -> PathBuf {
         std::process::id(),
         name,
         extension
+    ));
+    let _ = fs::remove_file(&path);
+    path
+}
+
+fn temp_csv_path(name: &str) -> PathBuf {
+    let mut path = std::env::temp_dir();
+    path.push(format!(
+        "fse-rust-typed-query-index-archive-file-{}-{}.csv",
+        std::process::id(),
+        name
     ));
     let _ = fs::remove_file(&path);
     path

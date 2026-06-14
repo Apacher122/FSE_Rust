@@ -16,7 +16,7 @@ use crate::persistence::{
     FSEArchivePayloadHeaderError, FSEArchivePayloadKind, FSEArchiveRebuildPlanMetadata,
     FSEArchiveRebuildPlanMetadataError, decode_archive_payload, encode_archive_payload,
 };
-use crate::query::{TypedQueryIndex, TypedQueryIndexAppendError};
+use crate::query::{TypedQueryIndex, TypedQueryIndexAppendError, TypedQueryIndexBuildError};
 
 use super::super::tombstone::{
     FSETypedRowTombstoneArchiveError, save_typed_row_tombstone_archive_file,
@@ -100,11 +100,14 @@ impl From<FSEArchivePayloadHeaderError> for FSETypedQueryIndexArchiveFileError {
     }
 }
 
-/// Error returned when saving or loading a typed query index archive fails.
+/// Error returned when building, saving, or loading a typed query index archive fails.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FSETypedQueryIndexArchiveError {
     /// Building or reconstructing a typed query index archive snapshot failed.
     Snapshot(FSETypedQueryIndexArchiveSnapshotError),
+
+    /// Building a typed query index failed.
+    Build(TypedQueryIndexBuildError),
 
     /// Appending records to a typed query index failed.
     Append(TypedQueryIndexAppendError),
@@ -123,6 +126,7 @@ impl fmt::Display for FSETypedQueryIndexArchiveError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Snapshot(error) => error.fmt(formatter),
+            Self::Build(error) => error.fmt(formatter),
             Self::Append(error) => error.fmt(formatter),
             Self::AppendMetadata(error) => error.fmt(formatter),
             Self::RebuildPlan(error) => error.fmt(formatter),
@@ -135,6 +139,7 @@ impl Error for FSETypedQueryIndexArchiveError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Snapshot(error) => Some(error),
+            Self::Build(error) => Some(error),
             Self::Append(error) => Some(error),
             Self::AppendMetadata(error) => Some(error),
             Self::RebuildPlan(error) => Some(error),
@@ -146,6 +151,12 @@ impl Error for FSETypedQueryIndexArchiveError {
 impl From<FSETypedQueryIndexArchiveSnapshotError> for FSETypedQueryIndexArchiveError {
     fn from(error: FSETypedQueryIndexArchiveSnapshotError) -> Self {
         Self::Snapshot(error)
+    }
+}
+
+impl From<TypedQueryIndexBuildError> for FSETypedQueryIndexArchiveError {
+    fn from(error: TypedQueryIndexBuildError) -> Self {
+        Self::Build(error)
     }
 }
 
@@ -319,6 +330,27 @@ where
     write_typed_query_index_archive_snapshot_file(path, &snapshot)?;
 
     Ok(())
+}
+
+/// Builds and saves a typed query index to a `.fse` archive file.
+pub fn build_typed_query_index_archive_file<P>(
+    path: P,
+    batch: FSERecordBatch,
+    encoder: &impl FSERecordEncoder,
+    builder: &FSEBuilder,
+) -> Result<TypedQueryIndex, FSETypedQueryIndexArchiveError>
+where
+    P: AsRef<Path>,
+{
+    let path = path.as_ref();
+
+    validate_archive_file_extension(path)?;
+
+    let query_index = TypedQueryIndex::try_build(batch, encoder, builder)?;
+
+    save_typed_query_index_archive_file(path, &query_index)?;
+
+    Ok(query_index)
 }
 
 /// Loads a typed query index from a `.fse` archive file.
