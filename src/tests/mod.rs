@@ -2,6 +2,7 @@ mod benchmark;
 mod build;
 mod data;
 mod encoding;
+mod import;
 mod math;
 mod persistence;
 mod query;
