@@ -13,15 +13,18 @@ use crate::encoding::{
 };
 use crate::persistence::{
     FSEArchiveCompactionOperationMetadataError, FSEArchiveFileOperation,
-    FSEArchivePayloadHeaderError, FSEArchivePayloadKind, FSEArchiveRebuildOperationMetadata,
-    FSEArchiveRebuildReason, FSETypedQueryIndexArchiveCompactionError,
-    FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveFileError,
+    FSEArchiveMaintenanceAction, FSEArchiveMaintenanceError, FSEArchiveMaintenancePolicy,
+    FSEArchiveMaintenanceReason, FSEArchivePayloadHeaderError, FSEArchivePayloadKind,
+    FSEArchiveRebuildOperationMetadata, FSEArchiveRebuildReason,
+    FSETypedQueryIndexArchiveCompactionError, FSETypedQueryIndexArchiveError,
+    FSETypedQueryIndexArchiveFileError, FSETypedQueryIndexArchiveMaintenanceError,
     FSETypedQueryIndexArchiveSnapshot, FSETypedQueryIndexCompactionError,
     append_typed_query_index_archive_file, compact_typed_query_index_archive_file,
     encode_archive_payload, load_typed_query_index_archive_file,
     load_typed_query_index_archive_with_tombstones, load_typed_row_tombstone_archive_file,
-    read_typed_query_index_archive_snapshot_file, save_typed_query_index_archive_file,
-    save_typed_row_tombstone_archive_file, write_typed_query_index_archive_snapshot_file,
+    maintain_typed_query_index_archive_file, read_typed_query_index_archive_snapshot_file,
+    save_typed_query_index_archive_file, save_typed_row_tombstone_archive_file,
+    write_typed_query_index_archive_snapshot_file,
 };
 use crate::query::{
     FSEPredicate, FSEPredicateField, TypedQueryIndex, TypedQueryIndexAppendError,
@@ -390,6 +393,298 @@ fn typed_query_index_archive_file_compaction_reports_empty_retained_record_set_a
     assert_eq!(
         load_typed_row_tombstone_archive_file(&tombstone_path).unwrap(),
         tombstone_row_ids
+    );
+
+    let _ = fs::remove_file(query_index_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
+fn typed_query_index_archive_file_maintenance_preserves_clean_archive() {
+    let schema = entity_schema();
+    let encoder = entity_encoder(&schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let policy = FSEArchiveMaintenancePolicy::try_new(10, 10, 5_000).unwrap();
+    let query_index = typed_query_index();
+    let query_index_path = temp_archive_path("maintenance-clean-index", ".fse");
+    let tombstone_path = temp_archive_path("maintenance-clean-tombstones", ".fse");
+
+    save_typed_query_index_archive_file(&query_index_path, &query_index).unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[]).unwrap();
+
+    let result = maintain_typed_query_index_archive_file(
+        &query_index_path,
+        &tombstone_path,
+        None,
+        &encoder,
+        &builder,
+        &policy,
+    )
+    .unwrap();
+
+    assert_eq!(
+        result.decision.action,
+        FSEArchiveMaintenanceAction::NoMaintenance
+    );
+    assert_eq!(
+        result.decision.reason,
+        FSEArchiveMaintenanceReason::NoPendingMaintenance
+    );
+    assert!(!result.decision.requires_archive_write());
+    assert_eq!(result.query_index, query_index);
+    assert_eq!(result.append_result, None);
+    assert_eq!(result.compaction_result, None);
+    assert_eq!(
+        load_typed_query_index_archive_file(&query_index_path).unwrap(),
+        query_index
+    );
+    assert_eq!(
+        load_typed_row_tombstone_archive_file(&tombstone_path).unwrap(),
+        Vec::new()
+    );
+
+    let _ = fs::remove_file(query_index_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
+fn typed_query_index_archive_file_maintenance_applies_pending_append() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let encoder = entity_encoder(&schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let policy = FSEArchiveMaintenancePolicy::try_new(10, 10, 5_000).unwrap();
+    let query_index = typed_query_index();
+    let appended = appended_entity_batch(&schema);
+    let plan = score_and_class_plan(&schema, &mapping);
+    let query_index_path = temp_archive_path("maintenance-append-index", ".fse");
+    let tombstone_path = temp_archive_path("maintenance-append-tombstones", ".fse");
+
+    save_typed_query_index_archive_file(&query_index_path, &query_index).unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[]).unwrap();
+
+    let result = maintain_typed_query_index_archive_file(
+        &query_index_path,
+        &tombstone_path,
+        Some(&appended),
+        &encoder,
+        &builder,
+        &policy,
+    )
+    .unwrap();
+    let loaded = load_typed_query_index_archive_file(&query_index_path).unwrap();
+    let mut matches = loaded.query_row_ids(&plan).unwrap();
+    matches.sort();
+
+    assert_eq!(result.decision.action, FSEArchiveMaintenanceAction::Append);
+    assert_eq!(
+        result.decision.reason,
+        FSEArchiveMaintenanceReason::PendingAppendRecords
+    );
+    assert_eq!(result.decision.input.base_record_count, 4);
+    assert_eq!(result.decision.input.pending_append_record_count, 2);
+    assert_eq!(result.decision.input.tombstone_count, 0);
+    assert_eq!(
+        result
+            .append_result
+            .as_ref()
+            .unwrap()
+            .append_metadata
+            .base_record_count,
+        4
+    );
+    assert_eq!(
+        result
+            .append_result
+            .as_ref()
+            .unwrap()
+            .append_metadata
+            .appended_record_count,
+        2
+    );
+    assert_eq!(result.compaction_result, None);
+    assert_eq!(result.query_index, loaded);
+    assert_eq!(loaded.batch().len(), 6);
+    assert_eq!(
+        matches,
+        vec![RowId::new(100), RowId::new(103), RowId::new(104)]
+    );
+    assert_eq!(
+        load_typed_row_tombstone_archive_file(&tombstone_path).unwrap(),
+        Vec::new()
+    );
+
+    let _ = fs::remove_file(query_index_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
+fn typed_query_index_archive_file_maintenance_compacts_tombstones() {
+    let schema = entity_schema();
+    let encoder = entity_encoder(&schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let policy = FSEArchiveMaintenancePolicy::try_new(10, 1, 9_000).unwrap();
+    let query_index = typed_query_index();
+    let query_index_path = temp_archive_path("maintenance-compact-index", ".fse");
+    let tombstone_path = temp_archive_path("maintenance-compact-tombstones", ".fse");
+
+    save_typed_query_index_archive_file(&query_index_path, &query_index).unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[RowId::new(100)]).unwrap();
+
+    let result = maintain_typed_query_index_archive_file(
+        &query_index_path,
+        &tombstone_path,
+        None,
+        &encoder,
+        &builder,
+        &policy,
+    )
+    .unwrap();
+    let loaded = load_typed_query_index_archive_file(&query_index_path).unwrap();
+
+    assert_eq!(result.decision.action, FSEArchiveMaintenanceAction::Compact);
+    assert_eq!(
+        result.decision.reason,
+        FSEArchiveMaintenanceReason::CompactionTombstoneCountThresholdReached
+    );
+    assert_eq!(result.append_result, None);
+    assert_eq!(
+        result
+            .compaction_result
+            .as_ref()
+            .unwrap()
+            .compaction
+            .removed_record_count,
+        1
+    );
+    assert_eq!(result.query_index, loaded);
+    assert_eq!(
+        loaded.batch().row_ids(),
+        &[RowId::new(101), RowId::new(102), RowId::new(103)]
+    );
+    assert_eq!(
+        load_typed_row_tombstone_archive_file(&tombstone_path).unwrap(),
+        Vec::new()
+    );
+
+    let _ = fs::remove_file(query_index_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
+fn typed_query_index_archive_file_maintenance_rebuilds_append_and_compaction_work() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let encoder = entity_encoder(&schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let policy = FSEArchiveMaintenancePolicy::try_new(10, 1, 9_000).unwrap();
+    let query_index = typed_query_index();
+    let appended = appended_entity_batch(&schema);
+    let plan = score_and_class_plan(&schema, &mapping);
+    let query_index_path = temp_archive_path("maintenance-rebuild-index", ".fse");
+    let tombstone_path = temp_archive_path("maintenance-rebuild-tombstones", ".fse");
+
+    save_typed_query_index_archive_file(&query_index_path, &query_index).unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[RowId::new(100)]).unwrap();
+
+    let result = maintain_typed_query_index_archive_file(
+        &query_index_path,
+        &tombstone_path,
+        Some(&appended),
+        &encoder,
+        &builder,
+        &policy,
+    )
+    .unwrap();
+    let loaded = load_typed_query_index_archive_file(&query_index_path).unwrap();
+    let mut matches = loaded.query_row_ids(&plan).unwrap();
+    matches.sort();
+
+    assert_eq!(result.decision.action, FSEArchiveMaintenanceAction::Rebuild);
+    assert_eq!(
+        result.decision.reason,
+        FSEArchiveMaintenanceReason::AppendAndCompactionThresholdsReached
+    );
+    assert_eq!(result.decision.input.base_record_count, 4);
+    assert_eq!(result.decision.input.pending_append_record_count, 2);
+    assert_eq!(result.decision.input.tombstone_count, 1);
+    assert_eq!(
+        result
+            .append_result
+            .as_ref()
+            .unwrap()
+            .append_metadata
+            .resulting_record_count,
+        6
+    );
+    assert_eq!(
+        result
+            .compaction_result
+            .as_ref()
+            .unwrap()
+            .compaction
+            .base_record_count,
+        6
+    );
+    assert_eq!(
+        result
+            .compaction_result
+            .as_ref()
+            .unwrap()
+            .compaction
+            .removed_record_count,
+        1
+    );
+    assert_eq!(result.query_index, loaded);
+    assert_eq!(
+        loaded.batch().row_ids(),
+        &[
+            RowId::new(101),
+            RowId::new(102),
+            RowId::new(103),
+            RowId::new(104),
+            RowId::new(105),
+        ]
+    );
+    assert_eq!(matches, vec![RowId::new(103), RowId::new(104)]);
+    assert_eq!(
+        load_typed_row_tombstone_archive_file(&tombstone_path).unwrap(),
+        Vec::new()
+    );
+
+    let _ = fs::remove_file(query_index_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
+fn typed_query_index_archive_file_maintenance_reports_invalid_policy() {
+    let schema = entity_schema();
+    let encoder = entity_encoder(&schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let policy = FSEArchiveMaintenancePolicy {
+        append_rebuild_record_count_threshold: 0,
+        compaction_tombstone_count_threshold: 10,
+        compaction_tombstone_ratio_threshold_basis_points: 5_000,
+    };
+    let query_index = typed_query_index();
+    let query_index_path = temp_archive_path("maintenance-invalid-policy-index", ".fse");
+    let tombstone_path = temp_archive_path("maintenance-invalid-policy-tombstones", ".fse");
+
+    save_typed_query_index_archive_file(&query_index_path, &query_index).unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[]).unwrap();
+
+    assert_eq!(
+        maintain_typed_query_index_archive_file(
+            &query_index_path,
+            &tombstone_path,
+            None,
+            &encoder,
+            &builder,
+            &policy,
+        ),
+        Err(FSETypedQueryIndexArchiveMaintenanceError::Policy(
+            FSEArchiveMaintenanceError::ZeroAppendRebuildRecordCountThreshold
+        ))
     );
 
     let _ = fs::remove_file(query_index_path);

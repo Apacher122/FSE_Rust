@@ -3,6 +3,7 @@
 mod codec;
 mod compaction;
 mod file;
+mod maintenance;
 mod snapshot;
 mod tombstoned;
 
@@ -21,6 +22,10 @@ pub use file::{
     compact_typed_query_index_archive_file, load_typed_query_index_archive_file,
     read_typed_query_index_archive_snapshot_file, save_typed_query_index_archive_file,
     write_typed_query_index_archive_snapshot_file,
+};
+pub use maintenance::{
+    FSETypedQueryIndexArchiveMaintenanceError, FSETypedQueryIndexArchiveMaintenanceResult,
+    maintain_typed_query_index_archive_file,
 };
 pub use snapshot::{FSETypedQueryIndexArchiveSnapshot, FSETypedQueryIndexArchiveSnapshotError};
 pub use tombstoned::{
