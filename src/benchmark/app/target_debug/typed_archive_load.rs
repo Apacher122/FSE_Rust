@@ -15,22 +15,27 @@ use super::typed_workload::{TypedBenchmarkContext, typed_x_range_plan};
 use crate::benchmark::reports::output::format_duration_ascii;
 use crate::benchmark::reports::{
     TypedArchiveAppendRebuildTimingReport, TypedArchiveCompactionTimingReport,
-    TypedArchiveLoadTimingError, TypedArchiveLoadTimingReport,
+    TypedArchiveLoadTimingError, TypedArchiveLoadTimingReport, TypedArchiveMaintenanceTimingReport,
     compare_typed_archive_append_rebuild_execution_repeated,
     compare_typed_archive_compaction_execution_repeated,
     compare_typed_archive_load_execution_repeated,
+    compare_typed_archive_maintenance_execution_repeated,
 };
 use crate::benchmark::workloads::QueryWorkloadCase;
 use crate::build::FSEBuilder;
 use crate::data::RowId;
 use crate::persistence::{
-    FSE_ARCHIVE_FILE_EXTENSION, load_typed_query_index_archive_file,
+    FSE_ARCHIVE_FILE_EXTENSION, FSEArchiveMaintenanceAction, FSEArchiveMaintenancePolicy,
+    FSEArchiveMaintenanceReason, load_typed_query_index_archive_file,
     save_typed_query_index_archive_file,
 };
 
 static ARCHIVE_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
 const COMPACTION_TOMBSTONE_FRACTION_DENOMINATOR: usize = 4;
 const COMPACTION_TOMBSTONE_LIMIT: usize = 64;
+const MAINTENANCE_APPEND_REBUILD_RECORD_COUNT_THRESHOLD: u64 = 10;
+const MAINTENANCE_COMPACTION_TOMBSTONE_COUNT_THRESHOLD: u64 = 1;
+const MAINTENANCE_COMPACTION_TOMBSTONE_RATIO_THRESHOLD_BASIS_POINTS: u64 = 9_000;
 
 impl BenchmarkApplicationRenderer {
     pub(crate) fn append_target_workload_typed_archive_load_debug_output(
@@ -186,6 +191,64 @@ impl BenchmarkApplicationRenderer {
                 report.tombstone_archive_byte_delta,
                 report.matched_records_after_compaction,
                 format_duration_ascii(report.compaction_timing.average_elapsed),
+            ));
+        }
+
+        output.push('\n');
+    }
+
+    pub(crate) fn append_target_workload_typed_archive_maintenance_debug_output(
+        &self,
+        output: &mut String,
+        context: &BenchmarkApplicationContext,
+    ) {
+        let typed_context = TypedBenchmarkContext::from_benchmark_context(context);
+
+        append_target_workload_debug_section(
+            output,
+            context,
+            "Target workload typed archive maintenance timing",
+            |output, context, workload| {
+                let report = typed_archive_maintenance_report(context, &typed_context, workload);
+
+                append_target_typed_archive_maintenance_report(output, &report);
+            },
+        );
+    }
+
+    pub(crate) fn append_workload_typed_archive_maintenance_summary_debug_output(
+        &self,
+        output: &mut String,
+        context: &BenchmarkApplicationContext,
+    ) {
+        let typed_context = TypedBenchmarkContext::from_benchmark_context(context);
+
+        output.push_str("Workload typed archive maintenance timing summary\n");
+        output.push_str("------------------------------------------------\n");
+        output.push_str(
+            "workload | action | reason | base records | pending append | tombstones | resulting records | index before bytes | index after bytes | index byte delta | tombstone before bytes | tombstone after bytes | tombstone byte delta | matched after maintenance | maintenance | agreement\n",
+        );
+
+        for workload in &context.workloads {
+            let report = typed_archive_maintenance_report(context, &typed_context, workload);
+
+            output.push_str(&format!(
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
+                workload.name,
+                format_archive_maintenance_action(report.selected_action),
+                format_archive_maintenance_reason(report.selected_reason),
+                report.base_record_count,
+                report.pending_append_record_count,
+                report.tombstone_count,
+                report.resulting_record_count,
+                report.query_archive_bytes_before_maintenance,
+                report.query_archive_bytes_after_maintenance,
+                report.query_archive_byte_delta,
+                report.tombstone_archive_bytes_before_maintenance,
+                report.tombstone_archive_bytes_after_maintenance,
+                report.tombstone_archive_byte_delta,
+                report.matched_records_after_maintenance,
+                format_duration_ascii(report.maintenance_timing.average_elapsed),
             ));
         }
 
@@ -349,6 +412,76 @@ fn append_target_typed_archive_compaction_report(
     append_debug_line(output, "typed archive compaction agreement", "pass");
 }
 
+fn append_target_typed_archive_maintenance_report(
+    output: &mut String,
+    report: &TypedArchiveMaintenanceTimingReport,
+) {
+    append_debug_line(
+        output,
+        "selected maintenance action",
+        format_archive_maintenance_action(report.selected_action),
+    );
+    append_debug_line(
+        output,
+        "selected maintenance reason",
+        format_archive_maintenance_reason(report.selected_reason),
+    );
+    append_debug_line(output, "base records", report.base_record_count);
+    append_debug_line(
+        output,
+        "pending append records",
+        report.pending_append_record_count,
+    );
+    append_debug_line(output, "tombstones", report.tombstone_count);
+    append_debug_line(
+        output,
+        "tombstone ratio basis points",
+        report.tombstone_ratio_basis_points,
+    );
+    append_debug_line(output, "resulting records", report.resulting_record_count);
+    append_debug_line(
+        output,
+        "query archive bytes before maintenance",
+        report.query_archive_bytes_before_maintenance,
+    );
+    append_debug_line(
+        output,
+        "query archive bytes after maintenance",
+        report.query_archive_bytes_after_maintenance,
+    );
+    append_debug_line(
+        output,
+        "query archive byte delta",
+        report.query_archive_byte_delta,
+    );
+    append_debug_line(
+        output,
+        "tombstone archive bytes before maintenance",
+        report.tombstone_archive_bytes_before_maintenance,
+    );
+    append_debug_line(
+        output,
+        "tombstone archive bytes after maintenance",
+        report.tombstone_archive_bytes_after_maintenance,
+    );
+    append_debug_line(
+        output,
+        "tombstone archive byte delta",
+        report.tombstone_archive_byte_delta,
+    );
+    append_debug_line(
+        output,
+        "matched records after maintenance",
+        report.matched_records_after_maintenance,
+    );
+    append_debug_duration_line(
+        output,
+        "maintenance average elapsed",
+        report.maintenance_timing.average_elapsed,
+    );
+    append_debug_line(output, "typed archive maintenance agreement", "pass");
+}
+
 fn typed_archive_load_report(
     context: &BenchmarkApplicationContext,
     typed_context: &TypedBenchmarkContext,
@@ -421,6 +554,38 @@ fn typed_archive_compaction_report(
     report.expect("typed archive compaction timing should execute")
 }
 
+fn typed_archive_maintenance_report(
+    context: &BenchmarkApplicationContext,
+    typed_context: &TypedBenchmarkContext,
+    workload: &QueryWorkloadCase,
+) -> TypedArchiveMaintenanceTimingReport {
+    let plan = typed_x_range_plan(typed_context, workload);
+    let query_index_path = typed_archive_temporary_path(workload);
+    let tombstone_path = typed_tombstone_archive_temporary_path(workload);
+    let appended = typed_context.append_batch_from_benchmark_context(context);
+    let tombstone_row_ids = typed_archive_compaction_tombstones(typed_context);
+    let encoder = typed_context.encoder();
+    let builder = FSEBuilder::new(context.suite_config.build_config());
+    let policy = typed_archive_maintenance_policy();
+    let report = compare_typed_archive_maintenance_execution_repeated(
+        &query_index_path,
+        &tombstone_path,
+        typed_context.query_index(),
+        Some(&appended),
+        &tombstone_row_ids,
+        &encoder,
+        &builder,
+        &policy,
+        &plan,
+        &context.timing_config,
+    );
+
+    let _ = fs::remove_file(&query_index_path);
+    let _ = fs::remove_file(&tombstone_path);
+
+    report.expect("typed archive maintenance timing should execute")
+}
+
 fn typed_archive_compaction_tombstones(typed_context: &TypedBenchmarkContext) -> Vec<RowId> {
     let row_ids = typed_context.query_index().batch().row_ids();
     let retained_record_guard = row_ids.len().saturating_sub(1);
@@ -430,6 +595,15 @@ fn typed_archive_compaction_tombstones(typed_context: &TypedBenchmarkContext) ->
         .min(retained_record_guard);
 
     row_ids.iter().copied().take(tombstone_count).collect()
+}
+
+fn typed_archive_maintenance_policy() -> FSEArchiveMaintenancePolicy {
+    FSEArchiveMaintenancePolicy::try_new(
+        MAINTENANCE_APPEND_REBUILD_RECORD_COUNT_THRESHOLD,
+        MAINTENANCE_COMPACTION_TOMBSTONE_COUNT_THRESHOLD,
+        MAINTENANCE_COMPACTION_TOMBSTONE_RATIO_THRESHOLD_BASIS_POINTS,
+    )
+    .expect("typed archive maintenance benchmark policy should stay valid")
 }
 
 fn typed_archive_temporary_path(workload: &QueryWorkloadCase) -> PathBuf {
@@ -468,6 +642,34 @@ fn sanitize_workload_name(name: &str) -> String {
             }
         })
         .collect()
+}
+
+fn format_archive_maintenance_action(action: FSEArchiveMaintenanceAction) -> &'static str {
+    match action {
+        FSEArchiveMaintenanceAction::NoMaintenance => "no_maintenance",
+        FSEArchiveMaintenanceAction::Append => "append",
+        FSEArchiveMaintenanceAction::Compact => "compact",
+        FSEArchiveMaintenanceAction::Rebuild => "rebuild",
+    }
+}
+
+fn format_archive_maintenance_reason(reason: FSEArchiveMaintenanceReason) -> &'static str {
+    match reason {
+        FSEArchiveMaintenanceReason::NoPendingMaintenance => "no_pending_maintenance",
+        FSEArchiveMaintenanceReason::PendingAppendRecords => "pending_append_records",
+        FSEArchiveMaintenanceReason::AppendRebuildThresholdReached => {
+            "append_rebuild_threshold_reached"
+        }
+        FSEArchiveMaintenanceReason::CompactionTombstoneCountThresholdReached => {
+            "compaction_tombstone_count_threshold_reached"
+        }
+        FSEArchiveMaintenanceReason::CompactionTombstoneRatioThresholdReached => {
+            "compaction_tombstone_ratio_threshold_reached"
+        }
+        FSEArchiveMaintenanceReason::AppendAndCompactionThresholdsReached => {
+            "append_and_compaction_thresholds_reached"
+        }
+    }
 }
 
 fn validate_same_row_id_set(

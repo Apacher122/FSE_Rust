@@ -18,12 +18,13 @@ pub mod timing;
 pub use comparison::{
     QueryComparisonReport, TypedArchiveAppendRebuildTimingReport,
     TypedArchiveCompactionTimingReport, TypedArchiveLoadTimingError, TypedArchiveLoadTimingReport,
-    TypedQueryComparisonReport, compare_query_execution, compare_query_execution_repeated,
-    compare_query_execution_repeated_with_options, compare_query_execution_with_baseline,
-    compare_query_execution_with_baseline_and_options, compare_query_execution_with_options,
-    compare_typed_archive_append_rebuild_execution_repeated,
+    TypedArchiveMaintenanceTimingReport, TypedQueryComparisonReport, compare_query_execution,
+    compare_query_execution_repeated, compare_query_execution_repeated_with_options,
+    compare_query_execution_with_baseline, compare_query_execution_with_baseline_and_options,
+    compare_query_execution_with_options, compare_typed_archive_append_rebuild_execution_repeated,
     compare_typed_archive_compaction_execution_repeated, compare_typed_archive_load_execution,
-    compare_typed_archive_load_execution_repeated, compare_typed_query_execution,
+    compare_typed_archive_load_execution_repeated,
+    compare_typed_archive_maintenance_execution_repeated, compare_typed_query_execution,
     compare_typed_query_execution_repeated,
 };
 pub use csv::{

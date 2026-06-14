@@ -4,6 +4,7 @@ use crate::benchmark::reports::{
     RepeatedTimingConfig, compare_typed_archive_append_rebuild_execution_repeated,
     compare_typed_archive_compaction_execution_repeated,
     compare_typed_archive_load_execution_repeated,
+    compare_typed_archive_maintenance_execution_repeated,
 };
 use crate::build::{BuildConfig, FSEBuilder};
 use crate::data::{
@@ -14,7 +15,10 @@ use crate::encoding::{
     CategoricalDictionaryEncoder, ComposedRecordEncoder, FloatEncoder, IntegerEncoder,
     TimestampMillisEncoder,
 };
-use crate::persistence::FSE_ARCHIVE_FILE_EXTENSION;
+use crate::persistence::{
+    FSE_ARCHIVE_FILE_EXTENSION, FSEArchiveMaintenanceAction, FSEArchiveMaintenancePolicy,
+    FSEArchiveMaintenanceReason,
+};
 use crate::query::{FSEPredicate, FSEPredicateField, TypedQueryIndex, TypedQueryPlan};
 
 #[test]
@@ -152,6 +156,79 @@ fn typed_archive_compaction_timing_reports_compacted_archive() {
     );
     assert_eq!(report.matched_records_after_compaction, 1);
     assert_eq!(report.compaction_timing.iterations, 3);
+    assert!(query_archive_path.exists());
+    assert!(tombstone_archive_path.exists());
+
+    fs::remove_file(query_archive_path).expect("test query archive file should be removable");
+    fs::remove_file(tombstone_archive_path)
+        .expect("test tombstone archive file should be removable");
+}
+
+#[test]
+fn typed_archive_maintenance_timing_reports_policy_driven_rebuild() {
+    let fixture = typed_fixture();
+    let appended = appended_entity_batch(&fixture.schema);
+    let tombstone_row_ids = vec![RowId::new(10)];
+    let encoder = entity_encoder(&fixture.schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let policy = FSEArchiveMaintenancePolicy::try_new(10, 1, 9_000)
+        .expect("maintenance policy should be valid");
+    let predicate = FSEPredicate::range(
+        FSEPredicateField::name("score"),
+        FSEValue::Float(10.0),
+        FSEValue::Float(12.0),
+    );
+    let plan = TypedQueryPlan::numeric(&predicate, &fixture.schema, &fixture.mapping)
+        .expect("numeric predicate should produce a plan");
+    let timing_config = RepeatedTimingConfig::new(3);
+    let query_archive_path =
+        archive_path("typed_archive_maintenance_timing_reports_policy_driven_rebuild-index");
+    let tombstone_archive_path =
+        archive_path("typed_archive_maintenance_timing_reports_policy_driven_rebuild-tombstones");
+
+    let _ = fs::remove_file(&query_archive_path);
+    let _ = fs::remove_file(&tombstone_archive_path);
+
+    let report = compare_typed_archive_maintenance_execution_repeated(
+        &query_archive_path,
+        &tombstone_archive_path,
+        &fixture.query_index,
+        Some(&appended),
+        &tombstone_row_ids,
+        &encoder,
+        &builder,
+        &policy,
+        &plan,
+        &timing_config,
+    )
+    .expect("typed archive maintenance timing should execute");
+
+    assert_eq!(report.base_record_count, 4);
+    assert_eq!(report.pending_append_record_count, 2);
+    assert_eq!(report.tombstone_count, 1);
+    assert_eq!(report.selected_action, FSEArchiveMaintenanceAction::Rebuild);
+    assert_eq!(
+        report.selected_reason,
+        FSEArchiveMaintenanceReason::AppendAndCompactionThresholdsReached
+    );
+    assert_eq!(report.tombstone_ratio_basis_points, 2_500);
+    assert_eq!(report.resulting_record_count, 5);
+    assert!(report.query_archive_bytes_before_maintenance > 0);
+    assert!(report.query_archive_bytes_after_maintenance > 0);
+    assert!(report.tombstone_archive_bytes_before_maintenance > 0);
+    assert!(report.tombstone_archive_bytes_after_maintenance > 0);
+    assert_eq!(
+        report.query_archive_byte_delta,
+        i128::from(report.query_archive_bytes_after_maintenance)
+            - i128::from(report.query_archive_bytes_before_maintenance)
+    );
+    assert_eq!(
+        report.tombstone_archive_byte_delta,
+        i128::from(report.tombstone_archive_bytes_after_maintenance)
+            - i128::from(report.tombstone_archive_bytes_before_maintenance)
+    );
+    assert_eq!(report.matched_records_after_maintenance, 3);
+    assert_eq!(report.maintenance_timing.iterations, 3);
     assert!(query_archive_path.exists());
     assert!(tombstone_archive_path.exists());
 

@@ -24,8 +24,9 @@ pub use typed::{
 };
 pub use typed_archive::{
     TypedArchiveAppendRebuildTimingReport, TypedArchiveCompactionTimingReport,
-    TypedArchiveLoadTimingError, TypedArchiveLoadTimingReport,
+    TypedArchiveLoadTimingError, TypedArchiveLoadTimingReport, TypedArchiveMaintenanceTimingReport,
     compare_typed_archive_append_rebuild_execution_repeated,
     compare_typed_archive_compaction_execution_repeated, compare_typed_archive_load_execution,
     compare_typed_archive_load_execution_repeated,
+    compare_typed_archive_maintenance_execution_repeated,
 };
