@@ -14,8 +14,8 @@ mod value;
 
 pub use batch::{FSERecordBatch, FSERecordBatchError};
 pub use csv::{
-    FSECsvFileImportError, FSECsvImportError, FSECsvImportOptions, record_batch_from_csv,
-    record_batch_from_csv_file,
+    FSECsvFileImportError, FSECsvImportError, FSECsvImportOptions, infer_schema_from_csv,
+    infer_schema_from_csv_file, record_batch_from_csv, record_batch_from_csv_file,
 };
 pub use dataset::{FSEDatasetMetadata, FSEDatasetMetadataError};
 pub use mapping::{FSEDimensionMapping, FSESchemaDimensionMapping, FSESchemaDimensionMappingError};

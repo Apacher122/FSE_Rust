@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use crate::data::{
     FSECsvFileImportError, FSECsvImportError, FSECsvImportOptions, FSEField, FSEFieldType,
-    FSERecordError, FSESchema, FSEValue, RowId, record_batch_from_csv, record_batch_from_csv_file,
+    FSERecordError, FSESchema, FSESchemaError, FSEValue, RowId, infer_schema_from_csv,
+    infer_schema_from_csv_file, record_batch_from_csv, record_batch_from_csv_file,
 };
 
 #[test]
@@ -32,6 +33,89 @@ case_id,category,latitude,closed,created_at,status
     assert_eq!(
         batch.records()[1].value_named(&schema, "status"),
         Some(&FSEValue::Category("closed".to_string()))
+    );
+}
+
+#[test]
+fn csv_schema_inference_infers_field_types_and_nullability() {
+    let csv = "\
+case_id,count,amount,closed,category,notes
+42,7,41.881,true,burglary,
+43,8,42.0,false,theft,review
+";
+
+    let schema = infer_schema_from_csv(csv).expect("valid CSV schema should infer");
+
+    assert_eq!(
+        schema.fields(),
+        &[
+            FSEField::new("case_id", FSEFieldType::Integer, false),
+            FSEField::new("count", FSEFieldType::Integer, false),
+            FSEField::new("amount", FSEFieldType::Float, false),
+            FSEField::new("closed", FSEFieldType::Boolean, false),
+            FSEField::new("category", FSEFieldType::Text, false),
+            FSEField::new("notes", FSEFieldType::Text, true),
+        ]
+    );
+}
+
+#[test]
+fn csv_schema_inference_reads_schema_from_file() {
+    let path = temp_csv_path("csv_schema_inference_reads_schema_from_file");
+    let csv = "\
+case_id,latitude,closed
+42,41.881,true
+";
+
+    fs::write(&path, csv).expect("test CSV file should be written");
+
+    let schema = infer_schema_from_csv_file(&path).expect("CSV file schema should infer");
+
+    assert_eq!(
+        schema.fields(),
+        &[
+            FSEField::new("case_id", FSEFieldType::Integer, false),
+            FSEField::new("latitude", FSEFieldType::Float, false),
+            FSEField::new("closed", FSEFieldType::Boolean, false),
+        ]
+    );
+
+    fs::remove_file(path).expect("test CSV file should be removed");
+}
+
+#[test]
+fn csv_schema_inference_reports_row_width_mismatch() {
+    let csv = "\
+case_id,latitude,closed
+42,41.881
+";
+
+    let error = infer_schema_from_csv(csv).expect_err("row width mismatch should be rejected");
+
+    assert_eq!(
+        error,
+        FSECsvImportError::RowWidthMismatch {
+            line: 2,
+            expected: 3,
+            actual: 2,
+        }
+    );
+}
+
+#[test]
+fn csv_schema_inference_reports_invalid_inferred_schema() {
+    let csv = "\
+case_id,case_id
+42,43
+";
+
+    let error = infer_schema_from_csv(csv).expect_err("duplicate header should be rejected");
+
+    assert_eq!(
+        error,
+        FSECsvImportError::Schema(FSESchemaError::DuplicateFieldName {
+            name: "case_id".to_string(),
+        })
     );
 }
 

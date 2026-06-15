@@ -8,8 +8,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use super::{
-    FSEFieldType, FSERecord, FSERecordBatch, FSERecordBatchError, FSERecordError, FSESchema,
-    FSEValue, RowId,
+    FSEField, FSEFieldType, FSERecord, FSERecordBatch, FSERecordBatchError, FSERecordError,
+    FSESchema, FSESchemaError, FSEValue, RowId,
 };
 
 /// Error returned when CSV import fails.
@@ -79,6 +79,9 @@ pub enum FSECsvImportError {
 
     /// The resulting record batch was invalid.
     Batch(FSERecordBatchError),
+
+    /// The inferred schema was invalid.
+    Schema(FSESchemaError),
 }
 
 impl fmt::Display for FSECsvImportError {
@@ -127,6 +130,7 @@ impl fmt::Display for FSECsvImportError {
             ),
             Self::Record(error) => error.fmt(formatter),
             Self::Batch(error) => error.fmt(formatter),
+            Self::Schema(error) => error.fmt(formatter),
         }
     }
 }
@@ -136,6 +140,7 @@ impl Error for FSECsvImportError {
         match self {
             Self::Record(error) => Some(error),
             Self::Batch(error) => Some(error),
+            Self::Schema(error) => Some(error),
             Self::EmptyInput
             | Self::UnterminatedQuotedField { .. }
             | Self::RowWidthMismatch { .. }
@@ -157,6 +162,12 @@ impl From<FSERecordError> for FSECsvImportError {
 impl From<FSERecordBatchError> for FSECsvImportError {
     fn from(error: FSERecordBatchError) -> Self {
         Self::Batch(error)
+    }
+}
+
+impl From<FSESchemaError> for FSECsvImportError {
+    fn from(error: FSESchemaError) -> Self {
+        Self::Schema(error)
     }
 }
 
@@ -292,6 +303,45 @@ pub fn record_batch_from_csv(
     )?)
 }
 
+/// Infers schema metadata from CSV text.
+///
+/// The first CSV record is treated as the header. Field types are inferred from
+/// non-empty values in each column. Empty values mark the field as nullable.
+pub fn infer_schema_from_csv(input: &str) -> Result<FSESchema, FSECsvImportError> {
+    let records = parse_csv_records(input)?;
+    let (header, data_records) = records.split_first().ok_or(FSECsvImportError::EmptyInput)?;
+    let mut columns = vec![CsvSchemaColumnInference::default(); header.fields.len()];
+
+    for csv_record in data_records {
+        if csv_record.fields.len() != header.fields.len() {
+            return Err(FSECsvImportError::RowWidthMismatch {
+                line: csv_record.line,
+                expected: header.fields.len(),
+                actual: csv_record.fields.len(),
+            });
+        }
+
+        for (column, value) in columns.iter_mut().zip(&csv_record.fields) {
+            column.observe(value);
+        }
+    }
+
+    let fields = header
+        .fields
+        .iter()
+        .zip(columns)
+        .map(|(name, column)| {
+            FSEField::new(
+                name.trim().to_string(),
+                column.inferred_field_type(),
+                column.nullable,
+            )
+        })
+        .collect();
+
+    Ok(FSESchema::try_new(fields)?)
+}
+
 /// Imports a typed record batch from a UTF-8 CSV file.
 ///
 /// The file contents are parsed with [`record_batch_from_csv`].
@@ -307,6 +357,77 @@ pub fn record_batch_from_csv_file(
     })?;
 
     Ok(record_batch_from_csv(&input, schema, options)?)
+}
+
+/// Infers schema metadata from a UTF-8 CSV file.
+///
+/// The file contents are parsed with [`infer_schema_from_csv`].
+pub fn infer_schema_from_csv_file(
+    path: impl AsRef<Path>,
+) -> Result<FSESchema, FSECsvFileImportError> {
+    let path = path.as_ref();
+    let input = fs::read_to_string(path).map_err(|source| FSECsvFileImportError::Read {
+        path: path.to_path_buf(),
+        source,
+    })?;
+
+    Ok(infer_schema_from_csv(&input)?)
+}
+
+#[derive(Clone, Debug)]
+struct CsvSchemaColumnInference {
+    nullable: bool,
+    saw_non_null_value: bool,
+    can_be_boolean: bool,
+    can_be_integer: bool,
+    can_be_float: bool,
+}
+
+impl Default for CsvSchemaColumnInference {
+    fn default() -> Self {
+        Self {
+            nullable: false,
+            saw_non_null_value: false,
+            can_be_boolean: true,
+            can_be_integer: true,
+            can_be_float: true,
+        }
+    }
+}
+
+impl CsvSchemaColumnInference {
+    fn observe(&mut self, raw_value: &str) {
+        let value = raw_value.trim();
+
+        if value.is_empty() {
+            self.nullable = true;
+            return;
+        }
+
+        self.saw_non_null_value = true;
+        self.can_be_boolean &= parse_boolean(value).is_some();
+        self.can_be_integer &= value.parse::<i64>().is_ok();
+        self.can_be_float &= value
+            .parse::<f64>()
+            .map(|value| value.is_finite())
+            .unwrap_or(false);
+    }
+
+    fn inferred_field_type(&self) -> FSEFieldType {
+        if !self.saw_non_null_value {
+            return FSEFieldType::Text;
+        }
+
+        if self.can_be_boolean {
+            FSEFieldType::Boolean
+        } else if self.can_be_integer {
+            FSEFieldType::Integer
+        } else if self.can_be_float {
+            FSEFieldType::Float
+        } else {
+            FSEFieldType::Text
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
