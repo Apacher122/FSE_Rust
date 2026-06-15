@@ -3,7 +3,9 @@
 use std::collections::HashMap;
 
 use crate::data::{FSEFieldType, FSESchema, FSESchemaDimensionMapping};
-use crate::encoding::CategoricalDictionaryEncoder;
+use crate::encoding::{
+    CategoricalDictionaryEncoder, FSEFieldEncoderMetadata, FSERecordEncoderMetadata,
+};
 
 use super::compiler::{
     FSEPredicateCompileError, compile_categorical_equality_predicate_to_query_region,
@@ -46,6 +48,25 @@ impl<'a> TypedQueryPlanBuilder<'a> {
     ) -> Self {
         self.categorical_encoders.insert(field, encoder);
         self
+    }
+
+    /// Registers categorical encoders from record encoder metadata.
+    pub fn try_with_record_encoder_metadata(
+        mut self,
+        metadata: &FSERecordEncoderMetadata,
+    ) -> Result<Self, TypedQueryPlanError> {
+        let _encoder = metadata.to_record_encoder(self.schema)?;
+
+        for (field, metadata) in metadata.fields().iter().enumerate() {
+            let FSEFieldEncoderMetadata::CategoryDictionary { categories } = metadata else {
+                continue;
+            };
+
+            self.categorical_encoders
+                .insert(field, CategoricalDictionaryEncoder::new(categories.clone()));
+        }
+
+        Ok(self)
     }
 
     /// Adds a predicate to the builder.

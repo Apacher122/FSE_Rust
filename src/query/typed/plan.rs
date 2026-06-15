@@ -4,7 +4,7 @@ use std::error::Error;
 use std::fmt;
 
 use crate::data::{FSESchema, FSESchemaDimensionMapping};
-use crate::encoding::CategoricalDictionaryEncoder;
+use crate::encoding::{CategoricalDictionaryEncoder, FSERecordEncoderMetadataError};
 
 use super::super::region::{QueryRegion, QueryRegionError};
 use super::compiler::{
@@ -30,6 +30,9 @@ pub enum TypedQueryPlanError {
         name: String,
     },
 
+    /// Record encoder metadata could not be used for typed query planning.
+    EncoderMetadata(FSERecordEncoderMetadataError),
+
     /// No plan components were provided for a conjunctive plan.
     EmptyConjunction,
 }
@@ -45,6 +48,7 @@ impl fmt::Display for TypedQueryPlanError {
                     "categorical predicate for field '{name}' has no registered encoder"
                 )
             }
+            Self::EncoderMetadata(error) => error.fmt(formatter),
             Self::EmptyConjunction => {
                 formatter.write_str("typed query plan conjunction requires at least one plan")
             }
@@ -57,6 +61,7 @@ impl Error for TypedQueryPlanError {
         match self {
             Self::Predicate(error) => Some(error),
             Self::Compile(error) => Some(error),
+            Self::EncoderMetadata(error) => Some(error),
             Self::MissingCategoricalEncoder { .. } => None,
             Self::EmptyConjunction => None,
         }
@@ -72,6 +77,12 @@ impl From<FSEPredicateError> for TypedQueryPlanError {
 impl From<FSEPredicateCompileError> for TypedQueryPlanError {
     fn from(error: FSEPredicateCompileError) -> Self {
         Self::Compile(error)
+    }
+}
+
+impl From<FSERecordEncoderMetadataError> for TypedQueryPlanError {
+    fn from(error: FSERecordEncoderMetadataError) -> Self {
+        Self::EncoderMetadata(error)
     }
 }
 
