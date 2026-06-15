@@ -6,9 +6,12 @@ use std::path::Path;
 
 use crate::build::FSEBuilder;
 use crate::data::{
-    FSECsvFileImportError, FSECsvImportOptions, FSESchema, record_batch_from_csv_file,
+    FSECsvFileImportError, FSECsvImportOptions, FSECsvSchemaInferenceOptions, FSESchema,
+    infer_schema_from_csv_file_with_options, record_batch_from_csv_file,
 };
-use crate::encoding::FSERecordEncoder;
+use crate::encoding::{
+    ComposedRecordEncoder, ComposedRecordEncoderFromBatchError, FSERecordEncoder,
+};
 use crate::persistence::{
     FSEArchiveMaintenancePolicy, FSETypedQueryIndexArchiveAppendResult,
     FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveMaintenanceError,
@@ -55,6 +58,67 @@ impl From<FSETypedQueryIndexArchiveError> for FSECsvArchiveImportError {
     fn from(error: FSETypedQueryIndexArchiveError) -> Self {
         Self::Archive(error)
     }
+}
+
+/// Error returned when inferred CSV archive import fails.
+#[derive(Debug)]
+pub enum FSECsvInferredArchiveImportError {
+    /// Reading, schema inference, or parsing the CSV file failed.
+    Csv(FSECsvFileImportError),
+
+    /// Deriving a record encoder from the parsed batch failed.
+    Encoder(ComposedRecordEncoderFromBatchError),
+
+    /// Building or writing the typed query index archive failed.
+    Archive(FSETypedQueryIndexArchiveError),
+}
+
+impl fmt::Display for FSECsvInferredArchiveImportError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Csv(error) => error.fmt(formatter),
+            Self::Encoder(error) => error.fmt(formatter),
+            Self::Archive(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for FSECsvInferredArchiveImportError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Csv(error) => Some(error),
+            Self::Encoder(error) => Some(error),
+            Self::Archive(error) => Some(error),
+        }
+    }
+}
+
+impl From<FSECsvFileImportError> for FSECsvInferredArchiveImportError {
+    fn from(error: FSECsvFileImportError) -> Self {
+        Self::Csv(error)
+    }
+}
+
+impl From<ComposedRecordEncoderFromBatchError> for FSECsvInferredArchiveImportError {
+    fn from(error: ComposedRecordEncoderFromBatchError) -> Self {
+        Self::Encoder(error)
+    }
+}
+
+impl From<FSETypedQueryIndexArchiveError> for FSECsvInferredArchiveImportError {
+    fn from(error: FSETypedQueryIndexArchiveError) -> Self {
+        Self::Archive(error)
+    }
+}
+
+/// Result returned after building a typed query index archive from inferred CSV metadata.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FSECsvInferredArchiveImportResult {
+    /// Schema inferred from the CSV header and values.
+    pub schema: FSESchema,
+
+    /// Query index written to the archive.
+    pub query_index: TypedQueryIndex,
 }
 
 /// Error returned when CSV archive maintenance import fails.
@@ -121,6 +185,35 @@ where
         encoder,
         builder,
     )?)
+}
+
+/// Builds a typed query index archive from a CSV file with inferred schema metadata.
+///
+/// The schema is inferred from the CSV file, the record encoder is derived from
+/// the parsed record batch, and the resulting typed query index is written to
+/// the archive path.
+pub fn build_typed_query_index_archive_from_inferred_csv_file<C, A>(
+    csv_path: C,
+    archive_path: A,
+    schema_options: &FSECsvSchemaInferenceOptions,
+    import_options: &FSECsvImportOptions,
+    builder: &FSEBuilder,
+) -> Result<FSECsvInferredArchiveImportResult, FSECsvInferredArchiveImportError>
+where
+    C: AsRef<Path>,
+    A: AsRef<Path>,
+{
+    let csv_path = csv_path.as_ref();
+    let archive_path = archive_path.as_ref();
+    let schema = infer_schema_from_csv_file_with_options(csv_path, schema_options)?;
+    let batch = record_batch_from_csv_file(csv_path, &schema, import_options)?;
+    let encoder = ComposedRecordEncoder::try_from_batch(&batch)?;
+    let query_index = build_typed_query_index_archive_file(archive_path, batch, &encoder, builder)?;
+
+    Ok(FSECsvInferredArchiveImportResult {
+        schema,
+        query_index,
+    })
 }
 
 /// Appends CSV records to an existing typed query index archive.

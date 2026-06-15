@@ -4,16 +4,19 @@ use std::path::PathBuf;
 
 use crate::build::{BuildConfig, FSEBuilder};
 use crate::data::{
-    FSECsvFileImportError, FSECsvImportError, FSECsvImportOptions, FSEDimensionMapping, FSEField,
-    FSEFieldType, FSERecordBatchError, FSESchema, FSESchemaDimensionMapping, FSEValue, RowId,
+    FSECsvFileImportError, FSECsvImportError, FSECsvImportOptions, FSECsvSchemaInferenceOptions,
+    FSEDimensionMapping, FSEField, FSEFieldType, FSERecordBatchError, FSESchema,
+    FSESchemaDimensionMapping, FSEValue, RowId,
 };
 use crate::encoding::{
-    CategoricalDictionaryEncoder, ComposedRecordEncoder, FloatEncoder, IntegerEncoder,
-    TimestampMillisEncoder,
+    CategoricalDictionaryEncoder, ComposedRecordEncoder, ComposedRecordEncoderFromBatchError,
+    FloatEncoder, IntegerEncoder, TimestampMillisEncoder,
 };
 use crate::import::{
     FSECsvArchiveImportError, FSECsvArchiveMaintenanceImportError,
-    append_typed_query_index_archive_from_csv_file, build_typed_query_index_archive_from_csv_file,
+    FSECsvInferredArchiveImportError, append_typed_query_index_archive_from_csv_file,
+    build_typed_query_index_archive_from_csv_file,
+    build_typed_query_index_archive_from_inferred_csv_file,
     maintain_typed_query_index_archive_from_csv_file,
 };
 use crate::persistence::{
@@ -60,6 +63,105 @@ fn csv_archive_import_builds_queryable_fse_file() {
 
     let _ = fs::remove_file(csv_path);
     let _ = fs::remove_file(archive_path);
+}
+
+#[test]
+fn csv_archive_import_builds_queryable_fse_file_from_inferred_schema() {
+    let expected_schema = entity_schema();
+    let mapping = entity_mapping(&expected_schema);
+    let builder = builder();
+    let csv_path = temp_csv_path("queryable-inferred");
+    let archive_path = temp_archive_path("queryable-inferred", ".fse");
+    let schema_options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("class", FSEFieldType::Category)
+        .with_field_type("observed_at", FSEFieldType::TimestampMillis);
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+
+    let result = build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &builder,
+    )
+    .unwrap();
+    let loaded = load_typed_query_index_archive_file(&archive_path).unwrap();
+    let plan = score_and_class_plan(&expected_schema, &mapping);
+
+    assert!(archive_path.exists());
+    assert_eq!(result.schema, expected_schema);
+    assert_eq!(loaded, result.query_index);
+    assert_eq!(
+        loaded.query_row_ids(&plan).unwrap(),
+        vec![RowId::new(100), RowId::new(103)]
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(archive_path);
+}
+
+#[test]
+fn csv_archive_import_reports_missing_inferred_schema_override() {
+    let builder = builder();
+    let csv_path = temp_csv_path("missing-inference-override");
+    let archive_path = temp_archive_path("missing-inference-override", ".fse");
+    let schema_options =
+        FSECsvSchemaInferenceOptions::new().with_field_type("missing", FSEFieldType::Category);
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+
+    let error = build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &builder,
+    )
+    .unwrap_err();
+
+    match error {
+        FSECsvInferredArchiveImportError::Csv(FSECsvFileImportError::Import(
+            FSECsvImportError::MissingSchemaInferenceOverride { field },
+        )) => assert_eq!(field, "missing"),
+        other => panic!("expected missing schema inference override, got {other}"),
+    }
+    assert!(!archive_path.exists());
+
+    let _ = fs::remove_file(csv_path);
+}
+
+#[test]
+fn csv_archive_import_reports_unsupported_inferred_text_encoder() {
+    let builder = builder();
+    let csv_path = temp_csv_path("unsupported-inferred-text");
+    let archive_path = temp_archive_path("unsupported-inferred-text", ".fse");
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+
+    let error = build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &FSECsvSchemaInferenceOptions::new(),
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &builder,
+    )
+    .unwrap_err();
+
+    match error {
+        FSECsvInferredArchiveImportError::Encoder(
+            ComposedRecordEncoderFromBatchError::UnsupportedFieldType {
+                name, field_type, ..
+            },
+        ) => {
+            assert_eq!(name, "class");
+            assert_eq!(field_type, FSEFieldType::Text);
+        }
+        other => panic!("expected unsupported inferred text encoder, got {other}"),
+    }
+    assert!(!archive_path.exists());
+
+    let _ = fs::remove_file(csv_path);
 }
 
 #[test]
