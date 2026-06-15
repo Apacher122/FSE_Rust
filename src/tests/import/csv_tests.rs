@@ -12,13 +12,17 @@ use crate::encoding::{
     TimestampMillisEncoder,
 };
 use crate::import::{
-    FSECsvArchiveImportError, append_typed_query_index_archive_from_csv_file,
-    build_typed_query_index_archive_from_csv_file,
+    FSECsvArchiveImportError, FSECsvArchiveMaintenanceImportError,
+    append_typed_query_index_archive_from_csv_file, build_typed_query_index_archive_from_csv_file,
+    maintain_typed_query_index_archive_from_csv_file,
 };
 use crate::persistence::{
-    FSEArchiveFileOperation, FSEArchivePayloadKind, FSEArchiveRebuildOperationMetadata,
-    FSEArchiveRebuildReason, FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveFileError,
-    load_typed_query_index_archive_file,
+    FSEArchiveFileOperation, FSEArchiveMaintenanceAction, FSEArchiveMaintenanceError,
+    FSEArchiveMaintenancePolicy, FSEArchiveMaintenanceReason, FSEArchivePayloadKind,
+    FSEArchiveRebuildOperationMetadata, FSEArchiveRebuildReason, FSETypedQueryIndexArchiveError,
+    FSETypedQueryIndexArchiveFileError, FSETypedQueryIndexArchiveMaintenanceError,
+    load_typed_query_index_archive_file, load_typed_row_tombstone_archive_file,
+    save_typed_row_tombstone_archive_file,
 };
 use crate::query::{
     FSEPredicate, FSEPredicateField, TypedQueryIndexAppendError, TypedQueryPlanBuilder,
@@ -118,6 +122,81 @@ fn csv_archive_import_appends_csv_records_to_fse_file() {
     let _ = fs::remove_file(csv_path);
     let _ = fs::remove_file(append_csv_path);
     let _ = fs::remove_file(archive_path);
+}
+
+#[test]
+fn csv_archive_import_maintenance_appends_csv_records_to_fse_file() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let encoder = entity_encoder(&schema);
+    let builder = builder();
+    let policy = FSEArchiveMaintenancePolicy::try_new(10, 10, 5_000).unwrap();
+    let csv_path = temp_csv_path("maintenance-base");
+    let append_csv_path = temp_csv_path("maintenance-append");
+    let archive_path = temp_archive_path("maintenance-append", ".fse");
+    let tombstone_path = temp_archive_path("maintenance-tombstones", ".fse");
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+    fs::write(&append_csv_path, appended_entity_csv()).unwrap();
+
+    build_typed_query_index_archive_from_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &encoder,
+        &builder,
+    )
+    .unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[]).unwrap();
+
+    let result = maintain_typed_query_index_archive_from_csv_file(
+        &append_csv_path,
+        &archive_path,
+        &tombstone_path,
+        &schema,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &encoder,
+        &builder,
+        &policy,
+    )
+    .unwrap();
+    let loaded = load_typed_query_index_archive_file(&archive_path).unwrap();
+    let tombstones = load_typed_row_tombstone_archive_file(&tombstone_path).unwrap();
+    let plan = score_and_class_plan(&schema, &mapping);
+    let mut matches = loaded.query_row_ids(&plan).unwrap();
+    matches.sort();
+
+    assert_eq!(result.decision.action, FSEArchiveMaintenanceAction::Append);
+    assert_eq!(
+        result.decision.reason,
+        FSEArchiveMaintenanceReason::PendingAppendRecords
+    );
+    assert_eq!(result.decision.input.base_record_count, 4);
+    assert_eq!(result.decision.input.pending_append_record_count, 2);
+    assert_eq!(result.decision.input.tombstone_count, 0);
+    assert_eq!(
+        result
+            .append_result
+            .as_ref()
+            .unwrap()
+            .append_metadata
+            .resulting_record_count,
+        6
+    );
+    assert_eq!(result.compaction_result, None);
+    assert_eq!(result.query_index, loaded);
+    assert_eq!(tombstones, Vec::new());
+    assert_eq!(loaded.batch().len(), 6);
+    assert_eq!(
+        matches,
+        vec![RowId::new(100), RowId::new(103), RowId::new(104)]
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(append_csv_path);
+    let _ = fs::remove_file(archive_path);
+    let _ = fs::remove_file(tombstone_path);
 }
 
 #[test]
@@ -306,6 +385,142 @@ entity_id,score,class,observed_at
     let _ = fs::remove_file(csv_path);
     let _ = fs::remove_file(append_csv_path);
     let _ = fs::remove_file(archive_path);
+}
+
+#[test]
+fn csv_archive_import_maintenance_reports_csv_parse_error_and_preserves_archives() {
+    let schema = entity_schema();
+    let encoder = entity_encoder(&schema);
+    let builder = builder();
+    let policy = FSEArchiveMaintenancePolicy::try_new(10, 10, 5_000).unwrap();
+    let csv_path = temp_csv_path("maintenance-parse-base");
+    let append_csv_path = temp_csv_path("maintenance-parse-error");
+    let archive_path = temp_archive_path("maintenance-parse-error", ".fse");
+    let tombstone_path = temp_archive_path("maintenance-parse-tombstones", ".fse");
+    let csv = "\
+entity_id,score,class,observed_at
+104,north,alpha,1400
+";
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+    fs::write(&append_csv_path, csv).unwrap();
+
+    let base_query_index = build_typed_query_index_archive_from_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &encoder,
+        &builder,
+    )
+    .unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[]).unwrap();
+
+    let error = maintain_typed_query_index_archive_from_csv_file(
+        &append_csv_path,
+        &archive_path,
+        &tombstone_path,
+        &schema,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &encoder,
+        &builder,
+        &policy,
+    )
+    .unwrap_err();
+
+    match error {
+        FSECsvArchiveMaintenanceImportError::Csv(FSECsvFileImportError::Import(
+            FSECsvImportError::InvalidValue {
+                line,
+                field,
+                expected,
+                value,
+            },
+        )) => {
+            assert_eq!(line, 2);
+            assert_eq!(field, "score");
+            assert_eq!(expected, FSEFieldType::Float);
+            assert_eq!(value, "north");
+        }
+        other => panic!("expected CSV parse error, got {other}"),
+    }
+    assert_eq!(
+        load_typed_query_index_archive_file(&archive_path).unwrap(),
+        base_query_index
+    );
+    assert_eq!(
+        load_typed_row_tombstone_archive_file(&tombstone_path).unwrap(),
+        Vec::new()
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(append_csv_path);
+    let _ = fs::remove_file(archive_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
+fn csv_archive_import_maintenance_reports_policy_error_and_preserves_archives() {
+    let schema = entity_schema();
+    let encoder = entity_encoder(&schema);
+    let builder = builder();
+    let policy = FSEArchiveMaintenancePolicy {
+        append_rebuild_record_count_threshold: 0,
+        compaction_tombstone_count_threshold: 10,
+        compaction_tombstone_ratio_threshold_basis_points: 5_000,
+    };
+    let csv_path = temp_csv_path("maintenance-policy-base");
+    let append_csv_path = temp_csv_path("maintenance-policy-error");
+    let archive_path = temp_archive_path("maintenance-policy-error", ".fse");
+    let tombstone_path = temp_archive_path("maintenance-policy-tombstones", ".fse");
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+    fs::write(&append_csv_path, appended_entity_csv()).unwrap();
+
+    let base_query_index = build_typed_query_index_archive_from_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &encoder,
+        &builder,
+    )
+    .unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[]).unwrap();
+
+    let error = maintain_typed_query_index_archive_from_csv_file(
+        &append_csv_path,
+        &archive_path,
+        &tombstone_path,
+        &schema,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &encoder,
+        &builder,
+        &policy,
+    )
+    .unwrap_err();
+
+    match error {
+        FSECsvArchiveMaintenanceImportError::Maintenance(
+            FSETypedQueryIndexArchiveMaintenanceError::Policy(
+                FSEArchiveMaintenanceError::ZeroAppendRebuildRecordCountThreshold,
+            ),
+        ) => {}
+        other => panic!("expected maintenance policy error, got {other}"),
+    }
+    assert_eq!(
+        load_typed_query_index_archive_file(&archive_path).unwrap(),
+        base_query_index
+    );
+    assert_eq!(
+        load_typed_row_tombstone_archive_file(&tombstone_path).unwrap(),
+        Vec::new()
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(append_csv_path);
+    let _ = fs::remove_file(archive_path);
+    let _ = fs::remove_file(tombstone_path);
 }
 
 #[test]

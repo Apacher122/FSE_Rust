@@ -10,8 +10,10 @@ use crate::data::{
 };
 use crate::encoding::FSERecordEncoder;
 use crate::persistence::{
-    FSETypedQueryIndexArchiveAppendResult, FSETypedQueryIndexArchiveError,
-    append_typed_query_index_archive_file, build_typed_query_index_archive_file,
+    FSEArchiveMaintenancePolicy, FSETypedQueryIndexArchiveAppendResult,
+    FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveMaintenanceError,
+    FSETypedQueryIndexArchiveMaintenanceResult, append_typed_query_index_archive_file,
+    build_typed_query_index_archive_file, maintain_typed_query_index_archive_file,
 };
 use crate::query::TypedQueryIndex;
 
@@ -52,6 +54,46 @@ impl From<FSECsvFileImportError> for FSECsvArchiveImportError {
 impl From<FSETypedQueryIndexArchiveError> for FSECsvArchiveImportError {
     fn from(error: FSETypedQueryIndexArchiveError) -> Self {
         Self::Archive(error)
+    }
+}
+
+/// Error returned when CSV archive maintenance import fails.
+#[derive(Debug)]
+pub enum FSECsvArchiveMaintenanceImportError {
+    /// Reading or parsing the CSV file failed.
+    Csv(FSECsvFileImportError),
+
+    /// Typed query index archive maintenance failed.
+    Maintenance(FSETypedQueryIndexArchiveMaintenanceError),
+}
+
+impl fmt::Display for FSECsvArchiveMaintenanceImportError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Csv(error) => error.fmt(formatter),
+            Self::Maintenance(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for FSECsvArchiveMaintenanceImportError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Csv(error) => Some(error),
+            Self::Maintenance(error) => Some(error),
+        }
+    }
+}
+
+impl From<FSECsvFileImportError> for FSECsvArchiveMaintenanceImportError {
+    fn from(error: FSECsvFileImportError) -> Self {
+        Self::Csv(error)
+    }
+}
+
+impl From<FSETypedQueryIndexArchiveMaintenanceError> for FSECsvArchiveMaintenanceImportError {
+    fn from(error: FSETypedQueryIndexArchiveMaintenanceError) -> Self {
+        Self::Maintenance(error)
     }
 }
 
@@ -105,5 +147,36 @@ where
         &batch,
         encoder,
         builder,
+    )?)
+}
+
+/// Applies typed query index archive maintenance with CSV append records.
+///
+/// The CSV file supplies pending append records for the maintenance policy.
+/// Tombstones are loaded from the caller supplied tombstone archive path.
+pub fn maintain_typed_query_index_archive_from_csv_file<C, A, T>(
+    csv_path: C,
+    archive_path: A,
+    tombstone_path: T,
+    schema: &FSESchema,
+    options: &FSECsvImportOptions,
+    encoder: &impl FSERecordEncoder,
+    builder: &FSEBuilder,
+    policy: &FSEArchiveMaintenancePolicy,
+) -> Result<FSETypedQueryIndexArchiveMaintenanceResult, FSECsvArchiveMaintenanceImportError>
+where
+    C: AsRef<Path>,
+    A: AsRef<Path>,
+    T: AsRef<Path>,
+{
+    let batch = record_batch_from_csv_file(csv_path, schema, options)?;
+
+    Ok(maintain_typed_query_index_archive_file(
+        archive_path,
+        tombstone_path,
+        Some(&batch),
+        encoder,
+        builder,
+        policy,
     )?)
 }
