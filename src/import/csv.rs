@@ -10,13 +10,16 @@ use crate::data::{
     infer_schema_from_csv_file_with_options, record_batch_from_csv_file,
 };
 use crate::encoding::{
-    ComposedRecordEncoder, ComposedRecordEncoderFromBatchError, FSERecordEncoder,
+    ComposedRecordEncoderFromBatchError, FSERecordEncoder, FSERecordEncoderMetadata,
+    FSERecordEncoderMetadataError,
 };
 use crate::persistence::{
     FSEArchiveMaintenancePolicy, FSETypedQueryIndexArchiveAppendResult,
     FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveMaintenanceError,
     FSETypedQueryIndexArchiveMaintenanceResult, append_typed_query_index_archive_file,
-    build_typed_query_index_archive_file, maintain_typed_query_index_archive_file,
+    build_typed_query_index_archive_file,
+    build_typed_query_index_archive_file_with_encoder_metadata,
+    maintain_typed_query_index_archive_file,
 };
 use crate::query::TypedQueryIndex;
 
@@ -69,6 +72,9 @@ pub enum FSECsvInferredArchiveImportError {
     /// Deriving a record encoder from the parsed batch failed.
     Encoder(ComposedRecordEncoderFromBatchError),
 
+    /// Building a record encoder from derived metadata failed.
+    EncoderMetadata(FSERecordEncoderMetadataError),
+
     /// Building or writing the typed query index archive failed.
     Archive(FSETypedQueryIndexArchiveError),
 }
@@ -78,6 +84,7 @@ impl fmt::Display for FSECsvInferredArchiveImportError {
         match self {
             Self::Csv(error) => error.fmt(formatter),
             Self::Encoder(error) => error.fmt(formatter),
+            Self::EncoderMetadata(error) => error.fmt(formatter),
             Self::Archive(error) => error.fmt(formatter),
         }
     }
@@ -88,6 +95,7 @@ impl Error for FSECsvInferredArchiveImportError {
         match self {
             Self::Csv(error) => Some(error),
             Self::Encoder(error) => Some(error),
+            Self::EncoderMetadata(error) => Some(error),
             Self::Archive(error) => Some(error),
         }
     }
@@ -102,6 +110,12 @@ impl From<FSECsvFileImportError> for FSECsvInferredArchiveImportError {
 impl From<ComposedRecordEncoderFromBatchError> for FSECsvInferredArchiveImportError {
     fn from(error: ComposedRecordEncoderFromBatchError) -> Self {
         Self::Encoder(error)
+    }
+}
+
+impl From<FSERecordEncoderMetadataError> for FSECsvInferredArchiveImportError {
+    fn from(error: FSERecordEncoderMetadataError) -> Self {
+        Self::EncoderMetadata(error)
     }
 }
 
@@ -207,8 +221,15 @@ where
     let archive_path = archive_path.as_ref();
     let schema = infer_schema_from_csv_file_with_options(csv_path, schema_options)?;
     let batch = record_batch_from_csv_file(csv_path, &schema, import_options)?;
-    let encoder = ComposedRecordEncoder::try_from_batch(&batch)?;
-    let query_index = build_typed_query_index_archive_file(archive_path, batch, &encoder, builder)?;
+    let record_encoder = FSERecordEncoderMetadata::from_batch(&batch)?;
+    let encoder = record_encoder.to_record_encoder(&schema)?;
+    let query_index = build_typed_query_index_archive_file_with_encoder_metadata(
+        archive_path,
+        batch,
+        &encoder,
+        record_encoder,
+        builder,
+    )?;
 
     Ok(FSECsvInferredArchiveImportResult {
         schema,

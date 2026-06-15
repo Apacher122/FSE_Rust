@@ -10,7 +10,7 @@ use crate::data::{
 };
 use crate::encoding::{
     CategoricalDictionaryEncoder, ComposedRecordEncoder, ComposedRecordEncoderFromBatchError,
-    FloatEncoder, IntegerEncoder, TimestampMillisEncoder,
+    FSEFieldEncoderMetadata, FloatEncoder, IntegerEncoder, TimestampMillisEncoder,
 };
 use crate::import::{
     FSECsvArchiveImportError, FSECsvArchiveMaintenanceImportError,
@@ -25,7 +25,7 @@ use crate::persistence::{
     FSEArchiveRebuildOperationMetadata, FSEArchiveRebuildReason, FSETypedQueryIndexArchiveError,
     FSETypedQueryIndexArchiveFileError, FSETypedQueryIndexArchiveMaintenanceError,
     load_typed_query_index_archive_file, load_typed_row_tombstone_archive_file,
-    save_typed_row_tombstone_archive_file,
+    read_typed_query_index_archive_snapshot_file, save_typed_row_tombstone_archive_file,
 };
 use crate::query::{
     FSEPredicate, FSEPredicateField, TypedQueryIndexAppendError, TypedQueryPlanBuilder,
@@ -87,11 +87,23 @@ fn csv_archive_import_builds_queryable_fse_file_from_inferred_schema() {
     )
     .unwrap();
     let loaded = load_typed_query_index_archive_file(&archive_path).unwrap();
+    let snapshot = read_typed_query_index_archive_snapshot_file(&archive_path).unwrap();
     let plan = score_and_class_plan(&expected_schema, &mapping);
 
     assert!(archive_path.exists());
     assert_eq!(result.schema, expected_schema);
     assert_eq!(loaded, result.query_index);
+    assert_eq!(
+        snapshot.record_encoder.fields(),
+        &[
+            FSEFieldEncoderMetadata::Integer,
+            FSEFieldEncoderMetadata::Float,
+            FSEFieldEncoderMetadata::CategoryDictionary {
+                categories: vec!["alpha".to_string(), "beta".to_string()],
+            },
+            FSEFieldEncoderMetadata::TimestampMillis,
+        ]
+    );
     assert_eq!(
         loaded.query_row_ids(&plan).unwrap(),
         vec![RowId::new(100), RowId::new(103)]
