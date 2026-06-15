@@ -16,5 +16,7 @@ pub use categorical::{CategoricalDictionaryEncoder, CategoricalDictionaryError};
 pub use coordinate::EncodedCoordinates;
 pub use error::FSEEncodingError;
 pub use numeric::{BooleanEncoder, FloatEncoder, IntegerEncoder, TimestampMillisEncoder};
-pub use record::{ComposedRecordEncoder, ComposedRecordEncoderError};
+pub use record::{
+    ComposedRecordEncoder, ComposedRecordEncoderError, ComposedRecordEncoderFromBatchError,
+};
 pub use traits::{FSEFieldEncoder, FSERecordEncoder};

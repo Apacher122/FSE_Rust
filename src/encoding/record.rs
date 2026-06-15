@@ -1,11 +1,16 @@
 //! Composed record encoders.
 
+use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
 
-use crate::data::{FSEFieldType, FSERecord, FSESchema};
+use crate::data::{FSEFieldType, FSERecord, FSERecordBatch, FSESchema, FSEValue};
 
-use super::{EncodedCoordinates, FSEEncodingError, FSEFieldEncoder, FSERecordEncoder};
+use super::{
+    BooleanEncoder, CategoricalDictionaryEncoder, CategoricalDictionaryError, EncodedCoordinates,
+    FSEEncodingError, FSEFieldEncoder, FSERecordEncoder, FloatEncoder, IntegerEncoder,
+    TimestampMillisEncoder,
+};
 
 /// Error returned when checked composed record encoder construction fails.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -55,6 +60,82 @@ impl fmt::Display for ComposedRecordEncoderError {
 }
 
 impl Error for ComposedRecordEncoderError {}
+
+/// Error returned when deriving a composed record encoder from a batch fails.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ComposedRecordEncoderFromBatchError {
+    /// A field type has no default exact encoder.
+    UnsupportedFieldType {
+        /// Field index containing the unsupported type.
+        field: usize,
+        /// Field name containing the unsupported type.
+        name: String,
+        /// Unsupported field type.
+        field_type: FSEFieldType,
+    },
+
+    /// A null value was found in a field without a null encoder.
+    NullFieldValue {
+        /// Record index containing the null value.
+        record: usize,
+        /// Field index containing the null value.
+        field: usize,
+        /// Field name containing the null value.
+        name: String,
+    },
+
+    /// A categorical dictionary could not be built.
+    CategoryDictionary {
+        /// Field index containing the categorical value.
+        field: usize,
+        /// Field name containing the categorical value.
+        name: String,
+        /// Dictionary construction error.
+        source: CategoricalDictionaryError,
+    },
+
+    /// The derived encoder did not satisfy the schema.
+    Encoder(ComposedRecordEncoderError),
+}
+
+impl fmt::Display for ComposedRecordEncoderFromBatchError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnsupportedFieldType {
+                name, field_type, ..
+            } => {
+                write!(
+                    formatter,
+                    "field '{name}' with type {field_type:?} has no derived encoder"
+                )
+            }
+            Self::NullFieldValue { record, name, .. } => {
+                write!(
+                    formatter,
+                    "record {record} field '{name}' is null and has no derived encoder"
+                )
+            }
+            Self::CategoryDictionary { source, .. } => source.fmt(formatter),
+            Self::Encoder(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for ComposedRecordEncoderFromBatchError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::CategoryDictionary { source, .. } => Some(source),
+            Self::Encoder(error) => Some(error),
+            Self::UnsupportedFieldType { .. } | Self::NullFieldValue { .. } => None,
+        }
+    }
+}
+
+impl From<ComposedRecordEncoderError> for ComposedRecordEncoderFromBatchError {
+    fn from(error: ComposedRecordEncoderError) -> Self {
+        Self::Encoder(error)
+    }
+}
 
 /// Record encoder composed from schema-ordered field encoders.
 ///
@@ -119,10 +200,98 @@ impl ComposedRecordEncoder {
         })
     }
 
+    /// Derives a composed record encoder from the typed values in a batch.
+    ///
+    /// Categorical dictionaries are built from observed category labels in
+    /// record order.
+    pub fn try_from_batch(
+        batch: &FSERecordBatch,
+    ) -> Result<Self, ComposedRecordEncoderFromBatchError> {
+        let schema = batch.schema();
+        let mut field_encoders = Vec::with_capacity(schema.len());
+
+        validate_no_null_values(batch)?;
+
+        for (field_index, field) in schema.fields().iter().enumerate() {
+            let encoder: Box<dyn FSEFieldEncoder> = match field.field_type {
+                FSEFieldType::Integer => Box::new(IntegerEncoder),
+                FSEFieldType::Float => Box::new(FloatEncoder),
+                FSEFieldType::Boolean => Box::new(BooleanEncoder),
+                FSEFieldType::TimestampMillis => Box::new(TimestampMillisEncoder),
+                FSEFieldType::Category => Box::new(category_encoder_from_batch(
+                    batch,
+                    field_index,
+                    &field.name,
+                )?),
+                FSEFieldType::Text => {
+                    return Err(ComposedRecordEncoderFromBatchError::UnsupportedFieldType {
+                        field: field_index,
+                        name: field.name.clone(),
+                        field_type: field.field_type,
+                    });
+                }
+            };
+
+            field_encoders.push(encoder);
+        }
+
+        Ok(Self::try_new(schema, field_encoders)?)
+    }
+
     /// Returns the number of field encoders.
     pub fn field_encoder_count(&self) -> usize {
         self.field_encoders.len()
     }
+}
+
+fn validate_no_null_values(
+    batch: &FSERecordBatch,
+) -> Result<(), ComposedRecordEncoderFromBatchError> {
+    for (record_index, record) in batch.records().iter().enumerate() {
+        for (field_index, (value, field)) in record
+            .values()
+            .iter()
+            .zip(batch.schema().fields())
+            .enumerate()
+        {
+            if matches!(value, FSEValue::Null) {
+                return Err(ComposedRecordEncoderFromBatchError::NullFieldValue {
+                    record: record_index,
+                    field: field_index,
+                    name: field.name.clone(),
+                });
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn category_encoder_from_batch(
+    batch: &FSERecordBatch,
+    field_index: usize,
+    field_name: &str,
+) -> Result<CategoricalDictionaryEncoder, ComposedRecordEncoderFromBatchError> {
+    let mut seen = HashSet::new();
+    let mut categories = Vec::new();
+
+    for record in batch.records() {
+        let Some(FSEValue::Category(category)) = record.value(field_index) else {
+            continue;
+        };
+
+        if seen.insert(category.as_str()) {
+            categories.push(category.clone());
+        }
+    }
+
+    CategoricalDictionaryEncoder::try_new(categories).map_err(|source| {
+        ComposedRecordEncoderFromBatchError::CategoryDictionary {
+            field: field_index,
+            name: field_name.to_string(),
+            source,
+        }
+    })
 }
 
 impl FSERecordEncoder for ComposedRecordEncoder {
