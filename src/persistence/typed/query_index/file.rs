@@ -197,6 +197,16 @@ pub struct FSETypedQueryIndexArchiveAppendResult {
     pub query_index: TypedQueryIndex,
 }
 
+/// Result returned after loading a typed query index archive.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FSETypedQueryIndexArchiveLoadResult {
+    /// Query index rebuilt from the archive snapshot.
+    pub query_index: TypedQueryIndex,
+
+    /// Record encoder metadata stored in the archive snapshot.
+    pub record_encoder_metadata: FSERecordEncoderMetadata,
+}
+
 /// Error returned when compacting a typed query index archive file fails.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FSETypedQueryIndexArchiveCompactionError {
@@ -400,11 +410,25 @@ pub fn load_typed_query_index_archive_file<P>(
 where
     P: AsRef<Path>,
 {
-    let snapshot = read_typed_query_index_archive_snapshot_file(path)?;
+    Ok(load_typed_query_index_archive_file_with_encoder_metadata(path)?.query_index)
+}
 
-    snapshot
+/// Loads a typed query index and record encoder metadata from a `.fse` archive file.
+pub fn load_typed_query_index_archive_file_with_encoder_metadata<P>(
+    path: P,
+) -> Result<FSETypedQueryIndexArchiveLoadResult, FSETypedQueryIndexArchiveError>
+where
+    P: AsRef<Path>,
+{
+    let snapshot = read_typed_query_index_archive_snapshot_file(path)?;
+    let query_index = snapshot
         .to_typed_query_index()
-        .map_err(FSETypedQueryIndexArchiveError::Snapshot)
+        .map_err(FSETypedQueryIndexArchiveError::Snapshot)?;
+
+    Ok(FSETypedQueryIndexArchiveLoadResult {
+        query_index,
+        record_encoder_metadata: snapshot.record_encoder,
+    })
 }
 
 /// Appends records to a typed query index `.fse` archive file.

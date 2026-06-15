@@ -24,10 +24,10 @@ use crate::persistence::{
     append_typed_query_index_archive_file, build_typed_query_index_archive_file,
     build_typed_query_index_archive_file_with_encoder_metadata,
     compact_typed_query_index_archive_file, encode_archive_payload,
-    load_typed_query_index_archive_file, load_typed_query_index_archive_with_tombstones,
-    load_typed_row_tombstone_archive_file, maintain_typed_query_index_archive_file,
-    read_typed_query_index_archive_snapshot_file, save_typed_query_index_archive_file,
-    save_typed_query_index_archive_file_with_encoder_metadata,
+    load_typed_query_index_archive_file, load_typed_query_index_archive_file_with_encoder_metadata,
+    load_typed_query_index_archive_with_tombstones, load_typed_row_tombstone_archive_file,
+    maintain_typed_query_index_archive_file, read_typed_query_index_archive_snapshot_file,
+    save_typed_query_index_archive_file, save_typed_query_index_archive_file_with_encoder_metadata,
     save_typed_row_tombstone_archive_file, write_typed_query_index_archive_snapshot_file,
 };
 use crate::query::{
@@ -105,6 +105,41 @@ fn typed_query_index_archive_file_saves_record_encoder_metadata() {
     let snapshot = read_typed_query_index_archive_snapshot_file(&path).unwrap();
 
     assert_eq!(snapshot.record_encoder, metadata);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_query_index_archive_file_loads_index_with_record_encoder_metadata() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let query_index = typed_query_index_with_reverse_category_encoder();
+    let metadata = reverse_category_encoder_metadata();
+    let path = temp_archive_path("index-load-with-metadata", ".fse");
+
+    save_typed_query_index_archive_file_with_encoder_metadata(
+        &path,
+        &query_index,
+        metadata.clone(),
+    )
+    .unwrap();
+    let loaded = load_typed_query_index_archive_file_with_encoder_metadata(&path).unwrap();
+    let plan = TypedQueryPlanBuilder::new(&schema, &mapping)
+        .try_with_record_encoder_metadata(&loaded.record_encoder_metadata)
+        .unwrap()
+        .with_predicate(FSEPredicate::equals(
+            FSEPredicateField::name("class"),
+            FSEValue::Category("alpha".to_string()),
+        ))
+        .build()
+        .unwrap();
+
+    assert_eq!(loaded.query_index, query_index);
+    assert_eq!(loaded.record_encoder_metadata, metadata);
+    assert_eq!(
+        loaded.query_index.query_row_ids(&plan).unwrap(),
+        vec![RowId::new(100), RowId::new(102), RowId::new(103)]
+    );
 
     let _ = fs::remove_file(path);
 }
