@@ -40,6 +40,12 @@ pub enum FSECsvImportError {
         field: String,
     },
 
+    /// A configured schema inference override did not match a CSV header field.
+    MissingSchemaInferenceOverride {
+        /// Missing field name.
+        field: String,
+    },
+
     /// The configured row-id column was not present in the CSV header.
     MissingRowIdColumn {
         /// Missing row-id column name.
@@ -105,6 +111,12 @@ impl fmt::Display for FSECsvImportError {
             Self::MissingSchemaField { field } => {
                 write!(formatter, "CSV header is missing schema field '{field}'")
             }
+            Self::MissingSchemaInferenceOverride { field } => {
+                write!(
+                    formatter,
+                    "CSV schema inference override references missing field '{field}'"
+                )
+            }
             Self::MissingRowIdColumn { column } => {
                 write!(formatter, "CSV header is missing row-id column '{column}'")
             }
@@ -145,6 +157,7 @@ impl Error for FSECsvImportError {
             | Self::UnterminatedQuotedField { .. }
             | Self::RowWidthMismatch { .. }
             | Self::MissingSchemaField { .. }
+            | Self::MissingSchemaInferenceOverride { .. }
             | Self::MissingRowIdColumn { .. }
             | Self::InvalidRowId { .. }
             | Self::GeneratedRowIdOverflow { .. }
@@ -261,6 +274,33 @@ impl FSECsvImportOptions {
     }
 }
 
+/// CSV schema inference options.
+///
+/// Field type overrides allow callers to supply semantic field types that
+/// cannot be inferred safely from raw CSV text.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FSECsvSchemaInferenceOptions {
+    field_type_overrides: HashMap<String, FSEFieldType>,
+}
+
+impl FSECsvSchemaInferenceOptions {
+    /// Creates schema inference options without field type overrides.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets an inferred field type override for a CSV header field.
+    pub fn with_field_type(mut self, field: impl Into<String>, field_type: FSEFieldType) -> Self {
+        self.field_type_overrides.insert(field.into(), field_type);
+        self
+    }
+
+    /// Returns the configured field type override for a CSV header field.
+    pub fn field_type_for(&self, field: &str) -> Option<FSEFieldType> {
+        self.field_type_overrides.get(field).copied()
+    }
+}
+
 /// Imports a typed record batch from CSV text.
 ///
 /// The first CSV record is treated as the header. Data columns are matched to
@@ -308,8 +348,29 @@ pub fn record_batch_from_csv(
 /// The first CSV record is treated as the header. Field types are inferred from
 /// non-empty values in each column. Empty values mark the field as nullable.
 pub fn infer_schema_from_csv(input: &str) -> Result<FSESchema, FSECsvImportError> {
+    infer_schema_from_csv_with_options(input, &FSECsvSchemaInferenceOptions::new())
+}
+
+/// Infers schema metadata from CSV text with caller supplied options.
+///
+/// Field type overrides are matched to header names after trimming surrounding
+/// whitespace.
+pub fn infer_schema_from_csv_with_options(
+    input: &str,
+    options: &FSECsvSchemaInferenceOptions,
+) -> Result<FSESchema, FSECsvImportError> {
     let records = parse_csv_records(input)?;
     let (header, data_records) = records.split_first().ok_or(FSECsvImportError::EmptyInput)?;
+    let header_index = header_index(header);
+
+    for field in options.field_type_overrides.keys() {
+        if !header_index.contains_key(field) {
+            return Err(FSECsvImportError::MissingSchemaInferenceOverride {
+                field: field.clone(),
+            });
+        }
+    }
+
     let mut columns = vec![CsvSchemaColumnInference::default(); header.fields.len()];
 
     for csv_record in data_records {
@@ -331,11 +392,12 @@ pub fn infer_schema_from_csv(input: &str) -> Result<FSESchema, FSECsvImportError
         .iter()
         .zip(columns)
         .map(|(name, column)| {
-            FSEField::new(
-                name.trim().to_string(),
-                column.inferred_field_type(),
-                column.nullable,
-            )
+            let name = name.trim().to_string();
+            let field_type = options
+                .field_type_for(&name)
+                .unwrap_or_else(|| column.inferred_field_type());
+
+            FSEField::new(name, field_type, column.nullable)
         })
         .collect();
 
@@ -365,13 +427,23 @@ pub fn record_batch_from_csv_file(
 pub fn infer_schema_from_csv_file(
     path: impl AsRef<Path>,
 ) -> Result<FSESchema, FSECsvFileImportError> {
+    infer_schema_from_csv_file_with_options(path, &FSECsvSchemaInferenceOptions::new())
+}
+
+/// Infers schema metadata from a UTF-8 CSV file with caller supplied options.
+///
+/// The file contents are parsed with [`infer_schema_from_csv_with_options`].
+pub fn infer_schema_from_csv_file_with_options(
+    path: impl AsRef<Path>,
+    options: &FSECsvSchemaInferenceOptions,
+) -> Result<FSESchema, FSECsvFileImportError> {
     let path = path.as_ref();
     let input = fs::read_to_string(path).map_err(|source| FSECsvFileImportError::Read {
         path: path.to_path_buf(),
         source,
     })?;
 
-    Ok(infer_schema_from_csv(&input)?)
+    Ok(infer_schema_from_csv_with_options(&input, options)?)
 }
 
 #[derive(Clone, Debug)]

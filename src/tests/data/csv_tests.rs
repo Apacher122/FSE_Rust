@@ -3,9 +3,10 @@ use std::io;
 use std::path::PathBuf;
 
 use crate::data::{
-    FSECsvFileImportError, FSECsvImportError, FSECsvImportOptions, FSEField, FSEFieldType,
-    FSERecordError, FSESchema, FSESchemaError, FSEValue, RowId, infer_schema_from_csv,
-    infer_schema_from_csv_file, record_batch_from_csv, record_batch_from_csv_file,
+    FSECsvFileImportError, FSECsvImportError, FSECsvImportOptions, FSECsvSchemaInferenceOptions,
+    FSEField, FSEFieldType, FSERecordError, FSESchema, FSESchemaError, FSEValue, RowId,
+    infer_schema_from_csv, infer_schema_from_csv_file, infer_schema_from_csv_file_with_options,
+    infer_schema_from_csv_with_options, record_batch_from_csv, record_batch_from_csv_file,
 };
 
 #[test]
@@ -81,6 +82,76 @@ case_id,latitude,closed
     );
 
     fs::remove_file(path).expect("test CSV file should be removed");
+}
+
+#[test]
+fn csv_schema_inference_applies_explicit_field_type_overrides() {
+    let csv = "\
+case_id,created_at,status
+42,1735689600000,open
+43,1735689700000,closed
+";
+    let options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("created_at", FSEFieldType::TimestampMillis)
+        .with_field_type("status", FSEFieldType::Category);
+
+    let schema = infer_schema_from_csv_with_options(csv, &options)
+        .expect("valid CSV schema should infer with overrides");
+
+    assert_eq!(
+        schema.fields(),
+        &[
+            FSEField::new("case_id", FSEFieldType::Integer, false),
+            FSEField::new("created_at", FSEFieldType::TimestampMillis, false),
+            FSEField::new("status", FSEFieldType::Category, false),
+        ]
+    );
+}
+
+#[test]
+fn csv_schema_inference_reads_schema_from_file_with_options() {
+    let path = temp_csv_path("csv_schema_inference_reads_schema_from_file_with_options");
+    let csv = "\
+case_id,status
+42,open
+";
+    let options =
+        FSECsvSchemaInferenceOptions::new().with_field_type("status", FSEFieldType::Category);
+
+    fs::write(&path, csv).expect("test CSV file should be written");
+
+    let schema = infer_schema_from_csv_file_with_options(&path, &options)
+        .expect("CSV file schema should infer with overrides");
+
+    assert_eq!(
+        schema.fields(),
+        &[
+            FSEField::new("case_id", FSEFieldType::Integer, false),
+            FSEField::new("status", FSEFieldType::Category, false),
+        ]
+    );
+
+    fs::remove_file(path).expect("test CSV file should be removed");
+}
+
+#[test]
+fn csv_schema_inference_reports_missing_override_field() {
+    let csv = "\
+case_id,status
+42,open
+";
+    let options =
+        FSECsvSchemaInferenceOptions::new().with_field_type("state", FSEFieldType::Category);
+
+    let error = infer_schema_from_csv_with_options(csv, &options)
+        .expect_err("missing override field should be rejected");
+
+    assert_eq!(
+        error,
+        FSECsvImportError::MissingSchemaInferenceOverride {
+            field: "state".to_string(),
+        }
+    );
 }
 
 #[test]
