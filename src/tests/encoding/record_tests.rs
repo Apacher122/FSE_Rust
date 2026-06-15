@@ -1,7 +1,8 @@
 use crate::data::{FSEField, FSEFieldType, FSERecord, FSESchema, FSEValue};
 use crate::encoding::{
     CategoricalDictionaryEncoder, ComposedRecordEncoder, ComposedRecordEncoderError,
-    ComposedRecordEncoderFromBatchError, FSEEncodingError, FSERecordEncoder, FloatEncoder,
+    ComposedRecordEncoderFromBatchError, FSEEncodingError, FSEFieldEncoderMetadata,
+    FSERecordEncoder, FSERecordEncoderMetadata, FSERecordEncoderMetadataError, FloatEncoder,
     IntegerEncoder,
 };
 
@@ -41,6 +42,143 @@ fn composed_record_encoder_derives_encoder_from_record_batch() {
     assert_eq!(encoder.field_encoder_count(), 3);
     assert_eq!(encoder.output_dimensions(), 3);
     assert_eq!(coordinates.values(), &[44.0, 41.883, 1.0]);
+}
+
+#[test]
+fn record_encoder_metadata_derives_from_record_batch() {
+    let schema = crime_schema();
+    let batch = crate::data::FSERecordBatch::new(
+        schema.clone(),
+        vec![crate::data::RowId::new(10), crate::data::RowId::new(11)],
+        vec![
+            crime_record(&schema, 42, 41.881, "open"),
+            crime_record(&schema, 43, 41.882, "closed"),
+        ],
+    );
+
+    let metadata =
+        FSERecordEncoderMetadata::from_batch(&batch).expect("valid batch should derive metadata");
+
+    assert_eq!(
+        metadata.fields(),
+        &[
+            FSEFieldEncoderMetadata::Integer,
+            FSEFieldEncoderMetadata::Float,
+            FSEFieldEncoderMetadata::CategoryDictionary {
+                categories: vec!["open".to_string(), "closed".to_string()],
+            },
+        ]
+    );
+}
+
+#[test]
+fn record_encoder_metadata_rebuilds_composed_encoder() {
+    let schema = crime_schema();
+    let metadata = FSERecordEncoderMetadata::new(vec![
+        FSEFieldEncoderMetadata::Integer,
+        FSEFieldEncoderMetadata::Float,
+        FSEFieldEncoderMetadata::CategoryDictionary {
+            categories: vec!["open".to_string(), "closed".to_string()],
+        },
+    ]);
+
+    let encoder = metadata
+        .to_record_encoder(&schema)
+        .expect("valid metadata should rebuild encoder");
+    let coordinates = encoder
+        .encode_record(&crime_record(&schema, 44, 41.883, "closed"))
+        .expect("known category should encode");
+
+    assert_eq!(encoder.field_encoder_count(), 3);
+    assert_eq!(encoder.output_dimensions(), 3);
+    assert_eq!(coordinates.values(), &[44.0, 41.883, 1.0]);
+}
+
+#[test]
+fn record_encoder_metadata_reports_field_count_mismatch() {
+    let schema = crime_schema();
+    let metadata = FSERecordEncoderMetadata::new(vec![
+        FSEFieldEncoderMetadata::Integer,
+        FSEFieldEncoderMetadata::Float,
+    ]);
+
+    let error = match metadata.to_record_encoder(&schema) {
+        Ok(_) => panic!("metadata count mismatch should be rejected"),
+        Err(error) => error,
+    };
+
+    assert_eq!(
+        error,
+        FSERecordEncoderMetadataError::FieldCountMismatch {
+            metadata_count: 2,
+            field_count: 3,
+        }
+    );
+    assert_eq!(
+        error.to_string(),
+        "record encoder metadata has 2 fields but schema requires 3"
+    );
+}
+
+#[test]
+fn record_encoder_metadata_reports_field_type_mismatch() {
+    let schema = crime_schema();
+    let metadata = FSERecordEncoderMetadata::new(vec![
+        FSEFieldEncoderMetadata::Integer,
+        FSEFieldEncoderMetadata::Integer,
+        FSEFieldEncoderMetadata::CategoryDictionary {
+            categories: vec!["open".to_string(), "closed".to_string()],
+        },
+    ]);
+
+    let error = match metadata.to_record_encoder(&schema) {
+        Ok(_) => panic!("metadata type mismatch should be rejected"),
+        Err(error) => error,
+    };
+
+    assert_eq!(
+        error,
+        FSERecordEncoderMetadataError::FieldTypeMismatch {
+            field: 1,
+            name: "latitude".to_string(),
+            expected: FSEFieldType::Float,
+            actual: FSEFieldType::Integer,
+        }
+    );
+    assert_eq!(
+        error.to_string(),
+        "field 'latitude' metadata expected Float but found Integer"
+    );
+}
+
+#[test]
+fn record_encoder_metadata_reports_invalid_category_dictionary() {
+    let schema = crime_schema();
+    let metadata = FSERecordEncoderMetadata::new(vec![
+        FSEFieldEncoderMetadata::Integer,
+        FSEFieldEncoderMetadata::Float,
+        FSEFieldEncoderMetadata::CategoryDictionary {
+            categories: Vec::new(),
+        },
+    ]);
+
+    let error = match metadata.to_record_encoder(&schema) {
+        Ok(_) => panic!("invalid category metadata should be rejected"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(
+        error,
+        FSERecordEncoderMetadataError::CategoryDictionary {
+            field: 2,
+            ref name,
+            ..
+        } if name == "status"
+    ));
+    assert_eq!(
+        error.to_string(),
+        "categorical dictionary must contain at least one category"
+    );
 }
 
 #[test]
