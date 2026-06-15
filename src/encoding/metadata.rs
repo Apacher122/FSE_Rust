@@ -4,6 +4,8 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 use crate::data::{FSEFieldType, FSERecordBatch, FSESchema, FSEValue};
 
 use super::record::{
@@ -93,7 +95,7 @@ impl From<ComposedRecordEncoderError> for FSERecordEncoderMetadataError {
 }
 
 /// Schema-ordered metadata for one field encoder.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FSEFieldEncoderMetadata {
     /// Signed integer encoder.
     Integer,
@@ -152,7 +154,7 @@ impl FSEFieldEncoderMetadata {
 }
 
 /// Metadata required to rebuild a composed record encoder.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FSERecordEncoderMetadata {
     fields: Vec<FSEFieldEncoderMetadata>,
 }

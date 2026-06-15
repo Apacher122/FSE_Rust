@@ -4,7 +4,8 @@ use crate::data::{
     FSESchemaDimensionMapping, FSEValue, RowId,
 };
 use crate::encoding::{
-    CategoricalDictionaryEncoder, ComposedRecordEncoder, FloatEncoder, IntegerEncoder,
+    CategoricalDictionaryEncoder, ComposedRecordEncoder, FSEFieldEncoderMetadata,
+    FSERecordEncoderMetadata, FSERecordEncoderMetadataError, FloatEncoder, IntegerEncoder,
     TimestampMillisEncoder,
 };
 use crate::persistence::{
@@ -22,7 +23,33 @@ fn typed_query_index_archive_snapshot_captures_index_and_batch() {
         query_index.batch().len() as u64
     );
     assert_eq!(snapshot.batch.row_ids, vec![100, 101, 102, 103]);
+    assert_eq!(
+        snapshot.record_encoder.fields(),
+        &[
+            FSEFieldEncoderMetadata::Integer,
+            FSEFieldEncoderMetadata::Float,
+            FSEFieldEncoderMetadata::CategoryDictionary {
+                categories: vec!["alpha".to_string(), "beta".to_string()],
+            },
+            FSEFieldEncoderMetadata::TimestampMillis,
+        ]
+    );
     assert_eq!(snapshot.index.leaf_row_id_records.len(), 2);
+    assert!(snapshot.validate().is_ok());
+}
+
+#[test]
+fn typed_query_index_archive_snapshot_accepts_explicit_record_encoder_metadata() {
+    let query_index = typed_query_index_with_reverse_category_encoder();
+    let metadata = reverse_category_encoder_metadata();
+
+    let snapshot = FSETypedQueryIndexArchiveSnapshot::from_typed_query_index_with_encoder_metadata(
+        &query_index,
+        metadata.clone(),
+    )
+    .unwrap();
+
+    assert_eq!(snapshot.record_encoder, metadata);
     assert!(snapshot.validate().is_ok());
 }
 
@@ -80,6 +107,33 @@ fn typed_query_index_archive_snapshot_reports_row_id_mismatch() {
     );
 }
 
+#[test]
+fn typed_query_index_archive_snapshot_reports_record_encoder_metadata_mismatch() {
+    let query_index = typed_query_index();
+    let mut snapshot =
+        FSETypedQueryIndexArchiveSnapshot::from_typed_query_index(&query_index).unwrap();
+    snapshot.record_encoder = FSERecordEncoderMetadata::new(vec![
+        FSEFieldEncoderMetadata::Integer,
+        FSEFieldEncoderMetadata::Integer,
+        FSEFieldEncoderMetadata::CategoryDictionary {
+            categories: vec!["alpha".to_string(), "beta".to_string()],
+        },
+        FSEFieldEncoderMetadata::TimestampMillis,
+    ]);
+
+    assert_eq!(
+        snapshot.validate(),
+        Err(FSETypedQueryIndexArchiveSnapshotError::EncoderMetadata(
+            FSERecordEncoderMetadataError::FieldTypeMismatch {
+                field: 1,
+                name: "score".to_string(),
+                expected: FSEFieldType::Float,
+                actual: FSEFieldType::Integer,
+            }
+        ))
+    );
+}
+
 fn typed_query_index() -> TypedQueryIndex {
     let schema = entity_schema();
     let batch = entity_batch(&schema);
@@ -87,6 +141,37 @@ fn typed_query_index() -> TypedQueryIndex {
     let builder = FSEBuilder::new(BuildConfig::new(2, 8));
 
     TypedQueryIndex::try_build(batch, &encoder, &builder).expect("valid typed index should build")
+}
+
+fn typed_query_index_with_reverse_category_encoder() -> TypedQueryIndex {
+    let schema = entity_schema();
+    let batch = entity_batch(&schema);
+    let encoder = ComposedRecordEncoder::new(
+        &schema,
+        vec![
+            Box::new(IntegerEncoder),
+            Box::new(FloatEncoder),
+            Box::new(CategoricalDictionaryEncoder::new(vec![
+                "beta".to_string(),
+                "alpha".to_string(),
+            ])),
+            Box::new(TimestampMillisEncoder),
+        ],
+    );
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+
+    TypedQueryIndex::try_build(batch, &encoder, &builder).expect("valid typed index should build")
+}
+
+fn reverse_category_encoder_metadata() -> FSERecordEncoderMetadata {
+    FSERecordEncoderMetadata::new(vec![
+        FSEFieldEncoderMetadata::Integer,
+        FSEFieldEncoderMetadata::Float,
+        FSEFieldEncoderMetadata::CategoryDictionary {
+            categories: vec!["beta".to_string(), "alpha".to_string()],
+        },
+        FSEFieldEncoderMetadata::TimestampMillis,
+    ])
 }
 
 fn score_and_class_plan(

@@ -4,8 +4,8 @@ use crate::data::{
     FSESchemaDimensionMapping, FSEValue, RowId,
 };
 use crate::encoding::{
-    CategoricalDictionaryEncoder, ComposedRecordEncoder, FloatEncoder, IntegerEncoder,
-    TimestampMillisEncoder,
+    CategoricalDictionaryEncoder, ComposedRecordEncoder, FSEFieldEncoderMetadata,
+    FSERecordEncoderMetadata, FloatEncoder, IntegerEncoder, TimestampMillisEncoder,
 };
 use crate::persistence::{
     FSETypedQueryIndexArchiveCodecError, FSETypedQueryIndexArchiveSnapshot,
@@ -21,6 +21,23 @@ fn typed_query_index_archive_codec_round_trips_snapshot() {
     let bytes = encode_typed_query_index_archive_snapshot(&snapshot).unwrap();
     let decoded = decode_typed_query_index_archive_snapshot(&bytes).unwrap();
 
+    assert_eq!(decoded, snapshot);
+}
+
+#[test]
+fn typed_query_index_archive_codec_round_trips_record_encoder_metadata() {
+    let query_index = typed_query_index_with_reverse_category_encoder();
+    let metadata = reverse_category_encoder_metadata();
+    let snapshot = FSETypedQueryIndexArchiveSnapshot::from_typed_query_index_with_encoder_metadata(
+        &query_index,
+        metadata.clone(),
+    )
+    .unwrap();
+
+    let bytes = encode_typed_query_index_archive_snapshot(&snapshot).unwrap();
+    let decoded = decode_typed_query_index_archive_snapshot(&bytes).unwrap();
+
+    assert_eq!(decoded.record_encoder, metadata);
     assert_eq!(decoded, snapshot);
 }
 
@@ -128,6 +145,26 @@ fn typed_query_index_archive_codec_reports_embedded_batch_codec_error() {
     ));
 }
 
+#[test]
+fn typed_query_index_archive_codec_reports_invalid_encoder_metadata_tag() {
+    let snapshot =
+        FSETypedQueryIndexArchiveSnapshot::from_typed_query_index(&typed_query_index()).unwrap();
+    let mut bytes = snapshot.to_archive_bytes().unwrap();
+    let metadata_payload_offset = record_encoder_metadata_payload_offset(&bytes);
+    let first_field_tag_offset = metadata_payload_offset + 8;
+    bytes[first_field_tag_offset] = 99;
+
+    assert_eq!(
+        decode_typed_query_index_archive_snapshot(&bytes),
+        Err(
+            FSETypedQueryIndexArchiveCodecError::InvalidFieldEncoderMetadataTag {
+                field: "typed_index.record_encoder.field",
+                tag: 99,
+            }
+        )
+    );
+}
+
 fn typed_query_index() -> TypedQueryIndex {
     let schema = entity_schema();
     let batch = entity_batch(&schema);
@@ -135,6 +172,37 @@ fn typed_query_index() -> TypedQueryIndex {
     let builder = FSEBuilder::new(BuildConfig::new(2, 8));
 
     TypedQueryIndex::try_build(batch, &encoder, &builder).expect("valid typed index should build")
+}
+
+fn typed_query_index_with_reverse_category_encoder() -> TypedQueryIndex {
+    let schema = entity_schema();
+    let batch = entity_batch(&schema);
+    let encoder = ComposedRecordEncoder::new(
+        &schema,
+        vec![
+            Box::new(IntegerEncoder),
+            Box::new(FloatEncoder),
+            Box::new(CategoricalDictionaryEncoder::new(vec![
+                "beta".to_string(),
+                "alpha".to_string(),
+            ])),
+            Box::new(TimestampMillisEncoder),
+        ],
+    );
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+
+    TypedQueryIndex::try_build(batch, &encoder, &builder).expect("valid typed index should build")
+}
+
+fn reverse_category_encoder_metadata() -> FSERecordEncoderMetadata {
+    FSERecordEncoderMetadata::new(vec![
+        FSEFieldEncoderMetadata::Integer,
+        FSEFieldEncoderMetadata::Float,
+        FSEFieldEncoderMetadata::CategoryDictionary {
+            categories: vec!["beta".to_string(), "alpha".to_string()],
+        },
+        FSEFieldEncoderMetadata::TimestampMillis,
+    ])
 }
 
 fn score_and_class_plan(
@@ -235,4 +303,13 @@ fn batch_length_offset(bytes: &[u8]) -> usize {
     let index_length = u64::from_le_bytes(length_bytes) as usize;
 
     8 + index_length
+}
+
+fn record_encoder_metadata_payload_offset(bytes: &[u8]) -> usize {
+    let batch_length_offset = batch_length_offset(bytes);
+    let mut length_bytes = [0_u8; 8];
+    length_bytes.copy_from_slice(&bytes[batch_length_offset..batch_length_offset + 8]);
+    let batch_length = u64::from_le_bytes(length_bytes) as usize;
+
+    batch_length_offset + 8 + batch_length + 8
 }

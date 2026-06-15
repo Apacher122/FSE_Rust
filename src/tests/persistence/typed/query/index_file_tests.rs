@@ -9,8 +9,9 @@ use crate::data::{
     record_batch_from_csv_file,
 };
 use crate::encoding::{
-    CategoricalDictionaryEncoder, ComposedRecordEncoder, FSEEncodingError,
-    FSERecordBatchEncodingError, FloatEncoder, IntegerEncoder, TimestampMillisEncoder,
+    CategoricalDictionaryEncoder, ComposedRecordEncoder, FSEEncodingError, FSEFieldEncoderMetadata,
+    FSERecordBatchEncodingError, FSERecordEncoderMetadata, FloatEncoder, IntegerEncoder,
+    TimestampMillisEncoder,
 };
 use crate::persistence::{
     FSEArchiveCompactionOperationMetadataError, FSEArchiveFileOperation,
@@ -21,10 +22,12 @@ use crate::persistence::{
     FSETypedQueryIndexArchiveFileError, FSETypedQueryIndexArchiveMaintenanceError,
     FSETypedQueryIndexArchiveSnapshot, FSETypedQueryIndexCompactionError,
     append_typed_query_index_archive_file, build_typed_query_index_archive_file,
+    build_typed_query_index_archive_file_with_encoder_metadata,
     compact_typed_query_index_archive_file, encode_archive_payload,
     load_typed_query_index_archive_file, load_typed_query_index_archive_with_tombstones,
     load_typed_row_tombstone_archive_file, maintain_typed_query_index_archive_file,
     read_typed_query_index_archive_snapshot_file, save_typed_query_index_archive_file,
+    save_typed_query_index_archive_file_with_encoder_metadata,
     save_typed_row_tombstone_archive_file, write_typed_query_index_archive_snapshot_file,
 };
 use crate::query::{
@@ -88,6 +91,25 @@ fn typed_query_index_archive_file_saves_and_loads_query_equivalent_index() {
 }
 
 #[test]
+fn typed_query_index_archive_file_saves_record_encoder_metadata() {
+    let query_index = typed_query_index_with_reverse_category_encoder();
+    let metadata = reverse_category_encoder_metadata();
+    let path = temp_archive_path("index-metadata-round-trip", ".fse");
+
+    save_typed_query_index_archive_file_with_encoder_metadata(
+        &path,
+        &query_index,
+        metadata.clone(),
+    )
+    .unwrap();
+    let snapshot = read_typed_query_index_archive_snapshot_file(&path).unwrap();
+
+    assert_eq!(snapshot.record_encoder, metadata);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn typed_query_index_archive_file_builds_index_and_writes_fse_file() {
     let schema = entity_schema();
     let mapping = entity_mapping(&schema);
@@ -107,6 +129,32 @@ fn typed_query_index_archive_file_builds_index_and_writes_fse_file() {
         loaded.query_row_ids(&plan).unwrap(),
         vec![RowId::new(100), RowId::new(103)]
     );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_query_index_archive_file_builds_with_record_encoder_metadata() {
+    let schema = entity_schema();
+    let batch = entity_batch(&schema);
+    let encoder = reverse_category_encoder(&schema);
+    let metadata = reverse_category_encoder_metadata();
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let path = temp_archive_path("build-index-with-metadata", ".fse");
+
+    let query_index = build_typed_query_index_archive_file_with_encoder_metadata(
+        &path,
+        batch,
+        &encoder,
+        metadata.clone(),
+        &builder,
+    )
+    .unwrap();
+    let snapshot = read_typed_query_index_archive_snapshot_file(&path).unwrap();
+    let loaded = load_typed_query_index_archive_file(&path).unwrap();
+
+    assert_eq!(snapshot.record_encoder, metadata);
+    assert_eq!(loaded, query_index);
 
     let _ = fs::remove_file(path);
 }
@@ -947,6 +995,15 @@ fn typed_query_index() -> TypedQueryIndex {
     TypedQueryIndex::try_build(batch, &encoder, &builder).expect("valid typed index should build")
 }
 
+fn typed_query_index_with_reverse_category_encoder() -> TypedQueryIndex {
+    let schema = entity_schema();
+    let batch = entity_batch(&schema);
+    let encoder = reverse_category_encoder(&schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+
+    TypedQueryIndex::try_build(batch, &encoder, &builder).expect("valid typed index should build")
+}
+
 fn score_and_class_plan(
     schema: &FSESchema,
     mapping: &FSESchemaDimensionMapping,
@@ -997,6 +1054,32 @@ fn entity_encoder(schema: &FSESchema) -> ComposedRecordEncoder {
             Box::new(TimestampMillisEncoder),
         ],
     )
+}
+
+fn reverse_category_encoder(schema: &FSESchema) -> ComposedRecordEncoder {
+    ComposedRecordEncoder::new(
+        schema,
+        vec![
+            Box::new(IntegerEncoder),
+            Box::new(FloatEncoder),
+            Box::new(CategoricalDictionaryEncoder::new(vec![
+                "beta".to_string(),
+                "alpha".to_string(),
+            ])),
+            Box::new(TimestampMillisEncoder),
+        ],
+    )
+}
+
+fn reverse_category_encoder_metadata() -> FSERecordEncoderMetadata {
+    FSERecordEncoderMetadata::new(vec![
+        FSEFieldEncoderMetadata::Integer,
+        FSEFieldEncoderMetadata::Float,
+        FSEFieldEncoderMetadata::CategoryDictionary {
+            categories: vec!["beta".to_string(), "alpha".to_string()],
+        },
+        FSEFieldEncoderMetadata::TimestampMillis,
+    ])
 }
 
 fn entity_batch(schema: &FSESchema) -> FSERecordBatch {

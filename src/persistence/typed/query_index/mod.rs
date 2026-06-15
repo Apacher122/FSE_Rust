@@ -19,9 +19,12 @@ pub use file::{
     FSETypedQueryIndexArchiveAppendResult, FSETypedQueryIndexArchiveCompactionError,
     FSETypedQueryIndexArchiveCompactionResult, FSETypedQueryIndexArchiveError,
     FSETypedQueryIndexArchiveFileError, append_typed_query_index_archive_file,
-    build_typed_query_index_archive_file, compact_typed_query_index_archive_file,
-    load_typed_query_index_archive_file, read_typed_query_index_archive_snapshot_file,
-    save_typed_query_index_archive_file, write_typed_query_index_archive_snapshot_file,
+    build_typed_query_index_archive_file,
+    build_typed_query_index_archive_file_with_encoder_metadata,
+    compact_typed_query_index_archive_file, load_typed_query_index_archive_file,
+    read_typed_query_index_archive_snapshot_file, save_typed_query_index_archive_file,
+    save_typed_query_index_archive_file_with_encoder_metadata,
+    write_typed_query_index_archive_snapshot_file,
 };
 pub use maintenance::{
     FSETypedQueryIndexArchiveMaintenanceError, FSETypedQueryIndexArchiveMaintenanceResult,

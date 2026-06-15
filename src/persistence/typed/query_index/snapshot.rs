@@ -5,6 +5,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::encoding::{
+    ComposedRecordEncoderFromBatchError, FSERecordEncoderMetadata, FSERecordEncoderMetadataError,
+};
 use crate::persistence::{
     FSERecordBatchArchiveSnapshot, FSERowMappedArchiveSnapshotError,
     FSERowMappedIndexArchiveSnapshot, FSETypedRecordBatchArchiveSnapshotError,
@@ -19,6 +22,12 @@ pub enum FSETypedQueryIndexArchiveSnapshotError {
 
     /// The typed record batch snapshot is invalid.
     Batch(FSETypedRecordBatchArchiveSnapshotError),
+
+    /// Record encoder metadata could not be derived from the typed record batch.
+    EncoderDerivation(ComposedRecordEncoderFromBatchError),
+
+    /// Record encoder metadata is invalid for the typed record batch schema.
+    EncoderMetadata(FSERecordEncoderMetadataError),
 
     /// The index and batch snapshots contain different row-id counts.
     RowIdCountMismatch {
@@ -44,6 +53,8 @@ impl fmt::Display for FSETypedQueryIndexArchiveSnapshotError {
         match self {
             Self::Index(error) => error.fmt(formatter),
             Self::Batch(error) => error.fmt(formatter),
+            Self::EncoderDerivation(error) => error.fmt(formatter),
+            Self::EncoderMetadata(error) => error.fmt(formatter),
             Self::RowIdCountMismatch { .. } => {
                 formatter.write_str("typed query index archive row-id counts must match")
             }
@@ -59,6 +70,8 @@ impl Error for FSETypedQueryIndexArchiveSnapshotError {
         match self {
             Self::Index(error) => Some(error),
             Self::Batch(error) => Some(error),
+            Self::EncoderDerivation(error) => Some(error),
+            Self::EncoderMetadata(error) => Some(error),
             Self::RowIdCountMismatch { .. } | Self::RowIdMismatch { .. } => None,
         }
     }
@@ -76,6 +89,18 @@ impl From<FSETypedRecordBatchArchiveSnapshotError> for FSETypedQueryIndexArchive
     }
 }
 
+impl From<ComposedRecordEncoderFromBatchError> for FSETypedQueryIndexArchiveSnapshotError {
+    fn from(error: ComposedRecordEncoderFromBatchError) -> Self {
+        Self::EncoderDerivation(error)
+    }
+}
+
+impl From<FSERecordEncoderMetadataError> for FSETypedQueryIndexArchiveSnapshotError {
+    fn from(error: FSERecordEncoderMetadataError) -> Self {
+        Self::EncoderMetadata(error)
+    }
+}
+
 /// Serializable snapshot of a typed query index.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FSETypedQueryIndexArchiveSnapshot {
@@ -84,6 +109,9 @@ pub struct FSETypedQueryIndexArchiveSnapshot {
 
     /// Typed record batch snapshot.
     pub batch: FSERecordBatchArchiveSnapshot,
+
+    /// Record encoder metadata used by the archived index.
+    pub record_encoder: FSERecordEncoderMetadata,
 }
 
 impl FSETypedQueryIndexArchiveSnapshot {
@@ -91,9 +119,20 @@ impl FSETypedQueryIndexArchiveSnapshot {
     pub fn from_typed_query_index(
         index: &TypedQueryIndex,
     ) -> Result<Self, FSETypedQueryIndexArchiveSnapshotError> {
+        let record_encoder = FSERecordEncoderMetadata::from_batch(index.batch())?;
+
+        Self::from_typed_query_index_with_encoder_metadata(index, record_encoder)
+    }
+
+    /// Creates a typed query index archive snapshot with caller supplied encoder metadata.
+    pub fn from_typed_query_index_with_encoder_metadata(
+        index: &TypedQueryIndex,
+        record_encoder: FSERecordEncoderMetadata,
+    ) -> Result<Self, FSETypedQueryIndexArchiveSnapshotError> {
         let snapshot = Self {
             index: FSERowMappedIndexArchiveSnapshot::from_row_mapped_index(index.index())?,
             batch: FSERecordBatchArchiveSnapshot::from_record_batch(index.batch()),
+            record_encoder,
         };
         snapshot.validate()?;
 
@@ -103,7 +142,8 @@ impl FSETypedQueryIndexArchiveSnapshot {
     /// Validates the typed query index archive snapshot.
     pub fn validate(&self) -> Result<(), FSETypedQueryIndexArchiveSnapshotError> {
         self.index.validate()?;
-        self.batch.validate()?;
+        let batch = self.batch.to_record_batch()?;
+        self.record_encoder.to_record_encoder(batch.schema())?;
         validate_row_identity(&self.index, &self.batch)
     }
 

@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use crate::build::FSEBuilder;
 use crate::data::FSERecordBatch;
-use crate::encoding::FSERecordEncoder;
+use crate::encoding::{FSERecordEncoder, FSERecordEncoderMetadata};
 use crate::persistence::{
     FSE_ARCHIVE_FILE_EXTENSION, FSEArchiveAppendOperationMetadata,
     FSEArchiveAppendOperationMetadataError, FSEArchiveCompactionOperationMetadata,
@@ -332,6 +332,24 @@ where
     Ok(())
 }
 
+/// Saves a typed query index and record encoder metadata to a `.fse` archive file.
+pub fn save_typed_query_index_archive_file_with_encoder_metadata<P>(
+    path: P,
+    index: &TypedQueryIndex,
+    record_encoder: FSERecordEncoderMetadata,
+) -> Result<(), FSETypedQueryIndexArchiveError>
+where
+    P: AsRef<Path>,
+{
+    let snapshot = FSETypedQueryIndexArchiveSnapshot::from_typed_query_index_with_encoder_metadata(
+        index,
+        record_encoder,
+    )?;
+    write_typed_query_index_archive_snapshot_file(path, &snapshot)?;
+
+    Ok(())
+}
+
 /// Builds and saves a typed query index to a `.fse` archive file.
 pub fn build_typed_query_index_archive_file<P>(
     path: P,
@@ -349,6 +367,28 @@ where
     let query_index = TypedQueryIndex::try_build(batch, encoder, builder)?;
 
     save_typed_query_index_archive_file(path, &query_index)?;
+
+    Ok(query_index)
+}
+
+/// Builds and saves a typed query index with record encoder metadata.
+pub fn build_typed_query_index_archive_file_with_encoder_metadata<P>(
+    path: P,
+    batch: FSERecordBatch,
+    encoder: &impl FSERecordEncoder,
+    record_encoder: FSERecordEncoderMetadata,
+    builder: &FSEBuilder,
+) -> Result<TypedQueryIndex, FSETypedQueryIndexArchiveError>
+where
+    P: AsRef<Path>,
+{
+    let path = path.as_ref();
+
+    validate_archive_file_extension(path)?;
+
+    let query_index = TypedQueryIndex::try_build(batch, encoder, builder)?;
+
+    save_typed_query_index_archive_file_with_encoder_metadata(path, &query_index, record_encoder)?;
 
     Ok(query_index)
 }
