@@ -321,6 +321,51 @@ fn typed_query_index_archive_file_appends_records_and_rebuilds_archive() {
 }
 
 #[test]
+fn typed_query_index_archive_file_append_preserves_record_encoder_metadata() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let encoder = reverse_category_encoder(&schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let query_index = typed_query_index_with_reverse_category_encoder();
+    let metadata = reverse_category_encoder_metadata();
+    let appended = appended_entity_batch(&schema);
+    let path = temp_archive_path("index-append-metadata", ".fse");
+
+    save_typed_query_index_archive_file_with_encoder_metadata(
+        &path,
+        &query_index,
+        metadata.clone(),
+    )
+    .unwrap();
+    let result =
+        append_typed_query_index_archive_file(&path, &appended, &encoder, &builder).unwrap();
+    let loaded = load_typed_query_index_archive_file_with_encoder_metadata(&path).unwrap();
+    let plan = TypedQueryPlanBuilder::new(&schema, &mapping)
+        .try_with_record_encoder_metadata(&loaded.record_encoder_metadata)
+        .unwrap()
+        .with_predicate(FSEPredicate::equals(
+            FSEPredicateField::name("class"),
+            FSEValue::Category("alpha".to_string()),
+        ))
+        .build()
+        .unwrap();
+
+    assert_eq!(loaded.query_index, result.query_index);
+    assert_eq!(loaded.record_encoder_metadata, metadata);
+    assert_eq!(
+        loaded.query_index.query_row_ids(&plan).unwrap(),
+        vec![
+            RowId::new(100),
+            RowId::new(102),
+            RowId::new(103),
+            RowId::new(104)
+        ]
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn typed_query_index_archive_file_reports_duplicate_row_id_append() {
     let schema = entity_schema();
     let encoder = entity_encoder(&schema);
@@ -503,6 +548,53 @@ fn typed_query_index_archive_file_compacts_tombstoned_archive_and_clears_tombsto
     );
     assert_eq!(tombstones, Vec::new());
     assert_eq!(after_matches, expected_matches);
+
+    let _ = fs::remove_file(query_index_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
+fn typed_query_index_archive_file_compaction_preserves_record_encoder_metadata() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let encoder = reverse_category_encoder(&schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let query_index = typed_query_index_with_reverse_category_encoder();
+    let metadata = reverse_category_encoder_metadata();
+    let query_index_path = temp_archive_path("compact-index-metadata", ".fse");
+    let tombstone_path = temp_archive_path("compact-tombstones-metadata", ".fse");
+
+    save_typed_query_index_archive_file_with_encoder_metadata(
+        &query_index_path,
+        &query_index,
+        metadata.clone(),
+    )
+    .unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[RowId::new(100)]).unwrap();
+
+    compact_typed_query_index_archive_file(&query_index_path, &tombstone_path, &encoder, &builder)
+        .unwrap();
+    let loaded =
+        load_typed_query_index_archive_file_with_encoder_metadata(&query_index_path).unwrap();
+    let plan = TypedQueryPlanBuilder::new(&schema, &mapping)
+        .try_with_record_encoder_metadata(&loaded.record_encoder_metadata)
+        .unwrap()
+        .with_predicate(FSEPredicate::equals(
+            FSEPredicateField::name("class"),
+            FSEValue::Category("alpha".to_string()),
+        ))
+        .build()
+        .unwrap();
+
+    assert_eq!(loaded.record_encoder_metadata, metadata);
+    assert_eq!(
+        loaded.query_index.batch().row_ids(),
+        &[RowId::new(101), RowId::new(102), RowId::new(103)]
+    );
+    assert_eq!(
+        loaded.query_index.query_row_ids(&plan).unwrap(),
+        vec![RowId::new(102), RowId::new(103)]
+    );
 
     let _ = fs::remove_file(query_index_path);
     let _ = fs::remove_file(tombstone_path);
@@ -843,6 +935,69 @@ fn typed_query_index_archive_file_maintenance_rebuilds_append_and_compaction_wor
     assert_eq!(
         load_typed_row_tombstone_archive_file(&tombstone_path).unwrap(),
         Vec::new()
+    );
+
+    let _ = fs::remove_file(query_index_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
+fn typed_query_index_archive_file_maintenance_rebuild_preserves_record_encoder_metadata() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let encoder = reverse_category_encoder(&schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let policy = FSEArchiveMaintenancePolicy::try_new(10, 1, 9_000).unwrap();
+    let query_index = typed_query_index_with_reverse_category_encoder();
+    let metadata = reverse_category_encoder_metadata();
+    let appended = appended_entity_batch(&schema);
+    let query_index_path = temp_archive_path("maintenance-rebuild-index-metadata", ".fse");
+    let tombstone_path = temp_archive_path("maintenance-rebuild-tombstones-metadata", ".fse");
+
+    save_typed_query_index_archive_file_with_encoder_metadata(
+        &query_index_path,
+        &query_index,
+        metadata.clone(),
+    )
+    .unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[RowId::new(100)]).unwrap();
+
+    let result = maintain_typed_query_index_archive_file(
+        &query_index_path,
+        &tombstone_path,
+        Some(&appended),
+        &encoder,
+        &builder,
+        &policy,
+    )
+    .unwrap();
+    let loaded =
+        load_typed_query_index_archive_file_with_encoder_metadata(&query_index_path).unwrap();
+    let plan = TypedQueryPlanBuilder::new(&schema, &mapping)
+        .try_with_record_encoder_metadata(&loaded.record_encoder_metadata)
+        .unwrap()
+        .with_predicate(FSEPredicate::equals(
+            FSEPredicateField::name("class"),
+            FSEValue::Category("alpha".to_string()),
+        ))
+        .build()
+        .unwrap();
+
+    assert_eq!(loaded.query_index, result.query_index);
+    assert_eq!(loaded.record_encoder_metadata, metadata);
+    assert_eq!(
+        loaded.query_index.batch().row_ids(),
+        &[
+            RowId::new(101),
+            RowId::new(102),
+            RowId::new(103),
+            RowId::new(104),
+            RowId::new(105),
+        ]
+    );
+    assert_eq!(
+        loaded.query_index.query_row_ids(&plan).unwrap(),
+        vec![RowId::new(102), RowId::new(103), RowId::new(104)]
     );
 
     let _ = fs::remove_file(query_index_path);

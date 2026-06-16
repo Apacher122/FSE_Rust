@@ -19,7 +19,8 @@ use crate::persistence::{
 use crate::query::{TypedQueryIndex, TypedQueryIndexAppendError, TypedQueryIndexBuildError};
 
 use super::super::tombstone::{
-    FSETypedRowTombstoneArchiveError, save_typed_row_tombstone_archive_file,
+    FSETypedRowTombstoneArchiveError, load_typed_row_tombstone_archive_file,
+    save_typed_row_tombstone_archive_file,
 };
 use super::{
     FSETombstonedTypedQueryIndex, FSETombstonedTypedQueryIndexArchiveError,
@@ -27,7 +28,6 @@ use super::{
     FSETypedQueryIndexArchiveSnapshotError, FSETypedQueryIndexCompactionError,
     FSETypedQueryIndexCompactionResult, compact_tombstoned_typed_query_index,
     decode_typed_query_index_archive_snapshot, encode_typed_query_index_archive_snapshot,
-    load_typed_query_index_archive_with_tombstones,
 };
 
 /// Error returned when typed query index archive file access fails.
@@ -442,9 +442,16 @@ where
     P: AsRef<Path>,
 {
     let path = path.as_ref();
-    let base = load_typed_query_index_archive_file(path)?;
+    let base = load_typed_query_index_archive_file_with_encoder_metadata(path)?;
 
-    append_loaded_typed_query_index_archive_file(path, &base, appended, encoder, builder)
+    append_loaded_typed_query_index_archive_file(
+        path,
+        &base.query_index,
+        base.record_encoder_metadata,
+        appended,
+        encoder,
+        builder,
+    )
 }
 
 /// Compacts a typed query index `.fse` archive file and clears its tombstone archive.
@@ -460,14 +467,19 @@ where
 {
     let query_index_path = query_index_path.as_ref();
     let tombstone_path = tombstone_path.as_ref();
-    let tombstoned =
-        load_typed_query_index_archive_with_tombstones(query_index_path, tombstone_path)
-            .map_err(FSETypedQueryIndexArchiveCompactionError::Load)?;
+    let loaded = load_typed_query_index_archive_file_with_encoder_metadata(query_index_path)
+        .map_err(FSETombstonedTypedQueryIndexArchiveError::QueryIndex)
+        .map_err(FSETypedQueryIndexArchiveCompactionError::Load)?;
+    let row_ids = load_typed_row_tombstone_archive_file(tombstone_path)
+        .map_err(FSETombstonedTypedQueryIndexArchiveError::Tombstones)
+        .map_err(FSETypedQueryIndexArchiveCompactionError::Load)?;
+    let tombstoned = FSETombstonedTypedQueryIndex::from_row_ids(loaded.query_index, row_ids);
 
     compact_loaded_typed_query_index_archive_file(
         query_index_path,
         tombstone_path,
         tombstoned,
+        loaded.record_encoder_metadata,
         encoder,
         builder,
     )
@@ -476,6 +488,7 @@ where
 fn append_loaded_typed_query_index_archive_file(
     path: &Path,
     base: &TypedQueryIndex,
+    record_encoder_metadata: FSERecordEncoderMetadata,
     appended: &FSERecordBatch,
     encoder: &impl FSERecordEncoder,
     builder: &FSEBuilder,
@@ -488,7 +501,11 @@ fn append_loaded_typed_query_index_archive_file(
     )?;
     let rebuild_plan = FSEArchiveRebuildPlanMetadata::for_append(append_metadata)?;
 
-    save_typed_query_index_archive_file(path, &query_index)?;
+    save_typed_query_index_archive_file_with_encoder_metadata(
+        path,
+        &query_index,
+        record_encoder_metadata,
+    )?;
 
     Ok(FSETypedQueryIndexArchiveAppendResult {
         append_metadata,
@@ -501,6 +518,7 @@ fn compact_loaded_typed_query_index_archive_file(
     query_index_path: &Path,
     tombstone_path: &Path,
     tombstoned: FSETombstonedTypedQueryIndex,
+    record_encoder_metadata: FSERecordEncoderMetadata,
     encoder: &impl FSERecordEncoder,
     builder: &FSEBuilder,
 ) -> Result<FSETypedQueryIndexArchiveCompactionResult, FSETypedQueryIndexArchiveCompactionError> {
@@ -515,8 +533,12 @@ fn compact_loaded_typed_query_index_archive_file(
     )?;
     let rebuild_plan = FSEArchiveRebuildPlanMetadata::for_compaction(compaction_metadata)?;
 
-    save_typed_query_index_archive_file(query_index_path, &compaction.query_index)
-        .map_err(FSETypedQueryIndexArchiveCompactionError::SaveIndex)?;
+    save_typed_query_index_archive_file_with_encoder_metadata(
+        query_index_path,
+        &compaction.query_index,
+        record_encoder_metadata,
+    )
+    .map_err(FSETypedQueryIndexArchiveCompactionError::SaveIndex)?;
     save_typed_row_tombstone_archive_file(tombstone_path, &[])
         .map_err(FSETypedQueryIndexArchiveCompactionError::SaveTombstones)?;
 
