@@ -19,6 +19,7 @@ use crate::persistence::{
     FSETypedQueryIndexArchiveMaintenanceResult, append_typed_query_index_archive_file,
     build_typed_query_index_archive_file,
     build_typed_query_index_archive_file_with_encoder_metadata,
+    load_typed_query_index_archive_file_with_encoder_metadata,
     maintain_typed_query_index_archive_file,
 };
 use crate::query::TypedQueryIndex;
@@ -29,6 +30,9 @@ pub enum FSECsvArchiveImportError {
     /// Reading or parsing the CSV file failed.
     Csv(FSECsvFileImportError),
 
+    /// Stored record encoder metadata could not rebuild a runtime encoder.
+    EncoderMetadata(FSERecordEncoderMetadataError),
+
     /// Building, appending, or writing the typed query index archive failed.
     Archive(FSETypedQueryIndexArchiveError),
 }
@@ -37,6 +41,7 @@ impl fmt::Display for FSECsvArchiveImportError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Csv(error) => error.fmt(formatter),
+            Self::EncoderMetadata(error) => error.fmt(formatter),
             Self::Archive(error) => error.fmt(formatter),
         }
     }
@@ -46,6 +51,7 @@ impl Error for FSECsvArchiveImportError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Csv(error) => Some(error),
+            Self::EncoderMetadata(error) => Some(error),
             Self::Archive(error) => Some(error),
         }
     }
@@ -54,6 +60,12 @@ impl Error for FSECsvArchiveImportError {
 impl From<FSECsvFileImportError> for FSECsvArchiveImportError {
     fn from(error: FSECsvFileImportError) -> Self {
         Self::Csv(error)
+    }
+}
+
+impl From<FSERecordEncoderMetadataError> for FSECsvArchiveImportError {
+    fn from(error: FSERecordEncoderMetadataError) -> Self {
+        Self::EncoderMetadata(error)
     }
 }
 
@@ -264,6 +276,34 @@ where
         archive_path,
         &batch,
         encoder,
+        builder,
+    )?)
+}
+
+/// Appends CSV records using schema and encoder metadata stored in the archive.
+///
+/// The archive supplies the schema used for CSV parsing and the record encoder
+/// metadata used for index rebuilds.
+pub fn append_typed_query_index_archive_from_csv_file_with_archive_metadata<C, A>(
+    csv_path: C,
+    archive_path: A,
+    options: &FSECsvImportOptions,
+    builder: &FSEBuilder,
+) -> Result<FSETypedQueryIndexArchiveAppendResult, FSECsvArchiveImportError>
+where
+    C: AsRef<Path>,
+    A: AsRef<Path>,
+{
+    let archive_path = archive_path.as_ref();
+    let loaded = load_typed_query_index_archive_file_with_encoder_metadata(archive_path)?;
+    let schema = loaded.query_index.batch().schema();
+    let batch = record_batch_from_csv_file(csv_path, schema, options)?;
+    let encoder = loaded.record_encoder_metadata.to_record_encoder(schema)?;
+
+    Ok(append_typed_query_index_archive_file(
+        archive_path,
+        &batch,
+        &encoder,
         builder,
     )?)
 }

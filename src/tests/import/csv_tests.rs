@@ -15,6 +15,7 @@ use crate::encoding::{
 use crate::import::{
     FSECsvArchiveImportError, FSECsvArchiveMaintenanceImportError,
     FSECsvInferredArchiveImportError, append_typed_query_index_archive_from_csv_file,
+    append_typed_query_index_archive_from_csv_file_with_archive_metadata,
     build_typed_query_index_archive_from_csv_file,
     build_typed_query_index_archive_from_inferred_csv_file,
     maintain_typed_query_index_archive_from_csv_file,
@@ -244,6 +245,73 @@ fn csv_archive_import_appends_csv_records_to_fse_file() {
     assert!(result.rebuild_plan.requires_full_archive_rebuild);
     assert_eq!(result.query_index, loaded);
     assert_eq!(loaded.batch().len(), 6);
+    assert_eq!(
+        matches,
+        vec![RowId::new(100), RowId::new(103), RowId::new(104)]
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(append_csv_path);
+    let _ = fs::remove_file(archive_path);
+}
+
+#[test]
+fn csv_archive_import_appends_csv_records_using_archive_metadata() {
+    let expected_schema = entity_schema();
+    let mapping = FSESchemaDimensionMapping::identity(&expected_schema);
+    let builder = builder();
+    let csv_path = temp_csv_path("archive-metadata-append-base");
+    let append_csv_path = temp_csv_path("archive-metadata-append-records");
+    let archive_path = temp_archive_path("archive-metadata-append-records", ".fse");
+    let schema_options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("class", FSEFieldType::Category)
+        .with_field_type("observed_at", FSEFieldType::TimestampMillis);
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+    fs::write(&append_csv_path, appended_entity_csv()).unwrap();
+
+    let imported = build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &builder,
+    )
+    .unwrap();
+
+    let result = append_typed_query_index_archive_from_csv_file_with_archive_metadata(
+        &append_csv_path,
+        &archive_path,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &builder,
+    )
+    .unwrap();
+    let loaded = load_typed_query_index_archive_file_with_encoder_metadata(&archive_path).unwrap();
+    let plan = TypedQueryPlanBuilder::new(&expected_schema, &mapping)
+        .try_with_record_encoder_metadata(&loaded.record_encoder_metadata)
+        .unwrap()
+        .with_predicate(FSEPredicate::range(
+            FSEPredicateField::name("score"),
+            FSEValue::Float(10.0),
+            FSEValue::Float(20.0),
+        ))
+        .with_predicate(FSEPredicate::equals(
+            FSEPredicateField::name("class"),
+            FSEValue::Category("alpha".to_string()),
+        ))
+        .build()
+        .unwrap();
+    let mut matches = loaded.query_index.query_row_ids(&plan).unwrap();
+    matches.sort();
+
+    assert_eq!(result.append_metadata.base_record_count, 4);
+    assert_eq!(result.append_metadata.appended_record_count, 2);
+    assert_eq!(result.append_metadata.resulting_record_count, 6);
+    assert_eq!(result.query_index, loaded.query_index);
+    assert_eq!(
+        loaded.record_encoder_metadata.fields(),
+        imported.record_encoder_metadata.fields()
+    );
     assert_eq!(
         matches,
         vec![RowId::new(100), RowId::new(103), RowId::new(104)]
