@@ -343,6 +343,40 @@ pub fn record_batch_from_csv(
     )?)
 }
 
+/// Imports row identifiers from CSV text.
+///
+/// The first CSV record is treated as the header. Row identifiers are either
+/// generated or read from the configured row-id column.
+pub fn row_ids_from_csv(
+    input: &str,
+    options: &FSECsvImportOptions,
+) -> Result<Vec<RowId>, FSECsvImportError> {
+    let records = parse_csv_records(input)?;
+    let (header, data_records) = records.split_first().ok_or(FSECsvImportError::EmptyInput)?;
+    let header_index = header_index(header);
+    let row_id_index = row_id_index(options, &header_index)?;
+    let mut row_ids = Vec::with_capacity(data_records.len());
+
+    for (record_offset, csv_record) in data_records.iter().enumerate() {
+        if csv_record.fields.len() != header.fields.len() {
+            return Err(FSECsvImportError::RowWidthMismatch {
+                line: csv_record.line,
+                expected: header.fields.len(),
+                actual: csv_record.fields.len(),
+            });
+        }
+
+        row_ids.push(csv_row_id(
+            csv_record,
+            row_id_index,
+            options,
+            record_offset,
+        )?);
+    }
+
+    Ok(row_ids)
+}
+
 /// Infers schema metadata from CSV text.
 ///
 /// The first CSV record is treated as the header. Field types are inferred from
@@ -419,6 +453,22 @@ pub fn record_batch_from_csv_file(
     })?;
 
     Ok(record_batch_from_csv(&input, schema, options)?)
+}
+
+/// Imports row identifiers from a UTF-8 CSV file.
+///
+/// The file contents are parsed with [`row_ids_from_csv`].
+pub fn row_ids_from_csv_file(
+    path: impl AsRef<Path>,
+    options: &FSECsvImportOptions,
+) -> Result<Vec<RowId>, FSECsvFileImportError> {
+    let path = path.as_ref();
+    let input = fs::read_to_string(path).map_err(|source| FSECsvFileImportError::Read {
+        path: path.to_path_buf(),
+        source,
+    })?;
+
+    Ok(row_ids_from_csv(&input, options)?)
 }
 
 /// Infers schema metadata from a UTF-8 CSV file.

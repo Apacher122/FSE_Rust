@@ -7,7 +7,7 @@ use std::path::Path;
 use crate::build::FSEBuilder;
 use crate::data::{
     FSECsvFileImportError, FSECsvImportOptions, FSECsvSchemaInferenceOptions, FSESchema,
-    infer_schema_from_csv_file_with_options, record_batch_from_csv_file,
+    infer_schema_from_csv_file_with_options, record_batch_from_csv_file, row_ids_from_csv_file,
 };
 use crate::encoding::{
     ComposedRecordEncoderFromBatchError, FSERecordEncoder, FSERecordEncoderMetadata,
@@ -16,8 +16,9 @@ use crate::encoding::{
 use crate::persistence::{
     FSEArchiveMaintenancePolicy, FSETypedQueryIndexArchiveAppendResult,
     FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveMaintenanceError,
-    FSETypedQueryIndexArchiveMaintenanceResult, append_typed_query_index_archive_file,
-    build_typed_query_index_archive_file,
+    FSETypedQueryIndexArchiveMaintenanceResult, FSETypedRowTombstoneArchiveAppendResult,
+    FSETypedRowTombstoneArchiveError, append_typed_query_index_archive_file,
+    append_typed_row_tombstone_archive_file, build_typed_query_index_archive_file,
     build_typed_query_index_archive_file_with_encoder_metadata,
     load_typed_query_index_archive_file_with_encoder_metadata,
     maintain_typed_query_index_archive_file,
@@ -72,6 +73,46 @@ impl From<FSERecordEncoderMetadataError> for FSECsvArchiveImportError {
 impl From<FSETypedQueryIndexArchiveError> for FSECsvArchiveImportError {
     fn from(error: FSETypedQueryIndexArchiveError) -> Self {
         Self::Archive(error)
+    }
+}
+
+/// Error returned when CSV tombstone import fails.
+#[derive(Debug)]
+pub enum FSECsvTombstoneImportError {
+    /// Reading or parsing the CSV file failed.
+    Csv(FSECsvFileImportError),
+
+    /// Appending row tombstones to the archive failed.
+    Tombstones(FSETypedRowTombstoneArchiveError),
+}
+
+impl fmt::Display for FSECsvTombstoneImportError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Csv(error) => error.fmt(formatter),
+            Self::Tombstones(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for FSECsvTombstoneImportError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Csv(error) => Some(error),
+            Self::Tombstones(error) => Some(error),
+        }
+    }
+}
+
+impl From<FSECsvFileImportError> for FSECsvTombstoneImportError {
+    fn from(error: FSECsvFileImportError) -> Self {
+        Self::Csv(error)
+    }
+}
+
+impl From<FSETypedRowTombstoneArchiveError> for FSECsvTombstoneImportError {
+    fn from(error: FSETypedRowTombstoneArchiveError) -> Self {
+        Self::Tombstones(error)
     }
 }
 
@@ -316,6 +357,27 @@ where
         &batch,
         &encoder,
         builder,
+    )?)
+}
+
+/// Appends row tombstones from a CSV file to a typed row tombstone archive.
+///
+/// The CSV file is parsed with the caller supplied row-id options. Parsed row
+/// identifiers are appended to the tombstone archive.
+pub fn append_typed_row_tombstone_archive_from_csv_file<C, T>(
+    csv_path: C,
+    tombstone_path: T,
+    options: &FSECsvImportOptions,
+) -> Result<FSETypedRowTombstoneArchiveAppendResult, FSECsvTombstoneImportError>
+where
+    C: AsRef<Path>,
+    T: AsRef<Path>,
+{
+    let row_ids = row_ids_from_csv_file(csv_path, options)?;
+
+    Ok(append_typed_row_tombstone_archive_file(
+        tombstone_path,
+        &row_ids,
     )?)
 }
 

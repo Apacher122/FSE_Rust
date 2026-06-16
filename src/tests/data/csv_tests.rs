@@ -7,6 +7,7 @@ use crate::data::{
     FSEField, FSEFieldType, FSERecordError, FSESchema, FSESchemaError, FSEValue, RowId,
     infer_schema_from_csv, infer_schema_from_csv_file, infer_schema_from_csv_file_with_options,
     infer_schema_from_csv_with_options, record_batch_from_csv, record_batch_from_csv_file,
+    row_ids_from_csv, row_ids_from_csv_file,
 };
 
 #[test]
@@ -205,6 +206,59 @@ case_id,category,latitude,closed,created_at,status
     assert_eq!(
         batch.records()[0].value_named(&schema, "case_id"),
         Some(&FSEValue::Integer(42))
+    );
+}
+
+#[test]
+fn csv_row_id_import_uses_configured_column() {
+    let csv = "\
+case_id,reason
+42,duplicate
+105,withdrawn
+";
+    let options = FSECsvImportOptions::new().with_row_id_column("case_id");
+
+    let row_ids = row_ids_from_csv(csv, &options).expect("row-id CSV should import");
+
+    assert_eq!(row_ids, vec![RowId::new(42), RowId::new(105)]);
+}
+
+#[test]
+fn csv_row_id_file_import_reads_row_ids_from_path() {
+    let path = temp_csv_path("csv_row_id_file_import_reads_row_ids_from_path");
+    let csv = "\
+case_id,reason
+42,duplicate
+105,withdrawn
+";
+    let options = FSECsvImportOptions::new().with_row_id_column("case_id");
+
+    fs::write(&path, csv).expect("test CSV file should be written");
+
+    let row_ids = row_ids_from_csv_file(&path, &options).expect("CSV row ids should import");
+
+    assert_eq!(row_ids, vec![RowId::new(42), RowId::new(105)]);
+
+    fs::remove_file(path).expect("test CSV file should be removed");
+}
+
+#[test]
+fn csv_row_id_import_reports_invalid_row_id() {
+    let csv = "\
+case_id,reason
+not-a-row-id,duplicate
+";
+    let options = FSECsvImportOptions::new().with_row_id_column("case_id");
+
+    let error = row_ids_from_csv(csv, &options).expect_err("invalid row id should be rejected");
+
+    assert_eq!(
+        error,
+        FSECsvImportError::InvalidRowId {
+            line: 2,
+            column: "case_id".to_string(),
+            value: "not-a-row-id".to_string(),
+        }
     );
 }
 
