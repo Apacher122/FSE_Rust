@@ -131,6 +131,9 @@ pub struct FSECsvInferredArchiveImportResult {
     /// Schema inferred from the CSV header and values.
     pub schema: FSESchema,
 
+    /// Record encoder metadata derived from the parsed record batch.
+    pub record_encoder_metadata: FSERecordEncoderMetadata,
+
     /// Query index written to the archive.
     pub query_index: TypedQueryIndex,
 }
@@ -221,18 +224,19 @@ where
     let archive_path = archive_path.as_ref();
     let schema = infer_schema_from_csv_file_with_options(csv_path, schema_options)?;
     let batch = record_batch_from_csv_file(csv_path, &schema, import_options)?;
-    let record_encoder = FSERecordEncoderMetadata::from_batch(&batch)?;
-    let encoder = record_encoder.to_record_encoder(&schema)?;
+    let record_encoder_metadata = FSERecordEncoderMetadata::from_batch(&batch)?;
+    let encoder = record_encoder_metadata.to_record_encoder(&schema)?;
     let query_index = build_typed_query_index_archive_file_with_encoder_metadata(
         archive_path,
         batch,
         &encoder,
-        record_encoder,
+        record_encoder_metadata.clone(),
         builder,
     )?;
 
     Ok(FSECsvInferredArchiveImportResult {
         schema,
+        record_encoder_metadata,
         query_index,
     })
 }

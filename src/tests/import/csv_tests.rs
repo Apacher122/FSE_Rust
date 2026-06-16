@@ -106,7 +106,7 @@ fn csv_archive_import_builds_queryable_fse_file_from_inferred_schema() {
     assert_eq!(result.schema, expected_schema);
     assert_eq!(loaded.query_index, result.query_index);
     assert_eq!(
-        loaded.record_encoder_metadata.fields(),
+        result.record_encoder_metadata.fields(),
         &[
             FSEFieldEncoderMetadata::Integer,
             FSEFieldEncoderMetadata::Float,
@@ -115,6 +115,10 @@ fn csv_archive_import_builds_queryable_fse_file_from_inferred_schema() {
             },
             FSEFieldEncoderMetadata::TimestampMillis,
         ]
+    );
+    assert_eq!(
+        loaded.record_encoder_metadata.fields(),
+        result.record_encoder_metadata.fields()
     );
     assert_eq!(
         loaded.query_index.query_row_ids(&plan).unwrap(),
