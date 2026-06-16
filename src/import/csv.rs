@@ -156,6 +156,9 @@ pub enum FSECsvArchiveMaintenanceImportError {
     /// Reading or parsing the CSV file failed.
     Csv(FSECsvFileImportError),
 
+    /// Stored record encoder metadata could not rebuild a runtime encoder.
+    EncoderMetadata(FSERecordEncoderMetadataError),
+
     /// Typed query index archive maintenance failed.
     Maintenance(FSETypedQueryIndexArchiveMaintenanceError),
 }
@@ -164,6 +167,7 @@ impl fmt::Display for FSECsvArchiveMaintenanceImportError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Csv(error) => error.fmt(formatter),
+            Self::EncoderMetadata(error) => error.fmt(formatter),
             Self::Maintenance(error) => error.fmt(formatter),
         }
     }
@@ -173,6 +177,7 @@ impl Error for FSECsvArchiveMaintenanceImportError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Csv(error) => Some(error),
+            Self::EncoderMetadata(error) => Some(error),
             Self::Maintenance(error) => Some(error),
         }
     }
@@ -181,6 +186,12 @@ impl Error for FSECsvArchiveMaintenanceImportError {
 impl From<FSECsvFileImportError> for FSECsvArchiveMaintenanceImportError {
     fn from(error: FSECsvFileImportError) -> Self {
         Self::Csv(error)
+    }
+}
+
+impl From<FSERecordEncoderMetadataError> for FSECsvArchiveMaintenanceImportError {
+    fn from(error: FSERecordEncoderMetadataError) -> Self {
+        Self::EncoderMetadata(error)
     }
 }
 
@@ -334,6 +345,40 @@ where
         tombstone_path,
         Some(&batch),
         encoder,
+        builder,
+        policy,
+    )?)
+}
+
+/// Applies archive maintenance using schema and encoder metadata stored in the archive.
+///
+/// The archive supplies the schema used for CSV parsing and the record encoder
+/// metadata used for maintenance rebuilds.
+pub fn maintain_typed_query_index_archive_from_csv_file_with_archive_metadata<C, A, T>(
+    csv_path: C,
+    archive_path: A,
+    tombstone_path: T,
+    options: &FSECsvImportOptions,
+    builder: &FSEBuilder,
+    policy: &FSEArchiveMaintenancePolicy,
+) -> Result<FSETypedQueryIndexArchiveMaintenanceResult, FSECsvArchiveMaintenanceImportError>
+where
+    C: AsRef<Path>,
+    A: AsRef<Path>,
+    T: AsRef<Path>,
+{
+    let archive_path = archive_path.as_ref();
+    let loaded = load_typed_query_index_archive_file_with_encoder_metadata(archive_path)
+        .map_err(FSETypedQueryIndexArchiveMaintenanceError::LoadIndex)?;
+    let schema = loaded.query_index.batch().schema();
+    let batch = record_batch_from_csv_file(csv_path, schema, options)?;
+    let encoder = loaded.record_encoder_metadata.to_record_encoder(schema)?;
+
+    Ok(maintain_typed_query_index_archive_file(
+        archive_path,
+        tombstone_path,
+        Some(&batch),
+        &encoder,
         builder,
         policy,
     )?)

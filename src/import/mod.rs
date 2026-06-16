@@ -13,4 +13,5 @@ pub use csv::{
     build_typed_query_index_archive_from_csv_file,
     build_typed_query_index_archive_from_inferred_csv_file,
     maintain_typed_query_index_archive_from_csv_file,
+    maintain_typed_query_index_archive_from_csv_file_with_archive_metadata,
 };
