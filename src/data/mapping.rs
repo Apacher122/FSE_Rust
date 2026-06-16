@@ -90,6 +90,15 @@ pub struct FSESchemaDimensionMapping {
 }
 
 impl FSESchemaDimensionMapping {
+    /// Creates a mapping from each schema field to the coordinate dimension with the same index.
+    pub fn identity(schema: &FSESchema) -> Self {
+        let mappings = (0..schema.len())
+            .map(|index| FSEDimensionMapping::new(index, index))
+            .collect();
+
+        Self::new(schema, mappings)
+    }
+
     /// Creates dimensional mapping metadata.
     ///
     /// # Panics

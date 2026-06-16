@@ -24,8 +24,8 @@ use crate::persistence::{
     FSEArchiveMaintenancePolicy, FSEArchiveMaintenanceReason, FSEArchivePayloadKind,
     FSEArchiveRebuildOperationMetadata, FSEArchiveRebuildReason, FSETypedQueryIndexArchiveError,
     FSETypedQueryIndexArchiveFileError, FSETypedQueryIndexArchiveMaintenanceError,
-    load_typed_query_index_archive_file, load_typed_row_tombstone_archive_file,
-    read_typed_query_index_archive_snapshot_file, save_typed_row_tombstone_archive_file,
+    load_typed_query_index_archive_file, load_typed_query_index_archive_file_with_encoder_metadata,
+    load_typed_row_tombstone_archive_file, save_typed_row_tombstone_archive_file,
 };
 use crate::query::{
     FSEPredicate, FSEPredicateField, TypedQueryIndexAppendError, TypedQueryPlanBuilder,
@@ -68,7 +68,7 @@ fn csv_archive_import_builds_queryable_fse_file() {
 #[test]
 fn csv_archive_import_builds_queryable_fse_file_from_inferred_schema() {
     let expected_schema = entity_schema();
-    let mapping = entity_mapping(&expected_schema);
+    let mapping = FSESchemaDimensionMapping::identity(&expected_schema);
     let builder = builder();
     let csv_path = temp_csv_path("queryable-inferred");
     let archive_path = temp_archive_path("queryable-inferred", ".fse");
@@ -86,15 +86,27 @@ fn csv_archive_import_builds_queryable_fse_file_from_inferred_schema() {
         &builder,
     )
     .unwrap();
-    let loaded = load_typed_query_index_archive_file(&archive_path).unwrap();
-    let snapshot = read_typed_query_index_archive_snapshot_file(&archive_path).unwrap();
-    let plan = score_and_class_plan(&expected_schema, &mapping);
+    let loaded = load_typed_query_index_archive_file_with_encoder_metadata(&archive_path).unwrap();
+    let plan = TypedQueryPlanBuilder::new(&expected_schema, &mapping)
+        .try_with_record_encoder_metadata(&loaded.record_encoder_metadata)
+        .unwrap()
+        .with_predicate(FSEPredicate::range(
+            FSEPredicateField::name("score"),
+            FSEValue::Float(10.0),
+            FSEValue::Float(20.0),
+        ))
+        .with_predicate(FSEPredicate::equals(
+            FSEPredicateField::name("class"),
+            FSEValue::Category("alpha".to_string()),
+        ))
+        .build()
+        .unwrap();
 
     assert!(archive_path.exists());
     assert_eq!(result.schema, expected_schema);
-    assert_eq!(loaded, result.query_index);
+    assert_eq!(loaded.query_index, result.query_index);
     assert_eq!(
-        snapshot.record_encoder.fields(),
+        loaded.record_encoder_metadata.fields(),
         &[
             FSEFieldEncoderMetadata::Integer,
             FSEFieldEncoderMetadata::Float,
@@ -105,7 +117,7 @@ fn csv_archive_import_builds_queryable_fse_file_from_inferred_schema() {
         ]
     );
     assert_eq!(
-        loaded.query_row_ids(&plan).unwrap(),
+        loaded.query_index.query_row_ids(&plan).unwrap(),
         vec![RowId::new(100), RowId::new(103)]
     );
 

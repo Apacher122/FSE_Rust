@@ -49,6 +49,26 @@ fn schema_dimension_mapping_allows_field_to_expand_across_dimensions() {
 }
 
 #[test]
+fn schema_dimension_mapping_identity_maps_fields_to_matching_dimensions() {
+    let schema = crime_schema();
+    let mapping = FSESchemaDimensionMapping::identity(&schema);
+
+    assert_eq!(
+        mapping.mappings(),
+        &[
+            FSEDimensionMapping::new(0, 0),
+            FSEDimensionMapping::new(1, 1),
+            FSEDimensionMapping::new(2, 2),
+            FSEDimensionMapping::new(3, 3),
+        ]
+    );
+    assert_eq!(
+        mapping.mapping_for_dimension(2),
+        Some(&FSEDimensionMapping::new(2, 2))
+    );
+}
+
+#[test]
 fn checked_schema_dimension_mapping_reports_empty_mappings() {
     let schema = crime_schema();
 
