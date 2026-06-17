@@ -13,14 +13,14 @@ use crate::encoding::{
     FSEFieldEncoderMetadata, FloatEncoder, IntegerEncoder, TimestampMillisEncoder,
 };
 use crate::import::{
-    FSECsvArchiveImportError, FSECsvArchiveMaintenanceImportError,
+    FSECsvArchiveImportError, FSECsvArchiveMaintenanceImportError, FSECsvArchiveQueryContextError,
     FSECsvInferredArchiveImportError, FSECsvTombstoneImportError,
     FSECsvTombstoneMaintenanceImportError, append_typed_query_index_archive_from_csv_file,
     append_typed_query_index_archive_from_csv_file_with_archive_metadata,
     append_typed_row_tombstone_archive_from_csv_file,
     build_typed_query_index_archive_from_csv_file,
     build_typed_query_index_archive_from_inferred_csv_file,
-    maintain_typed_query_index_archive_from_csv_file,
+    load_csv_typed_query_index_archive_context, maintain_typed_query_index_archive_from_csv_file,
     maintain_typed_query_index_archive_from_csv_file_with_archive_metadata,
     maintain_typed_query_index_archive_from_csv_tombstone_file,
 };
@@ -134,6 +134,76 @@ fn csv_archive_import_builds_queryable_fse_file_from_inferred_schema() {
 
     let _ = fs::remove_file(csv_path);
     let _ = fs::remove_file(archive_path);
+}
+
+#[test]
+fn csv_archive_query_context_loads_plan_builder_from_fse_file() {
+    let expected_schema = entity_schema();
+    let builder = builder();
+    let csv_path = temp_csv_path("query-context");
+    let archive_path = temp_archive_path("query-context", ".fse");
+    let schema_options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("class", FSEFieldType::Category)
+        .with_field_type("observed_at", FSEFieldType::TimestampMillis);
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+
+    let imported = build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &builder,
+    )
+    .unwrap();
+
+    let context = load_csv_typed_query_index_archive_context(&archive_path).unwrap();
+    let plan = context
+        .try_plan_builder()
+        .unwrap()
+        .with_predicate(FSEPredicate::range(
+            FSEPredicateField::name("score"),
+            FSEValue::Float(10.0),
+            FSEValue::Float(20.0),
+        ))
+        .with_predicate(FSEPredicate::equals(
+            FSEPredicateField::name("class"),
+            FSEValue::Category("alpha".to_string()),
+        ))
+        .build()
+        .unwrap();
+
+    assert_eq!(context.schema, expected_schema);
+    assert_eq!(
+        context.mapping,
+        FSESchemaDimensionMapping::identity(&expected_schema)
+    );
+    assert_eq!(
+        context.record_encoder_metadata.fields(),
+        imported.record_encoder_metadata.fields()
+    );
+    assert_eq!(context.query_index, imported.query_index);
+    assert_eq!(
+        context.query_index.query_row_ids(&plan).unwrap(),
+        vec![RowId::new(100), RowId::new(103)]
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(archive_path);
+}
+
+#[test]
+fn csv_archive_query_context_reports_archive_load_error() {
+    let archive_path = temp_archive_path("query-context-invalid-extension", ".bin");
+
+    let error = load_csv_typed_query_index_archive_context(&archive_path).unwrap_err();
+
+    assert!(matches!(
+        error,
+        FSECsvArchiveQueryContextError::Archive(FSETypedQueryIndexArchiveError::File(
+            FSETypedQueryIndexArchiveFileError::InvalidFileExtension { .. }
+        ))
+    ));
 }
 
 #[test]

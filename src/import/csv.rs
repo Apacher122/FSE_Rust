@@ -7,7 +7,8 @@ use std::path::Path;
 use crate::build::FSEBuilder;
 use crate::data::{
     FSECsvFileImportError, FSECsvImportOptions, FSECsvSchemaInferenceOptions, FSESchema,
-    infer_schema_from_csv_file_with_options, record_batch_from_csv_file, row_ids_from_csv_file,
+    FSESchemaDimensionMapping, infer_schema_from_csv_file_with_options, record_batch_from_csv_file,
+    row_ids_from_csv_file,
 };
 use crate::encoding::{
     ComposedRecordEncoderFromBatchError, FSERecordEncoder, FSERecordEncoderMetadata,
@@ -23,7 +24,7 @@ use crate::persistence::{
     load_typed_query_index_archive_file_with_encoder_metadata,
     maintain_typed_query_index_archive_file,
 };
-use crate::query::TypedQueryIndex;
+use crate::query::{TypedQueryIndex, TypedQueryPlanBuilder, TypedQueryPlanError};
 
 /// Error returned when CSV archive import fails.
 #[derive(Debug)]
@@ -242,6 +243,70 @@ impl From<FSETypedQueryIndexArchiveMaintenanceError> for FSECsvArchiveMaintenanc
     }
 }
 
+/// Error returned when a CSV-backed archive query context cannot be loaded.
+#[derive(Debug)]
+pub enum FSECsvArchiveQueryContextError {
+    /// Loading the typed query index archive failed.
+    Archive(FSETypedQueryIndexArchiveError),
+
+    /// Stored record encoder metadata could not rebuild a runtime encoder.
+    EncoderMetadata(FSERecordEncoderMetadataError),
+}
+
+impl fmt::Display for FSECsvArchiveQueryContextError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Archive(error) => error.fmt(formatter),
+            Self::EncoderMetadata(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for FSECsvArchiveQueryContextError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Archive(error) => Some(error),
+            Self::EncoderMetadata(error) => Some(error),
+        }
+    }
+}
+
+impl From<FSETypedQueryIndexArchiveError> for FSECsvArchiveQueryContextError {
+    fn from(error: FSETypedQueryIndexArchiveError) -> Self {
+        Self::Archive(error)
+    }
+}
+
+impl From<FSERecordEncoderMetadataError> for FSECsvArchiveQueryContextError {
+    fn from(error: FSERecordEncoderMetadataError) -> Self {
+        Self::EncoderMetadata(error)
+    }
+}
+
+/// Query context loaded from a CSV-backed typed query index archive.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FSECsvArchiveQueryContext {
+    /// Typed query index loaded from the archive.
+    pub query_index: TypedQueryIndex,
+
+    /// Schema stored in the archive record batch.
+    pub schema: FSESchema,
+
+    /// Schema-to-coordinate mapping used for typed query planning.
+    pub mapping: FSESchemaDimensionMapping,
+
+    /// Record encoder metadata stored in the archive.
+    pub record_encoder_metadata: FSERecordEncoderMetadata,
+}
+
+impl FSECsvArchiveQueryContext {
+    /// Creates a typed query plan builder from the loaded archive metadata.
+    pub fn try_plan_builder(&self) -> Result<TypedQueryPlanBuilder<'_>, TypedQueryPlanError> {
+        TypedQueryPlanBuilder::new(&self.schema, &self.mapping)
+            .try_with_record_encoder_metadata(&self.record_encoder_metadata)
+    }
+}
+
 /// Error returned when CSV tombstone maintenance import fails.
 #[derive(Debug)]
 pub enum FSECsvTombstoneMaintenanceImportError {
@@ -312,6 +377,26 @@ pub struct FSECsvTombstoneMaintenanceImportResult {
 
     /// Result returned after applying archive maintenance.
     pub maintenance: FSETypedQueryIndexArchiveMaintenanceResult,
+}
+
+/// Loads query planning metadata from a CSV-backed typed query index archive.
+pub fn load_csv_typed_query_index_archive_context<P>(
+    archive_path: P,
+) -> Result<FSECsvArchiveQueryContext, FSECsvArchiveQueryContextError>
+where
+    P: AsRef<Path>,
+{
+    let loaded = load_typed_query_index_archive_file_with_encoder_metadata(archive_path)?;
+    let schema = loaded.query_index.batch().schema().clone();
+    loaded.record_encoder_metadata.to_record_encoder(&schema)?;
+    let mapping = FSESchemaDimensionMapping::identity(&schema);
+
+    Ok(FSECsvArchiveQueryContext {
+        query_index: loaded.query_index,
+        schema,
+        mapping,
+        record_encoder_metadata: loaded.record_encoder_metadata,
+    })
 }
 
 /// Builds a typed query index archive from a CSV file.
