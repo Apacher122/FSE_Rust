@@ -242,6 +242,78 @@ impl From<FSETypedQueryIndexArchiveMaintenanceError> for FSECsvArchiveMaintenanc
     }
 }
 
+/// Error returned when CSV tombstone maintenance import fails.
+#[derive(Debug)]
+pub enum FSECsvTombstoneMaintenanceImportError {
+    /// Reading or parsing the CSV file failed.
+    Csv(FSECsvFileImportError),
+
+    /// Stored record encoder metadata could not rebuild a runtime encoder.
+    EncoderMetadata(FSERecordEncoderMetadataError),
+
+    /// Appending row tombstones to the archive failed.
+    Tombstones(FSETypedRowTombstoneArchiveError),
+
+    /// Typed query index archive maintenance failed.
+    Maintenance(FSETypedQueryIndexArchiveMaintenanceError),
+}
+
+impl fmt::Display for FSECsvTombstoneMaintenanceImportError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Csv(error) => error.fmt(formatter),
+            Self::EncoderMetadata(error) => error.fmt(formatter),
+            Self::Tombstones(error) => error.fmt(formatter),
+            Self::Maintenance(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for FSECsvTombstoneMaintenanceImportError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Csv(error) => Some(error),
+            Self::EncoderMetadata(error) => Some(error),
+            Self::Tombstones(error) => Some(error),
+            Self::Maintenance(error) => Some(error),
+        }
+    }
+}
+
+impl From<FSECsvFileImportError> for FSECsvTombstoneMaintenanceImportError {
+    fn from(error: FSECsvFileImportError) -> Self {
+        Self::Csv(error)
+    }
+}
+
+impl From<FSERecordEncoderMetadataError> for FSECsvTombstoneMaintenanceImportError {
+    fn from(error: FSERecordEncoderMetadataError) -> Self {
+        Self::EncoderMetadata(error)
+    }
+}
+
+impl From<FSETypedRowTombstoneArchiveError> for FSECsvTombstoneMaintenanceImportError {
+    fn from(error: FSETypedRowTombstoneArchiveError) -> Self {
+        Self::Tombstones(error)
+    }
+}
+
+impl From<FSETypedQueryIndexArchiveMaintenanceError> for FSECsvTombstoneMaintenanceImportError {
+    fn from(error: FSETypedQueryIndexArchiveMaintenanceError) -> Self {
+        Self::Maintenance(error)
+    }
+}
+
+/// Result returned after importing CSV row tombstones and applying maintenance.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FSECsvTombstoneMaintenanceImportResult {
+    /// Result returned after appending row tombstones from the CSV file.
+    pub tombstone_append: FSETypedRowTombstoneArchiveAppendResult,
+
+    /// Result returned after applying archive maintenance.
+    pub maintenance: FSETypedQueryIndexArchiveMaintenanceResult,
+}
+
 /// Builds a typed query index archive from a CSV file.
 ///
 /// The caller supplies the schema, CSV row-id options, record encoder, and FSE
@@ -379,6 +451,47 @@ where
         tombstone_path,
         &row_ids,
     )?)
+}
+
+/// Imports row tombstones from CSV and applies typed query index archive maintenance.
+///
+/// The CSV file supplies row identifiers that are appended to the tombstone
+/// archive. The persisted query index archive supplies schema and encoder
+/// metadata used by maintenance.
+pub fn maintain_typed_query_index_archive_from_csv_tombstone_file<C, A, T>(
+    csv_path: C,
+    archive_path: A,
+    tombstone_path: T,
+    options: &FSECsvImportOptions,
+    builder: &FSEBuilder,
+    policy: &FSEArchiveMaintenancePolicy,
+) -> Result<FSECsvTombstoneMaintenanceImportResult, FSECsvTombstoneMaintenanceImportError>
+where
+    C: AsRef<Path>,
+    A: AsRef<Path>,
+    T: AsRef<Path>,
+{
+    let archive_path = archive_path.as_ref();
+    let tombstone_path = tombstone_path.as_ref();
+    let row_ids = row_ids_from_csv_file(csv_path, options)?;
+    let loaded = load_typed_query_index_archive_file_with_encoder_metadata(archive_path)
+        .map_err(FSETypedQueryIndexArchiveMaintenanceError::LoadIndex)?;
+    let schema = loaded.query_index.batch().schema();
+    let encoder = loaded.record_encoder_metadata.to_record_encoder(schema)?;
+    let tombstone_append = append_typed_row_tombstone_archive_file(tombstone_path, &row_ids)?;
+    let maintenance = maintain_typed_query_index_archive_file(
+        archive_path,
+        tombstone_path,
+        None,
+        &encoder,
+        builder,
+        policy,
+    )?;
+
+    Ok(FSECsvTombstoneMaintenanceImportResult {
+        tombstone_append,
+        maintenance,
+    })
 }
 
 /// Applies typed query index archive maintenance with CSV append records.

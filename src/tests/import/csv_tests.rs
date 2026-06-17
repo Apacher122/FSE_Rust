@@ -15,13 +15,14 @@ use crate::encoding::{
 use crate::import::{
     FSECsvArchiveImportError, FSECsvArchiveMaintenanceImportError,
     FSECsvInferredArchiveImportError, FSECsvTombstoneImportError,
-    append_typed_query_index_archive_from_csv_file,
+    FSECsvTombstoneMaintenanceImportError, append_typed_query_index_archive_from_csv_file,
     append_typed_query_index_archive_from_csv_file_with_archive_metadata,
     append_typed_row_tombstone_archive_from_csv_file,
     build_typed_query_index_archive_from_csv_file,
     build_typed_query_index_archive_from_inferred_csv_file,
     maintain_typed_query_index_archive_from_csv_file,
     maintain_typed_query_index_archive_from_csv_file_with_archive_metadata,
+    maintain_typed_query_index_archive_from_csv_tombstone_file,
 };
 use crate::persistence::{
     FSEArchiveFileOperation, FSEArchiveMaintenanceAction, FSEArchiveMaintenanceError,
@@ -536,6 +537,109 @@ entity_id,reason
 }
 
 #[test]
+fn csv_tombstone_import_maintenance_compacts_fse_file() {
+    let expected_schema = entity_schema();
+    let mapping = FSESchemaDimensionMapping::identity(&expected_schema);
+    let builder = builder();
+    let policy = FSEArchiveMaintenancePolicy::try_new(10, 1, 5_000).unwrap();
+    let csv_path = temp_csv_path("tombstone-maintenance-base");
+    let tombstone_csv_path = temp_csv_path("tombstone-maintenance-row-ids");
+    let archive_path = temp_archive_path("tombstone-maintenance-row-ids", ".fse");
+    let tombstone_path = temp_archive_path("tombstone-maintenance-row-ids-tombstones", ".fse");
+    let schema_options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("class", FSEFieldType::Category)
+        .with_field_type("observed_at", FSEFieldType::TimestampMillis);
+    let tombstone_csv = "\
+entity_id,reason
+103,withdrawn
+";
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+    fs::write(&tombstone_csv_path, tombstone_csv).unwrap();
+
+    build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &builder,
+    )
+    .unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[]).unwrap();
+
+    let result = maintain_typed_query_index_archive_from_csv_tombstone_file(
+        &tombstone_csv_path,
+        &archive_path,
+        &tombstone_path,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &builder,
+        &policy,
+    )
+    .unwrap();
+    let loaded = load_typed_query_index_archive_file_with_encoder_metadata(&archive_path).unwrap();
+    let loaded_tombstones = load_typed_row_tombstone_archive_file(&tombstone_path).unwrap();
+    let plan = TypedQueryPlanBuilder::new(&expected_schema, &mapping)
+        .try_with_record_encoder_metadata(&loaded.record_encoder_metadata)
+        .unwrap()
+        .with_predicate(FSEPredicate::range(
+            FSEPredicateField::name("score"),
+            FSEValue::Float(10.0),
+            FSEValue::Float(20.0),
+        ))
+        .with_predicate(FSEPredicate::equals(
+            FSEPredicateField::name("class"),
+            FSEValue::Category("alpha".to_string()),
+        ))
+        .build()
+        .unwrap();
+
+    assert_eq!(result.tombstone_append.base_tombstone_count, 0);
+    assert_eq!(result.tombstone_append.requested_tombstone_count, 1);
+    assert_eq!(result.tombstone_append.appended_tombstone_count, 1);
+    assert_eq!(result.tombstone_append.resulting_tombstone_count, 1);
+    assert_eq!(
+        result.maintenance.decision.action,
+        FSEArchiveMaintenanceAction::Compact
+    );
+    assert_eq!(
+        result.maintenance.decision.reason,
+        FSEArchiveMaintenanceReason::CompactionTombstoneCountThresholdReached
+    );
+    assert_eq!(result.maintenance.decision.input.base_record_count, 4);
+    assert_eq!(
+        result
+            .maintenance
+            .decision
+            .input
+            .pending_append_record_count,
+        0
+    );
+    assert_eq!(result.maintenance.decision.input.tombstone_count, 1);
+    assert_eq!(result.maintenance.append_result, None);
+    assert_eq!(
+        result
+            .maintenance
+            .compaction_result
+            .as_ref()
+            .unwrap()
+            .cleared_tombstone_count,
+        1
+    );
+    assert_eq!(result.maintenance.query_index, loaded.query_index);
+    assert_eq!(loaded.query_index.batch().len(), 3);
+    assert_eq!(loaded_tombstones, Vec::new());
+    assert_eq!(
+        loaded.query_index.query_row_ids(&plan).unwrap(),
+        vec![RowId::new(100)]
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(tombstone_csv_path);
+    let _ = fs::remove_file(archive_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
 fn csv_tombstone_import_reports_duplicate_row_ids() {
     let tombstone_csv_path = temp_csv_path("tombstone-duplicate-row-ids");
     let tombstone_path = temp_archive_path("tombstone-duplicate-row-ids", ".fse");
@@ -567,6 +671,68 @@ entity_id,reason
     );
 
     let _ = fs::remove_file(tombstone_csv_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
+fn csv_tombstone_import_maintenance_reports_duplicate_row_ids_and_preserves_archives() {
+    let builder = builder();
+    let csv_path = temp_csv_path("tombstone-maintenance-duplicate-base");
+    let tombstone_csv_path = temp_csv_path("tombstone-maintenance-duplicate-row-ids");
+    let archive_path = temp_archive_path("tombstone-maintenance-duplicate-row-ids", ".fse");
+    let tombstone_path =
+        temp_archive_path("tombstone-maintenance-duplicate-row-ids-tombstones", ".fse");
+    let schema_options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("class", FSEFieldType::Category)
+        .with_field_type("observed_at", FSEFieldType::TimestampMillis);
+    let policy = FSEArchiveMaintenancePolicy::try_new(10, 1, 5_000).unwrap();
+    let tombstone_csv = "\
+entity_id,reason
+103,withdrawn
+103,duplicate
+";
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+    fs::write(&tombstone_csv_path, tombstone_csv).unwrap();
+
+    let base = build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &builder,
+    )
+    .unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[]).unwrap();
+
+    let error = maintain_typed_query_index_archive_from_csv_tombstone_file(
+        &tombstone_csv_path,
+        &archive_path,
+        &tombstone_path,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &builder,
+        &policy,
+    )
+    .unwrap_err();
+
+    match error {
+        FSECsvTombstoneMaintenanceImportError::Tombstones(
+            FSETypedRowTombstoneArchiveError::DuplicateAppendedRowId { row_id },
+        ) => assert_eq!(row_id, RowId::new(103)),
+        other => panic!("expected duplicate tombstone row-id error, got {other}"),
+    }
+    assert_eq!(
+        load_typed_query_index_archive_file(&archive_path).unwrap(),
+        base.query_index
+    );
+    assert_eq!(
+        load_typed_row_tombstone_archive_file(&tombstone_path).unwrap(),
+        Vec::new()
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(tombstone_csv_path);
+    let _ = fs::remove_file(archive_path);
     let _ = fs::remove_file(tombstone_path);
 }
 
