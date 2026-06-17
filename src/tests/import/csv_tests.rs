@@ -248,6 +248,61 @@ fn csv_archive_query_context_queries_predicates_from_fse_file() {
 }
 
 #[test]
+fn csv_archive_query_context_reports_execution_stats_from_fse_file() {
+    let builder = builder();
+    let csv_path = temp_csv_path("query-context-stats");
+    let archive_path = temp_archive_path("query-context-stats", ".fse");
+    let schema_options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("class", FSEFieldType::Category)
+        .with_field_type("observed_at", FSEFieldType::TimestampMillis);
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+
+    build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &builder,
+    )
+    .unwrap();
+
+    let context = load_csv_typed_query_index_archive_context(&archive_path).unwrap();
+    let row_report = context
+        .query_row_ids_with_stats(score_and_class_predicates())
+        .unwrap();
+    let row_result_report = context
+        .query_rows_with_stats(score_and_class_predicates())
+        .unwrap();
+    let count_report = context
+        .count_matches_with_stats(score_and_class_predicates())
+        .unwrap();
+    let existence_report = context
+        .has_match_with_stats(score_and_class_predicates())
+        .unwrap();
+
+    assert_eq!(row_report.row_ids, vec![RowId::new(100), RowId::new(103)]);
+    assert_eq!(row_report.stats.matched_records, 2);
+    assert_eq!(
+        row_result_report
+            .rows
+            .iter()
+            .map(|row| row.row_id())
+            .collect::<Vec<_>>(),
+        row_report.row_ids
+    );
+    assert_eq!(row_result_report.stats.matched_records, 2);
+    assert_eq!(count_report.matched_records, 2);
+    assert_eq!(count_report.stats.matched_records, 2);
+    assert!(existence_report.has_match);
+    assert!(existence_report.inspected_records >= 1);
+    assert_eq!(existence_report.stats.matched_records, 1);
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(archive_path);
+}
+
+#[test]
 fn csv_tombstoned_archive_query_context_excludes_tombstoned_rows_from_fse_file() {
     let builder = builder();
     let csv_path = temp_csv_path("tombstoned-query-context-query");
@@ -310,6 +365,65 @@ fn csv_tombstoned_archive_query_context_excludes_tombstoned_rows_from_fse_file()
             ])
             .unwrap()
     );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(archive_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
+fn csv_tombstoned_archive_query_context_reports_execution_stats_from_fse_file() {
+    let builder = builder();
+    let csv_path = temp_csv_path("tombstoned-query-context-stats");
+    let archive_path = temp_archive_path("tombstoned-query-context-stats", ".fse");
+    let tombstone_path = temp_archive_path("tombstoned-query-context-stats-tombstones", ".fse");
+    let schema_options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("class", FSEFieldType::Category)
+        .with_field_type("observed_at", FSEFieldType::TimestampMillis);
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+
+    build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &builder,
+    )
+    .unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[RowId::new(103)]).unwrap();
+
+    let tombstoned =
+        load_csv_tombstoned_typed_query_index_archive_context(&archive_path, &tombstone_path)
+            .unwrap();
+    let row_report = tombstoned
+        .query_row_ids_with_stats(score_and_class_predicates())
+        .unwrap();
+    let row_result_report = tombstoned
+        .query_rows_with_stats(score_and_class_predicates())
+        .unwrap();
+    let count_report = tombstoned
+        .count_matches_with_stats(score_and_class_predicates())
+        .unwrap();
+    let existence_report = tombstoned
+        .has_match_with_stats(score_18_and_class_predicates())
+        .unwrap();
+
+    assert_eq!(row_report.row_ids, vec![RowId::new(100)]);
+    assert_eq!(row_report.stats.matched_records, 1);
+    assert_eq!(
+        row_result_report
+            .rows
+            .iter()
+            .map(|row| row.row_id())
+            .collect::<Vec<_>>(),
+        row_report.row_ids
+    );
+    assert_eq!(row_result_report.stats.matched_records, 1);
+    assert_eq!(count_report.matched_records, 1);
+    assert_eq!(count_report.stats.matched_records, 1);
+    assert!(!existence_report.has_match);
+    assert_eq!(existence_report.stats.matched_records, 0);
 
     let _ = fs::remove_file(csv_path);
     let _ = fs::remove_file(archive_path);
@@ -1423,6 +1537,20 @@ fn score_and_class_predicates() -> Vec<FSEPredicate> {
             FSEPredicateField::name("score"),
             FSEValue::Float(10.0),
             FSEValue::Float(20.0),
+        ),
+        FSEPredicate::equals(
+            FSEPredicateField::name("class"),
+            FSEValue::Category("alpha".to_string()),
+        ),
+    ]
+}
+
+fn score_18_and_class_predicates() -> Vec<FSEPredicate> {
+    vec![
+        FSEPredicate::range(
+            FSEPredicateField::name("score"),
+            FSEValue::Float(18.0),
+            FSEValue::Float(18.0),
         ),
         FSEPredicate::equals(
             FSEPredicateField::name("class"),

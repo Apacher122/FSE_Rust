@@ -25,7 +25,8 @@ use crate::persistence::{
     load_typed_row_tombstone_archive_file, maintain_typed_query_index_archive_file,
 };
 use crate::query::{
-    FSEPredicate, IndexedTypedQueryError, TypedQueryIndex, TypedQueryPlan, TypedQueryPlanBuilder,
+    FSEPredicate, IndexedTypedQueryError, IndexedTypedQueryReport, IndexedTypedQueryRowReport,
+    QueryCountReport, QueryExistenceReport, TypedQueryIndex, TypedQueryPlan, TypedQueryPlanBuilder,
     TypedQueryPlanError, TypedQueryResultRow, TypedRowTombstoneSet,
 };
 
@@ -413,6 +414,19 @@ impl FSECsvArchiveQueryContext {
         Ok(self.query_index.query_row_ids(&plan)?)
     }
 
+    /// Queries matching row identifiers from predicates with execution statistics.
+    pub fn query_row_ids_with_stats<I>(
+        &self,
+        predicates: I,
+    ) -> Result<IndexedTypedQueryReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.query_index.query_row_ids_with_stats(&plan)?)
+    }
+
     /// Queries matching typed rows from predicates.
     pub fn query_rows<I>(
         &self,
@@ -426,6 +440,19 @@ impl FSECsvArchiveQueryContext {
         Ok(self.query_index.query_rows(&plan)?)
     }
 
+    /// Queries matching typed rows from predicates with execution statistics.
+    pub fn query_rows_with_stats<I>(
+        &self,
+        predicates: I,
+    ) -> Result<IndexedTypedQueryRowReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.query_index.query_rows_with_stats(&plan)?)
+    }
+
     /// Counts records matching predicates.
     pub fn count_matches<I>(&self, predicates: I) -> Result<usize, FSECsvArchiveQueryError>
     where
@@ -436,6 +463,19 @@ impl FSECsvArchiveQueryContext {
         Ok(self.query_index.count_matches(&plan)?)
     }
 
+    /// Counts records matching predicates with execution statistics.
+    pub fn count_matches_with_stats<I>(
+        &self,
+        predicates: I,
+    ) -> Result<QueryCountReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.query_index.count_matches_with_stats(&plan)?)
+    }
+
     /// Returns true when predicates match at least one record.
     pub fn has_match<I>(&self, predicates: I) -> Result<bool, FSECsvArchiveQueryError>
     where
@@ -444,6 +484,19 @@ impl FSECsvArchiveQueryContext {
         let plan = self.try_plan(predicates)?;
 
         Ok(self.query_index.has_match(&plan)?)
+    }
+
+    /// Returns existence query output with execution statistics.
+    pub fn has_match_with_stats<I>(
+        &self,
+        predicates: I,
+    ) -> Result<QueryExistenceReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.query_index.has_match_with_stats(&plan)?)
     }
 }
 
@@ -484,6 +537,22 @@ impl FSECsvTombstonedArchiveQueryContext {
             .query_row_ids_excluding_tombstones(&plan, &self.tombstones)?)
     }
 
+    /// Queries matching row identifiers with execution statistics and excludes tombstones.
+    pub fn query_row_ids_with_stats<I>(
+        &self,
+        predicates: I,
+    ) -> Result<IndexedTypedQueryReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .query_index
+            .query_row_ids_with_stats_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
     /// Queries matching typed rows from predicates and excludes tombstones.
     pub fn query_rows<I>(
         &self,
@@ -500,6 +569,22 @@ impl FSECsvTombstonedArchiveQueryContext {
             .query_rows_excluding_tombstones(&plan, &self.tombstones)?)
     }
 
+    /// Queries matching typed rows with execution statistics and excludes tombstones.
+    pub fn query_rows_with_stats<I>(
+        &self,
+        predicates: I,
+    ) -> Result<IndexedTypedQueryRowReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .query_index
+            .query_rows_with_stats_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
     /// Counts records matching predicates while excluding tombstones.
     pub fn count_matches<I>(&self, predicates: I) -> Result<usize, FSECsvArchiveQueryError>
     where
@@ -513,6 +598,22 @@ impl FSECsvTombstonedArchiveQueryContext {
             .count_matches_excluding_tombstones(&plan, &self.tombstones)?)
     }
 
+    /// Counts records matching predicates with execution statistics while excluding tombstones.
+    pub fn count_matches_with_stats<I>(
+        &self,
+        predicates: I,
+    ) -> Result<QueryCountReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .query_index
+            .count_matches_with_stats_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
     /// Returns true when predicates match at least one non-tombstoned record.
     pub fn has_match<I>(&self, predicates: I) -> Result<bool, FSECsvArchiveQueryError>
     where
@@ -524,6 +625,22 @@ impl FSECsvTombstonedArchiveQueryContext {
             .context
             .query_index
             .has_match_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
+    /// Returns existence query output with execution statistics while excluding tombstones.
+    pub fn has_match_with_stats<I>(
+        &self,
+        predicates: I,
+    ) -> Result<QueryExistenceReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .query_index
+            .has_match_with_stats_excluding_tombstones(&plan, &self.tombstones)?)
     }
 }
 
