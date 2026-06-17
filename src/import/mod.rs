@@ -7,7 +7,7 @@ mod csv;
 
 pub use csv::{
     FSECsvArchiveImportError, FSECsvArchiveMaintenanceImportError, FSECsvArchiveQueryContext,
-    FSECsvArchiveQueryContextError, FSECsvInferredArchiveImportError,
+    FSECsvArchiveQueryContextError, FSECsvArchiveQueryError, FSECsvInferredArchiveImportError,
     FSECsvInferredArchiveImportResult, FSECsvTombstoneImportError,
     FSECsvTombstoneMaintenanceImportError, FSECsvTombstoneMaintenanceImportResult,
     append_typed_query_index_archive_from_csv_file,

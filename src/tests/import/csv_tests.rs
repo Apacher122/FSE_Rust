@@ -14,7 +14,7 @@ use crate::encoding::{
 };
 use crate::import::{
     FSECsvArchiveImportError, FSECsvArchiveMaintenanceImportError, FSECsvArchiveQueryContextError,
-    FSECsvInferredArchiveImportError, FSECsvTombstoneImportError,
+    FSECsvArchiveQueryError, FSECsvInferredArchiveImportError, FSECsvTombstoneImportError,
     FSECsvTombstoneMaintenanceImportError, append_typed_query_index_archive_from_csv_file,
     append_typed_query_index_archive_from_csv_file_with_archive_metadata,
     append_typed_row_tombstone_archive_from_csv_file,
@@ -35,7 +35,8 @@ use crate::persistence::{
     save_typed_row_tombstone_archive_file,
 };
 use crate::query::{
-    FSEPredicate, FSEPredicateField, TypedQueryIndexAppendError, TypedQueryPlanBuilder,
+    FSEPredicate, FSEPredicateError, FSEPredicateField, TypedQueryIndexAppendError,
+    TypedQueryPlanBuilder, TypedQueryPlanError,
 };
 
 #[test]
@@ -187,6 +188,97 @@ fn csv_archive_query_context_loads_plan_builder_from_fse_file() {
         context.query_index.query_row_ids(&plan).unwrap(),
         vec![RowId::new(100), RowId::new(103)]
     );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(archive_path);
+}
+
+#[test]
+fn csv_archive_query_context_queries_predicates_from_fse_file() {
+    let builder = builder();
+    let csv_path = temp_csv_path("query-context-query");
+    let archive_path = temp_archive_path("query-context-query", ".fse");
+    let schema_options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("class", FSEFieldType::Category)
+        .with_field_type("observed_at", FSEFieldType::TimestampMillis);
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+
+    build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &builder,
+    )
+    .unwrap();
+
+    let context = load_csv_typed_query_index_archive_context(&archive_path).unwrap();
+    let row_ids = context.query_row_ids(score_and_class_predicates()).unwrap();
+    let rows = context.query_rows(score_and_class_predicates()).unwrap();
+
+    assert_eq!(row_ids, vec![RowId::new(100), RowId::new(103)]);
+    assert_eq!(
+        rows.iter().map(|row| row.row_id()).collect::<Vec<_>>(),
+        row_ids
+    );
+    assert_eq!(
+        rows[0].record().value_named(&context.schema, "class"),
+        Some(&FSEValue::Category("alpha".to_string()))
+    );
+    assert_eq!(
+        context.count_matches(score_and_class_predicates()).unwrap(),
+        2
+    );
+    assert!(context.has_match(score_and_class_predicates()).unwrap());
+    assert!(
+        !context
+            .has_match(vec![FSEPredicate::range(
+                FSEPredicateField::name("score"),
+                FSEValue::Float(90.0),
+                FSEValue::Float(100.0),
+            )])
+            .unwrap()
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(archive_path);
+}
+
+#[test]
+fn csv_archive_query_context_reports_predicate_plan_error() {
+    let builder = builder();
+    let csv_path = temp_csv_path("query-context-plan-error");
+    let archive_path = temp_archive_path("query-context-plan-error", ".fse");
+    let schema_options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("class", FSEFieldType::Category)
+        .with_field_type("observed_at", FSEFieldType::TimestampMillis);
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+
+    build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &builder,
+    )
+    .unwrap();
+
+    let context = load_csv_typed_query_index_archive_context(&archive_path).unwrap();
+    let error = context
+        .query_row_ids(vec![FSEPredicate::equals(
+            FSEPredicateField::name("unknown"),
+            FSEValue::Integer(1),
+        )])
+        .unwrap_err();
+
+    match error {
+        FSECsvArchiveQueryError::Plan(TypedQueryPlanError::Predicate(
+            FSEPredicateError::UnknownFieldName { name },
+        )) => assert_eq!(name, "unknown"),
+        other => panic!("expected unknown field query plan error, got {other}"),
+    }
 
     let _ = fs::remove_file(csv_path);
     let _ = fs::remove_file(archive_path);
@@ -1217,6 +1309,20 @@ fn score_and_class_plan(
         ))
         .build()
         .expect("valid predicates should produce a plan")
+}
+
+fn score_and_class_predicates() -> Vec<FSEPredicate> {
+    vec![
+        FSEPredicate::range(
+            FSEPredicateField::name("score"),
+            FSEValue::Float(10.0),
+            FSEValue::Float(20.0),
+        ),
+        FSEPredicate::equals(
+            FSEPredicateField::name("class"),
+            FSEValue::Category("alpha".to_string()),
+        ),
+    ]
 }
 
 fn entity_schema() -> FSESchema {

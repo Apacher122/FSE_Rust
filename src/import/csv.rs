@@ -7,8 +7,8 @@ use std::path::Path;
 use crate::build::FSEBuilder;
 use crate::data::{
     FSECsvFileImportError, FSECsvImportOptions, FSECsvSchemaInferenceOptions, FSESchema,
-    FSESchemaDimensionMapping, infer_schema_from_csv_file_with_options, record_batch_from_csv_file,
-    row_ids_from_csv_file,
+    FSESchemaDimensionMapping, RowId, infer_schema_from_csv_file_with_options,
+    record_batch_from_csv_file, row_ids_from_csv_file,
 };
 use crate::encoding::{
     ComposedRecordEncoderFromBatchError, FSERecordEncoder, FSERecordEncoderMetadata,
@@ -24,7 +24,10 @@ use crate::persistence::{
     load_typed_query_index_archive_file_with_encoder_metadata,
     maintain_typed_query_index_archive_file,
 };
-use crate::query::{TypedQueryIndex, TypedQueryPlanBuilder, TypedQueryPlanError};
+use crate::query::{
+    FSEPredicate, IndexedTypedQueryError, TypedQueryIndex, TypedQueryPlan, TypedQueryPlanBuilder,
+    TypedQueryPlanError, TypedQueryResultRow,
+};
 
 /// Error returned when CSV archive import fails.
 #[derive(Debug)]
@@ -283,6 +286,46 @@ impl From<FSERecordEncoderMetadataError> for FSECsvArchiveQueryContextError {
     }
 }
 
+/// Error returned when querying a CSV-backed archive context fails.
+#[derive(Debug)]
+pub enum FSECsvArchiveQueryError {
+    /// Typed predicate planning failed.
+    Plan(TypedQueryPlanError),
+
+    /// Indexed typed query execution failed.
+    Query(IndexedTypedQueryError),
+}
+
+impl fmt::Display for FSECsvArchiveQueryError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Plan(error) => error.fmt(formatter),
+            Self::Query(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for FSECsvArchiveQueryError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Plan(error) => Some(error),
+            Self::Query(error) => Some(error),
+        }
+    }
+}
+
+impl From<TypedQueryPlanError> for FSECsvArchiveQueryError {
+    fn from(error: TypedQueryPlanError) -> Self {
+        Self::Plan(error)
+    }
+}
+
+impl From<IndexedTypedQueryError> for FSECsvArchiveQueryError {
+    fn from(error: IndexedTypedQueryError) -> Self {
+        Self::Query(error)
+    }
+}
+
 /// Query context loaded from a CSV-backed typed query index archive.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FSECsvArchiveQueryContext {
@@ -304,6 +347,63 @@ impl FSECsvArchiveQueryContext {
     pub fn try_plan_builder(&self) -> Result<TypedQueryPlanBuilder<'_>, TypedQueryPlanError> {
         TypedQueryPlanBuilder::new(&self.schema, &self.mapping)
             .try_with_record_encoder_metadata(&self.record_encoder_metadata)
+    }
+
+    /// Builds a typed query plan from predicates using loaded archive metadata.
+    pub fn try_plan<I>(&self, predicates: I) -> Result<TypedQueryPlan, TypedQueryPlanError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let mut builder = self.try_plan_builder()?;
+
+        for predicate in predicates {
+            builder.push_predicate(predicate);
+        }
+
+        builder.build()
+    }
+
+    /// Queries matching row identifiers from predicates.
+    pub fn query_row_ids<I>(&self, predicates: I) -> Result<Vec<RowId>, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.query_index.query_row_ids(&plan)?)
+    }
+
+    /// Queries matching typed rows from predicates.
+    pub fn query_rows<I>(
+        &self,
+        predicates: I,
+    ) -> Result<Vec<TypedQueryResultRow>, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.query_index.query_rows(&plan)?)
+    }
+
+    /// Counts records matching predicates.
+    pub fn count_matches<I>(&self, predicates: I) -> Result<usize, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.query_index.count_matches(&plan)?)
+    }
+
+    /// Returns true when predicates match at least one record.
+    pub fn has_match<I>(&self, predicates: I) -> Result<bool, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.query_index.has_match(&plan)?)
     }
 }
 
