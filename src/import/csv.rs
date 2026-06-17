@@ -22,11 +22,11 @@ use crate::persistence::{
     append_typed_row_tombstone_archive_file, build_typed_query_index_archive_file,
     build_typed_query_index_archive_file_with_encoder_metadata,
     load_typed_query_index_archive_file_with_encoder_metadata,
-    maintain_typed_query_index_archive_file,
+    load_typed_row_tombstone_archive_file, maintain_typed_query_index_archive_file,
 };
 use crate::query::{
     FSEPredicate, IndexedTypedQueryError, TypedQueryIndex, TypedQueryPlan, TypedQueryPlanBuilder,
-    TypedQueryPlanError, TypedQueryResultRow,
+    TypedQueryPlanError, TypedQueryResultRow, TypedRowTombstoneSet,
 };
 
 /// Error returned when CSV archive import fails.
@@ -286,6 +286,46 @@ impl From<FSERecordEncoderMetadataError> for FSECsvArchiveQueryContextError {
     }
 }
 
+/// Error returned when a tombstoned CSV-backed archive query context cannot be loaded.
+#[derive(Debug)]
+pub enum FSECsvTombstonedArchiveQueryContextError {
+    /// Loading the archive query context failed.
+    Context(FSECsvArchiveQueryContextError),
+
+    /// Loading row tombstones failed.
+    Tombstones(FSETypedRowTombstoneArchiveError),
+}
+
+impl fmt::Display for FSECsvTombstonedArchiveQueryContextError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Context(error) => error.fmt(formatter),
+            Self::Tombstones(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for FSECsvTombstonedArchiveQueryContextError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Context(error) => Some(error),
+            Self::Tombstones(error) => Some(error),
+        }
+    }
+}
+
+impl From<FSECsvArchiveQueryContextError> for FSECsvTombstonedArchiveQueryContextError {
+    fn from(error: FSECsvArchiveQueryContextError) -> Self {
+        Self::Context(error)
+    }
+}
+
+impl From<FSETypedRowTombstoneArchiveError> for FSECsvTombstonedArchiveQueryContextError {
+    fn from(error: FSETypedRowTombstoneArchiveError) -> Self {
+        Self::Tombstones(error)
+    }
+}
+
 /// Error returned when querying a CSV-backed archive context fails.
 #[derive(Debug)]
 pub enum FSECsvArchiveQueryError {
@@ -407,6 +447,86 @@ impl FSECsvArchiveQueryContext {
     }
 }
 
+/// Query context loaded from a CSV-backed archive with row tombstones.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FSECsvTombstonedArchiveQueryContext {
+    /// Loaded query context for the typed query index archive.
+    pub context: FSECsvArchiveQueryContext,
+
+    /// Row identifiers excluded from query results.
+    pub tombstones: TypedRowTombstoneSet,
+}
+
+impl FSECsvTombstonedArchiveQueryContext {
+    /// Creates a typed query plan builder from the loaded archive metadata.
+    pub fn try_plan_builder(&self) -> Result<TypedQueryPlanBuilder<'_>, TypedQueryPlanError> {
+        self.context.try_plan_builder()
+    }
+
+    /// Builds a typed query plan from predicates using loaded archive metadata.
+    pub fn try_plan<I>(&self, predicates: I) -> Result<TypedQueryPlan, TypedQueryPlanError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        self.context.try_plan(predicates)
+    }
+
+    /// Queries matching row identifiers from predicates and excludes tombstones.
+    pub fn query_row_ids<I>(&self, predicates: I) -> Result<Vec<RowId>, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .query_index
+            .query_row_ids_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
+    /// Queries matching typed rows from predicates and excludes tombstones.
+    pub fn query_rows<I>(
+        &self,
+        predicates: I,
+    ) -> Result<Vec<TypedQueryResultRow>, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .query_index
+            .query_rows_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
+    /// Counts records matching predicates while excluding tombstones.
+    pub fn count_matches<I>(&self, predicates: I) -> Result<usize, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .query_index
+            .count_matches_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
+    /// Returns true when predicates match at least one non-tombstoned record.
+    pub fn has_match<I>(&self, predicates: I) -> Result<bool, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .query_index
+            .has_match_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+}
+
 /// Error returned when CSV tombstone maintenance import fails.
 #[derive(Debug)]
 pub enum FSECsvTombstoneMaintenanceImportError {
@@ -496,6 +616,25 @@ where
         schema,
         mapping,
         record_encoder_metadata: loaded.record_encoder_metadata,
+    })
+}
+
+/// Loads query planning metadata and row tombstones from CSV-backed archives.
+pub fn load_csv_tombstoned_typed_query_index_archive_context<P, Q>(
+    archive_path: P,
+    tombstone_path: Q,
+) -> Result<FSECsvTombstonedArchiveQueryContext, FSECsvTombstonedArchiveQueryContextError>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+{
+    let context = load_csv_typed_query_index_archive_context(archive_path)?;
+    let row_ids = load_typed_row_tombstone_archive_file(tombstone_path)?;
+    let tombstones = TypedRowTombstoneSet::from_row_ids(row_ids);
+
+    Ok(FSECsvTombstonedArchiveQueryContext {
+        context,
+        tombstones,
     })
 }
 

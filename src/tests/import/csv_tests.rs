@@ -15,11 +15,13 @@ use crate::encoding::{
 use crate::import::{
     FSECsvArchiveImportError, FSECsvArchiveMaintenanceImportError, FSECsvArchiveQueryContextError,
     FSECsvArchiveQueryError, FSECsvInferredArchiveImportError, FSECsvTombstoneImportError,
-    FSECsvTombstoneMaintenanceImportError, append_typed_query_index_archive_from_csv_file,
+    FSECsvTombstoneMaintenanceImportError, FSECsvTombstonedArchiveQueryContextError,
+    append_typed_query_index_archive_from_csv_file,
     append_typed_query_index_archive_from_csv_file_with_archive_metadata,
     append_typed_row_tombstone_archive_from_csv_file,
     build_typed_query_index_archive_from_csv_file,
     build_typed_query_index_archive_from_inferred_csv_file,
+    load_csv_tombstoned_typed_query_index_archive_context,
     load_csv_typed_query_index_archive_context, maintain_typed_query_index_archive_from_csv_file,
     maintain_typed_query_index_archive_from_csv_file_with_archive_metadata,
     maintain_typed_query_index_archive_from_csv_tombstone_file,
@@ -240,6 +242,110 @@ fn csv_archive_query_context_queries_predicates_from_fse_file() {
             )])
             .unwrap()
     );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(archive_path);
+}
+
+#[test]
+fn csv_tombstoned_archive_query_context_excludes_tombstoned_rows_from_fse_file() {
+    let builder = builder();
+    let csv_path = temp_csv_path("tombstoned-query-context-query");
+    let archive_path = temp_archive_path("tombstoned-query-context-query", ".fse");
+    let tombstone_path = temp_archive_path("tombstoned-query-context-query-tombstones", ".fse");
+    let schema_options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("class", FSEFieldType::Category)
+        .with_field_type("observed_at", FSEFieldType::TimestampMillis);
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+
+    build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &builder,
+    )
+    .unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[RowId::new(103)]).unwrap();
+
+    let context = load_csv_typed_query_index_archive_context(&archive_path).unwrap();
+    let tombstoned =
+        load_csv_tombstoned_typed_query_index_archive_context(&archive_path, &tombstone_path)
+            .unwrap();
+    let row_ids = tombstoned
+        .query_row_ids(score_and_class_predicates())
+        .unwrap();
+    let rows = tombstoned.query_rows(score_and_class_predicates()).unwrap();
+
+    assert_eq!(
+        context.query_row_ids(score_and_class_predicates()).unwrap(),
+        vec![RowId::new(100), RowId::new(103)]
+    );
+    assert_eq!(tombstoned.tombstones.row_ids(), &[RowId::new(103)]);
+    assert_eq!(row_ids, vec![RowId::new(100)]);
+    assert_eq!(
+        rows.iter().map(|row| row.row_id()).collect::<Vec<_>>(),
+        row_ids
+    );
+    assert_eq!(
+        tombstoned
+            .count_matches(score_and_class_predicates())
+            .unwrap(),
+        1
+    );
+    assert!(tombstoned.has_match(score_and_class_predicates()).unwrap());
+    assert!(
+        !tombstoned
+            .has_match(vec![
+                FSEPredicate::range(
+                    FSEPredicateField::name("score"),
+                    FSEValue::Float(18.0),
+                    FSEValue::Float(18.0),
+                ),
+                FSEPredicate::equals(
+                    FSEPredicateField::name("class"),
+                    FSEValue::Category("alpha".to_string()),
+                ),
+            ])
+            .unwrap()
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(archive_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
+fn csv_tombstoned_archive_query_context_reports_tombstone_load_error() {
+    let builder = builder();
+    let csv_path = temp_csv_path("tombstoned-query-context-load-error");
+    let archive_path = temp_archive_path("tombstoned-query-context-load-error", ".fse");
+    let tombstone_path =
+        temp_archive_path("tombstoned-query-context-load-error-tombstones", ".fse");
+    let schema_options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("class", FSEFieldType::Category)
+        .with_field_type("observed_at", FSEFieldType::TimestampMillis);
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+
+    build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &FSECsvImportOptions::new().with_row_id_column("entity_id"),
+        &builder,
+    )
+    .unwrap();
+
+    let error =
+        load_csv_tombstoned_typed_query_index_archive_context(&archive_path, &tombstone_path)
+            .unwrap_err();
+
+    assert!(matches!(
+        error,
+        FSECsvTombstonedArchiveQueryContextError::Tombstones(_)
+    ));
 
     let _ = fs::remove_file(csv_path);
     let _ = fs::remove_file(archive_path);
