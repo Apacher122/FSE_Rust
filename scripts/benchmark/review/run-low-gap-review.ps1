@@ -130,6 +130,8 @@ $CurrentTypedArchiveAppendRebuildSummaryCsv = $ReviewPaths.CurrentTypedArchiveAp
 $CurrentTypedArchiveAppendRebuildSummaryNotes = $ReviewPaths.CurrentTypedArchiveAppendRebuildSummaryNotes
 $CurrentTypedArchiveCompactionSummaryCsv = $ReviewPaths.CurrentTypedArchiveCompactionSummaryCsv
 $CurrentTypedArchiveCompactionSummaryNotes = $ReviewPaths.CurrentTypedArchiveCompactionSummaryNotes
+$CurrentTypedArchiveMaintenanceSummaryCsv = $ReviewPaths.CurrentTypedArchiveMaintenanceSummaryCsv
+$CurrentTypedArchiveMaintenanceSummaryNotes = $ReviewPaths.CurrentTypedArchiveMaintenanceSummaryNotes
 $CurrentTypedQueryIndexArchive = $ReviewPaths.CurrentTypedQueryIndexArchive
 $CurrentMaterializationComparisonCsv = $ReviewPaths.CurrentMaterializationComparisonCsv
 $CurrentMaterializationComparisonNotes = $ReviewPaths.CurrentMaterializationComparisonNotes
@@ -282,6 +284,8 @@ Add-ReviewLine "typed archive append rebuild summary: $CurrentTypedArchiveAppend
 Add-ReviewLine "typed archive append rebuild notes: $CurrentTypedArchiveAppendRebuildSummaryNotes"
 Add-ReviewLine "typed archive compaction summary: $CurrentTypedArchiveCompactionSummaryCsv"
 Add-ReviewLine "typed archive compaction notes: $CurrentTypedArchiveCompactionSummaryNotes"
+Add-ReviewLine "typed archive maintenance summary: $CurrentTypedArchiveMaintenanceSummaryCsv"
+Add-ReviewLine "typed archive maintenance notes: $CurrentTypedArchiveMaintenanceSummaryNotes"
 Add-ReviewLine "typed query index archive: $CurrentTypedQueryIndexArchive"
 
 if ($PreviousLowSelectivityGapInput.Exists) {
@@ -558,6 +562,8 @@ $ReviewManifestContext = [PSCustomObject]@{
   CurrentTypedArchiveAppendRebuildSummaryNotes = $CurrentTypedArchiveAppendRebuildSummaryNotes
   CurrentTypedArchiveCompactionSummaryCsv      = $CurrentTypedArchiveCompactionSummaryCsv
   CurrentTypedArchiveCompactionSummaryNotes    = $CurrentTypedArchiveCompactionSummaryNotes
+  CurrentTypedArchiveMaintenanceSummaryCsv     = $CurrentTypedArchiveMaintenanceSummaryCsv
+  CurrentTypedArchiveMaintenanceSummaryNotes   = $CurrentTypedArchiveMaintenanceSummaryNotes
   CurrentTypedQueryIndexArchive                = $CurrentTypedQueryIndexArchive
   CurrentMaterializationComparisonCsv          = $CurrentMaterializationComparisonCsv
   CurrentMaterializationComparisonNotes        = $CurrentMaterializationComparisonNotes

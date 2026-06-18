@@ -114,6 +114,7 @@ function Test-BenchmarkScriptLayout {
     "benchmark\summarize\summarize-typed-archive-append-rebuild-summary.ps1",
     "benchmark\summarize\summarize-typed-archive-compaction-summary.ps1",
     "benchmark\summarize\summarize-typed-archive-load-summary.ps1",
+    "benchmark\summarize\summarize-typed-archive-maintenance-summary.ps1",
     "benchmark\summarize\summarize-typed-indexed-comparison-summary.ps1",
     "benchmark\summarize\summarize-target-workload-trials.ps1"
   )
@@ -146,6 +147,7 @@ function Test-BenchmarkScriptLayout {
     "summarize-typed-archive-append-rebuild-summary.ps1" = "benchmark\summarize\summarize-typed-archive-append-rebuild-summary.ps1"
     "summarize-typed-archive-compaction-summary.ps1"     = "benchmark\summarize\summarize-typed-archive-compaction-summary.ps1"
     "summarize-typed-archive-load-summary.ps1"           = "benchmark\summarize\summarize-typed-archive-load-summary.ps1"
+    "summarize-typed-archive-maintenance-summary.ps1"    = "benchmark\summarize\summarize-typed-archive-maintenance-summary.ps1"
     "summarize-typed-indexed-comparison-summary.ps1"     = "benchmark\summarize\summarize-typed-indexed-comparison-summary.ps1"
     "summarize-target-workload-trials.ps1"               = "benchmark\summarize\summarize-target-workload-trials.ps1"
   }
