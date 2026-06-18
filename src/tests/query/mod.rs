@@ -19,6 +19,7 @@ mod query_region_tests;
 mod query_tests;
 mod reference_tests;
 mod traversal_classification_tests;
+mod typed_append_delta_tests;
 mod typed_execution_tests;
 mod typed_index_parity_tests;
 mod typed_index_tests;

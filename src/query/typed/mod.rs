@@ -1,5 +1,6 @@
 //! Typed query planning and execution.
 
+pub mod append_delta;
 pub mod builder;
 pub mod compiler;
 pub mod evaluator;
@@ -9,6 +10,7 @@ pub mod plan;
 pub mod predicate;
 pub mod tombstone;
 
+pub use append_delta::TypedAppendDeltaQueryView;
 pub use builder::TypedQueryPlanBuilder;
 pub use compiler::{
     FSEPredicateCompileError, compile_categorical_equality_predicate_to_query_region,
