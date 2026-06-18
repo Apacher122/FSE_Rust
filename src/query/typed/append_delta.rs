@@ -11,6 +11,7 @@ use super::execution::{
 };
 use super::index::TypedQueryIndex;
 use super::plan::TypedQueryPlan;
+use super::tombstone::TypedRowTombstoneSet;
 
 /// Borrowed query view over an indexed base batch and an appended record batch.
 ///
@@ -56,6 +57,24 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
         Ok(row_ids)
     }
 
+    /// Evaluates a typed query plan and excludes tombstoned row identifiers.
+    pub fn query_row_ids_excluding_tombstones(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+    ) -> Result<Vec<RowId>, IndexedTypedQueryError> {
+        let mut row_ids = self
+            .base
+            .query_row_ids_excluding_tombstones(plan, tombstones)?;
+        row_ids.extend(appended_row_ids_excluding_tombstones(
+            self.appended,
+            plan,
+            tombstones,
+        ));
+
+        Ok(row_ids)
+    }
+
     /// Evaluates a typed query plan and returns matching typed rows.
     pub fn query_rows(
         &self,
@@ -67,9 +86,41 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
         Ok(rows)
     }
 
+    /// Evaluates a typed query plan, returns rows, and excludes tombstoned row
+    /// identifiers.
+    pub fn query_rows_excluding_tombstones(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+    ) -> Result<Vec<TypedQueryResultRow>, IndexedTypedQueryError> {
+        let mut rows = self
+            .base
+            .query_rows_excluding_tombstones(plan, tombstones)?;
+        rows.extend(appended_rows_excluding_tombstones(
+            self.appended,
+            plan,
+            tombstones,
+        ));
+
+        Ok(rows)
+    }
+
     /// Counts records that satisfy a typed query plan.
     pub fn count_matches(&self, plan: &TypedQueryPlan) -> Result<usize, IndexedTypedQueryError> {
         Ok(self.base.count_matches(plan)? + count_typed_query_matches(self.appended, plan))
+    }
+
+    /// Counts records that satisfy a typed query plan while excluding
+    /// tombstoned row identifiers.
+    pub fn count_matches_excluding_tombstones(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+    ) -> Result<usize, IndexedTypedQueryError> {
+        Ok(self
+            .base
+            .count_matches_excluding_tombstones(plan, tombstones)?
+            + appended_row_ids_excluding_tombstones(self.appended, plan, tombstones).len())
     }
 
     /// Returns true when a typed query plan matches at least one record.
@@ -79,6 +130,24 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
         }
 
         Ok(typed_query_has_match(self.appended, plan))
+    }
+
+    /// Returns true when a typed query plan matches at least one
+    /// non-tombstoned record.
+    pub fn has_match_excluding_tombstones(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+    ) -> Result<bool, IndexedTypedQueryError> {
+        if self.base.has_match_excluding_tombstones(plan, tombstones)? {
+            return Ok(true);
+        }
+
+        Ok(
+            appended_row_ids_excluding_tombstones(self.appended, plan, tombstones)
+                .first()
+                .is_some(),
+        )
     }
 
     /// Visits matching row identifiers for a typed query plan.
@@ -101,6 +170,29 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
         Ok(())
     }
 
+    /// Visits matching row identifiers for a typed query plan while excluding
+    /// tombstoned row identifiers.
+    pub fn visit_row_ids_excluding_tombstones<F>(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+        mut visitor: F,
+    ) -> Result<(), IndexedTypedQueryError>
+    where
+        F: FnMut(RowId),
+    {
+        self.base
+            .visit_row_ids_excluding_tombstones(plan, tombstones, |row_id| {
+                visitor(row_id);
+            })?;
+
+        for row_id in appended_row_ids_excluding_tombstones(self.appended, plan, tombstones) {
+            visitor(row_id);
+        }
+
+        Ok(())
+    }
+
     /// Visits matching typed records for a typed query plan.
     pub fn visit_rows<F>(
         &self,
@@ -115,6 +207,31 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
         })?;
 
         for row_id in evaluate_typed_query_plan(self.appended, plan) {
+            if let Some(record) = self.appended.record_for_row_id(row_id) {
+                visitor(row_id, record);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Visits matching typed records for a typed query plan while excluding
+    /// tombstoned row identifiers.
+    pub fn visit_rows_excluding_tombstones<F>(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+        mut visitor: F,
+    ) -> Result<(), IndexedTypedQueryError>
+    where
+        F: FnMut(RowId, &FSERecord),
+    {
+        self.base
+            .visit_rows_excluding_tombstones(plan, tombstones, |row_id, record| {
+                visitor(row_id, record);
+            })?;
+
+        for row_id in appended_row_ids_excluding_tombstones(self.appended, plan, tombstones) {
             if let Some(record) = self.appended.record_for_row_id(row_id) {
                 visitor(row_id, record);
             }
@@ -143,4 +260,26 @@ fn validate_append_delta(
     }
 
     Ok(())
+}
+
+fn appended_row_ids_excluding_tombstones(
+    appended: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Vec<RowId> {
+    evaluate_typed_query_plan(appended, plan)
+        .into_iter()
+        .filter(|row_id| !tombstones.contains(*row_id))
+        .collect()
+}
+
+fn appended_rows_excluding_tombstones(
+    appended: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Vec<TypedQueryResultRow> {
+    evaluate_typed_query_plan_rows(appended, plan)
+        .into_iter()
+        .filter(|row| !tombstones.contains(row.row_id()))
+        .collect()
 }

@@ -9,7 +9,7 @@ use crate::encoding::{
 };
 use crate::query::{
     FSEPredicate, FSEPredicateField, TypedAppendDeltaQueryView, TypedQueryIndex,
-    TypedQueryPlanBuilder,
+    TypedQueryPlanBuilder, TypedRowTombstoneSet,
 };
 
 #[test]
@@ -126,6 +126,127 @@ fn typed_append_delta_view_visits_base_and_appended_matches() {
         row_ids,
         vec![RowId::new(100), RowId::new(103), RowId::new(104)]
     );
+    assert_eq!(
+        rows.iter()
+            .map(|(row_id, _record)| *row_id)
+            .collect::<Vec<_>>(),
+        row_ids
+    );
+}
+
+#[test]
+fn typed_append_delta_view_excludes_tombstones_from_row_id_queries() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let base_batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let base_index = TypedQueryIndex::try_build(base_batch, &encoder, &builder())
+        .expect("valid base index should build");
+    let view = TypedAppendDeltaQueryView::try_new(&base_index, &appended)
+        .expect("valid append delta should build a query view");
+    let tombstones = TypedRowTombstoneSet::from_row_ids([RowId::new(103), RowId::new(104)]);
+    let plan = score_and_class_plan(&schema, &mapping);
+
+    let unfiltered = view
+        .query_row_ids(&plan)
+        .expect("append delta query should execute");
+    let filtered = view
+        .query_row_ids_excluding_tombstones(&plan, &tombstones)
+        .expect("append delta query should execute");
+
+    assert_eq!(
+        unfiltered,
+        vec![RowId::new(100), RowId::new(103), RowId::new(104)]
+    );
+    assert_eq!(filtered, vec![RowId::new(100)]);
+}
+
+#[test]
+fn typed_append_delta_view_excludes_tombstones_from_row_queries() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let base_batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let base_index = TypedQueryIndex::try_build(base_batch, &encoder, &builder())
+        .expect("valid base index should build");
+    let view = TypedAppendDeltaQueryView::try_new(&base_index, &appended)
+        .expect("valid append delta should build a query view");
+    let tombstones = TypedRowTombstoneSet::from_row_ids([RowId::new(103), RowId::new(104)]);
+    let plan = score_and_class_plan(&schema, &mapping);
+
+    let rows = view
+        .query_rows_excluding_tombstones(&plan, &tombstones)
+        .expect("append delta row query should execute");
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].row_id(), RowId::new(100));
+}
+
+#[test]
+fn typed_append_delta_view_excludes_tombstones_from_count_and_existence() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let base_batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let base_index = TypedQueryIndex::try_build(base_batch, &encoder, &builder())
+        .expect("valid base index should build");
+    let view = TypedAppendDeltaQueryView::try_new(&base_index, &appended)
+        .expect("valid append delta should build a query view");
+    let tombstones = TypedRowTombstoneSet::from_row_ids([RowId::new(103), RowId::new(104)]);
+    let matching_plan = score_and_class_plan(&schema, &mapping);
+    let tombstoned_base_plan = score_range_plan(&schema, &mapping, 18.0, 18.0);
+    let tombstoned_append_plan = score_range_plan(&schema, &mapping, 16.0, 16.0);
+
+    assert_eq!(
+        view.count_matches_excluding_tombstones(&matching_plan, &tombstones)
+            .expect("append delta count should execute"),
+        1
+    );
+    assert!(
+        view.has_match_excluding_tombstones(&matching_plan, &tombstones)
+            .expect("append delta existence should execute")
+    );
+    assert!(
+        !view
+            .has_match_excluding_tombstones(&tombstoned_base_plan, &tombstones)
+            .expect("append delta existence should execute")
+    );
+    assert!(
+        !view
+            .has_match_excluding_tombstones(&tombstoned_append_plan, &tombstones)
+            .expect("append delta existence should execute")
+    );
+}
+
+#[test]
+fn typed_append_delta_view_excludes_tombstones_from_visitors() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let base_batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let base_index = TypedQueryIndex::try_build(base_batch, &encoder, &builder())
+        .expect("valid base index should build");
+    let view = TypedAppendDeltaQueryView::try_new(&base_index, &appended)
+        .expect("valid append delta should build a query view");
+    let tombstones = TypedRowTombstoneSet::from_row_ids([RowId::new(103), RowId::new(104)]);
+    let plan = score_and_class_plan(&schema, &mapping);
+    let mut row_ids = Vec::new();
+    let mut rows = Vec::new();
+
+    view.visit_row_ids_excluding_tombstones(&plan, &tombstones, |row_id| {
+        row_ids.push(row_id);
+    })
+    .expect("append delta row-id visitor should execute");
+    view.visit_rows_excluding_tombstones(&plan, &tombstones, |row_id, record| {
+        rows.push((row_id, record.clone()));
+    })
+    .expect("append delta row visitor should execute");
+
+    assert_eq!(row_ids, vec![RowId::new(100)]);
     assert_eq!(
         rows.iter()
             .map(|(row_id, _record)| *row_id)
