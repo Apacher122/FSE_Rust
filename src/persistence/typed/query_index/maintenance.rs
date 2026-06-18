@@ -11,10 +11,13 @@ use crate::persistence::{
     FSEArchiveAppendOperationMetadata, FSEArchiveCompactionOperationMetadata,
     FSEArchiveMaintenanceAction, FSEArchiveMaintenanceDecision, FSEArchiveMaintenanceError,
     FSEArchiveMaintenanceInput, FSEArchiveMaintenancePolicy, FSEArchivePayloadKind,
-    FSEArchiveRebuildPlanMetadata,
+    FSEArchiveRebuildPlanMetadata, FSERecordBatchArchiveError,
 };
 use crate::query::TypedQueryIndex;
 
+use super::super::record_batch::{
+    load_typed_record_batch_archive_file, save_typed_record_batch_archive_file,
+};
 use super::super::tombstone::{
     FSETypedRowTombstoneArchiveError, load_typed_row_tombstone_archive_file,
     save_typed_row_tombstone_archive_file,
@@ -68,6 +71,47 @@ impl Error for FSETypedQueryIndexArchiveMaintenanceError {
             Self::Append(error) => Some(error),
             Self::Compaction(error) => Some(error),
         }
+    }
+}
+
+/// Error returned when append-delta archive maintenance fails.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FSETypedQueryIndexAppendDeltaArchiveMaintenanceError {
+    /// Loading the typed record batch append archive failed.
+    LoadAppendBatch(FSERecordBatchArchiveError),
+
+    /// Typed query index archive maintenance failed.
+    Maintenance(FSETypedQueryIndexArchiveMaintenanceError),
+
+    /// Saving the cleared append archive failed.
+    SaveAppendBatch(FSERecordBatchArchiveError),
+}
+
+impl fmt::Display for FSETypedQueryIndexAppendDeltaArchiveMaintenanceError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::LoadAppendBatch(error) => error.fmt(formatter),
+            Self::Maintenance(error) => error.fmt(formatter),
+            Self::SaveAppendBatch(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for FSETypedQueryIndexAppendDeltaArchiveMaintenanceError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::LoadAppendBatch(error) => Some(error),
+            Self::Maintenance(error) => Some(error),
+            Self::SaveAppendBatch(error) => Some(error),
+        }
+    }
+}
+
+impl From<FSETypedQueryIndexArchiveMaintenanceError>
+    for FSETypedQueryIndexAppendDeltaArchiveMaintenanceError
+{
+    fn from(error: FSETypedQueryIndexArchiveMaintenanceError) -> Self {
+        Self::Maintenance(error)
     }
 }
 
@@ -199,6 +243,52 @@ where
         append_result,
         compaction_result,
     })
+}
+
+/// Applies archive maintenance using a persisted append batch archive.
+///
+/// The append batch archive is cleared after appended records are applied to
+/// the typed query index archive.
+pub fn maintain_typed_query_index_archive_file_with_append_batch_archive<P, Q, R>(
+    query_index_path: P,
+    append_path: Q,
+    tombstone_path: R,
+    encoder: &impl FSERecordEncoder,
+    builder: &FSEBuilder,
+    policy: &FSEArchiveMaintenancePolicy,
+) -> Result<
+    FSETypedQueryIndexArchiveMaintenanceResult,
+    FSETypedQueryIndexAppendDeltaArchiveMaintenanceError,
+>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+    R: AsRef<Path>,
+{
+    let append_path = append_path.as_ref();
+    let appended = load_typed_record_batch_archive_file(append_path)
+        .map_err(FSETypedQueryIndexAppendDeltaArchiveMaintenanceError::LoadAppendBatch)?;
+    let appended_input = if appended.is_empty() {
+        None
+    } else {
+        Some(&appended)
+    };
+    let result = maintain_typed_query_index_archive_file(
+        query_index_path,
+        tombstone_path,
+        appended_input,
+        encoder,
+        builder,
+        policy,
+    )?;
+
+    if result.append_result.is_some() {
+        let cleared = FSERecordBatch::new(appended.schema().clone(), Vec::new(), Vec::new());
+        save_typed_record_batch_archive_file(append_path, &cleared)
+            .map_err(FSETypedQueryIndexAppendDeltaArchiveMaintenanceError::SaveAppendBatch)?;
+    }
+
+    Ok(result)
 }
 
 struct CombinedArchiveMaintenanceResult {

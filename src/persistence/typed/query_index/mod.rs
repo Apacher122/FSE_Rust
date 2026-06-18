@@ -34,8 +34,10 @@ pub use footprint::{
     typed_query_index_archive_with_tombstones_footprint,
 };
 pub use maintenance::{
+    FSETypedQueryIndexAppendDeltaArchiveMaintenanceError,
     FSETypedQueryIndexArchiveMaintenanceError, FSETypedQueryIndexArchiveMaintenanceResult,
     maintain_typed_query_index_archive_file,
+    maintain_typed_query_index_archive_file_with_append_batch_archive,
 };
 pub use snapshot::{FSETypedQueryIndexArchiveSnapshot, FSETypedQueryIndexArchiveSnapshotError};
 pub use tombstoned::{
