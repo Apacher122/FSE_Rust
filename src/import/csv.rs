@@ -329,6 +329,50 @@ impl From<FSETypedRowTombstoneArchiveError> for FSECsvTombstonedArchiveQueryCont
     }
 }
 
+/// Error returned when a tombstoned CSV-backed append-delta query context cannot be loaded.
+#[derive(Debug)]
+pub enum FSECsvTombstonedAppendDeltaArchiveQueryContextError {
+    /// Loading the append-delta archive query context failed.
+    Context(FSECsvAppendDeltaArchiveQueryContextError),
+
+    /// Loading row tombstones failed.
+    Tombstones(FSETypedRowTombstoneArchiveError),
+}
+
+impl fmt::Display for FSECsvTombstonedAppendDeltaArchiveQueryContextError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Context(error) => error.fmt(formatter),
+            Self::Tombstones(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for FSECsvTombstonedAppendDeltaArchiveQueryContextError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Context(error) => Some(error),
+            Self::Tombstones(error) => Some(error),
+        }
+    }
+}
+
+impl From<FSECsvAppendDeltaArchiveQueryContextError>
+    for FSECsvTombstonedAppendDeltaArchiveQueryContextError
+{
+    fn from(error: FSECsvAppendDeltaArchiveQueryContextError) -> Self {
+        Self::Context(error)
+    }
+}
+
+impl From<FSETypedRowTombstoneArchiveError>
+    for FSECsvTombstonedAppendDeltaArchiveQueryContextError
+{
+    fn from(error: FSETypedRowTombstoneArchiveError) -> Self {
+        Self::Tombstones(error)
+    }
+}
+
 /// Error returned when a CSV-backed archive append-delta context cannot be loaded.
 #[derive(Debug)]
 pub enum FSECsvAppendDeltaArchiveQueryContextError {
@@ -622,6 +666,92 @@ pub struct FSECsvAppendDeltaArchiveQueryContext {
 
     /// Pending appended records loaded from a typed record batch archive.
     pub appended: FSERecordBatch,
+}
+
+/// Query context loaded from base, append, and tombstone CSV-backed archives.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FSECsvTombstonedAppendDeltaArchiveQueryContext {
+    /// Loaded append-delta query context.
+    pub context: FSECsvAppendDeltaArchiveQueryContext,
+
+    /// Row identifiers excluded from query results.
+    pub tombstones: TypedRowTombstoneSet,
+}
+
+impl FSECsvTombstonedAppendDeltaArchiveQueryContext {
+    /// Creates a typed query plan builder from the loaded archive metadata.
+    pub fn try_plan_builder(&self) -> Result<TypedQueryPlanBuilder<'_>, TypedQueryPlanError> {
+        self.context.try_plan_builder()
+    }
+
+    /// Builds a typed query plan from predicates using loaded archive metadata.
+    pub fn try_plan<I>(&self, predicates: I) -> Result<TypedQueryPlan, TypedQueryPlanError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        self.context.try_plan(predicates)
+    }
+
+    /// Queries matching row identifiers and excludes tombstones.
+    pub fn query_row_ids<I>(
+        &self,
+        predicates: I,
+    ) -> Result<Vec<RowId>, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .append_delta_view()?
+            .query_row_ids_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
+    /// Queries matching typed rows and excludes tombstones.
+    pub fn query_rows<I>(
+        &self,
+        predicates: I,
+    ) -> Result<Vec<TypedQueryResultRow>, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .append_delta_view()?
+            .query_rows_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
+    /// Counts records matching predicates while excluding tombstones.
+    pub fn count_matches<I>(
+        &self,
+        predicates: I,
+    ) -> Result<usize, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .append_delta_view()?
+            .count_matches_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
+    /// Returns true when predicates match at least one non-tombstoned record.
+    pub fn has_match<I>(&self, predicates: I) -> Result<bool, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .append_delta_view()?
+            .has_match_excluding_tombstones(&plan, &self.tombstones)?)
+    }
 }
 
 impl FSECsvAppendDeltaArchiveQueryContext {
@@ -953,6 +1083,31 @@ where
     result.append_delta_view()?;
 
     Ok(result)
+}
+
+/// Loads query planning metadata, pending appended records, and row tombstones.
+pub fn load_csv_tombstoned_append_delta_typed_query_index_archive_context<P, Q, R>(
+    archive_path: P,
+    append_path: Q,
+    tombstone_path: R,
+) -> Result<
+    FSECsvTombstonedAppendDeltaArchiveQueryContext,
+    FSECsvTombstonedAppendDeltaArchiveQueryContextError,
+>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+    R: AsRef<Path>,
+{
+    let context =
+        load_csv_append_delta_typed_query_index_archive_context(archive_path, append_path)?;
+    let row_ids = load_typed_row_tombstone_archive_file(tombstone_path)?;
+    let tombstones = TypedRowTombstoneSet::from_row_ids(row_ids);
+
+    Ok(FSECsvTombstonedAppendDeltaArchiveQueryContext {
+        context,
+        tombstones,
+    })
 }
 
 /// Builds a typed query index archive from a CSV file.
