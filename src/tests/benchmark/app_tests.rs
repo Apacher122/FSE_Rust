@@ -285,6 +285,8 @@ fn benchmark_application_renderer_uses_detailed_output_for_debug_report() {
     assert!(output.contains("Target workload typed archive append rebuild timing"));
     assert!(output.contains("Target workload typed archive compaction timing"));
     assert!(output.contains("Target workload typed archive maintenance timing"));
+    assert!(output.contains("logical archive bytes before compaction"));
+    assert!(output.contains("logical archive bytes before maintenance"));
     assert!(output.contains("Workload typed indexed comparison summary"));
     assert!(output.contains("Workload typed archive load timing summary"));
     assert!(output.contains("Workload typed archive append rebuild timing summary"));
@@ -420,6 +422,16 @@ fn benchmark_application_runs_debug_report_configuration() {
         output
             .terminal_output
             .contains("Target workload typed archive maintenance timing")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("logical archive bytes before compaction")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("logical archive bytes before maintenance")
     );
     assert!(
         output

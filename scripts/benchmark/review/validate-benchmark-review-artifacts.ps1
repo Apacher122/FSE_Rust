@@ -312,6 +312,9 @@ $TypedArchiveCompactionSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv `
   "tombstone_bytes_before_compaction",
   "tombstone_bytes_after_compaction",
   "tombstone_byte_delta",
+  "logical_archive_bytes_before_compaction",
+  "logical_archive_bytes_after_compaction",
+  "logical_archive_byte_delta",
   "matched_records_after_compaction",
   "compaction_elapsed",
   "agreement"

@@ -154,6 +154,21 @@ fn typed_archive_compaction_timing_reports_compacted_archive() {
         i128::from(report.tombstone_archive_bytes_after_compaction)
             - i128::from(report.tombstone_archive_bytes_before_compaction)
     );
+    assert_eq!(
+        report.logical_archive_bytes_before_compaction,
+        report.query_archive_bytes_before_compaction
+            + report.tombstone_archive_bytes_before_compaction
+    );
+    assert_eq!(
+        report.logical_archive_bytes_after_compaction,
+        report.query_archive_bytes_after_compaction
+            + report.tombstone_archive_bytes_after_compaction
+    );
+    assert_eq!(
+        report.logical_archive_byte_delta,
+        i128::from(report.logical_archive_bytes_after_compaction)
+            - i128::from(report.logical_archive_bytes_before_compaction)
+    );
     assert_eq!(report.matched_records_after_compaction, 1);
     assert_eq!(report.compaction_timing.iterations, 3);
     assert!(query_archive_path.exists());
@@ -226,6 +241,21 @@ fn typed_archive_maintenance_timing_reports_policy_driven_rebuild() {
         report.tombstone_archive_byte_delta,
         i128::from(report.tombstone_archive_bytes_after_maintenance)
             - i128::from(report.tombstone_archive_bytes_before_maintenance)
+    );
+    assert_eq!(
+        report.logical_archive_bytes_before_maintenance,
+        report.query_archive_bytes_before_maintenance
+            + report.tombstone_archive_bytes_before_maintenance
+    );
+    assert_eq!(
+        report.logical_archive_bytes_after_maintenance,
+        report.query_archive_bytes_after_maintenance
+            + report.tombstone_archive_bytes_after_maintenance
+    );
+    assert_eq!(
+        report.logical_archive_byte_delta,
+        i128::from(report.logical_archive_bytes_after_maintenance)
+            - i128::from(report.logical_archive_bytes_before_maintenance)
     );
     assert_eq!(report.matched_records_after_maintenance, 3);
     assert_eq!(report.maintenance_timing.iterations, 3);

@@ -170,14 +170,14 @@ impl BenchmarkApplicationRenderer {
         output.push_str("Workload typed archive compaction timing summary\n");
         output.push_str("-----------------------------------------------\n");
         output.push_str(
-            "workload | base records | tombstones | removed records | retained records | index before bytes | index after bytes | index byte delta | tombstone before bytes | tombstone after bytes | tombstone byte delta | matched after compaction | compaction | agreement\n",
+            "workload | base records | tombstones | removed records | retained records | index before bytes | index after bytes | index byte delta | tombstone before bytes | tombstone after bytes | tombstone byte delta | logical before bytes | logical after bytes | logical byte delta | matched after compaction | compaction | agreement\n",
         );
 
         for workload in &context.workloads {
             let report = typed_archive_compaction_report(context, &typed_context, workload);
 
             output.push_str(&format!(
-                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
                 workload.name,
                 report.base_record_count,
                 report.tombstone_count,
@@ -189,6 +189,9 @@ impl BenchmarkApplicationRenderer {
                 report.tombstone_archive_bytes_before_compaction,
                 report.tombstone_archive_bytes_after_compaction,
                 report.tombstone_archive_byte_delta,
+                report.logical_archive_bytes_before_compaction,
+                report.logical_archive_bytes_after_compaction,
+                report.logical_archive_byte_delta,
                 report.matched_records_after_compaction,
                 format_duration_ascii(report.compaction_timing.average_elapsed),
             ));
@@ -226,14 +229,14 @@ impl BenchmarkApplicationRenderer {
         output.push_str("Workload typed archive maintenance timing summary\n");
         output.push_str("------------------------------------------------\n");
         output.push_str(
-            "workload | action | reason | base records | pending append | tombstones | resulting records | index before bytes | index after bytes | index byte delta | tombstone before bytes | tombstone after bytes | tombstone byte delta | matched after maintenance | maintenance | agreement\n",
+            "workload | action | reason | base records | pending append | tombstones | resulting records | index before bytes | index after bytes | index byte delta | tombstone before bytes | tombstone after bytes | tombstone byte delta | logical before bytes | logical after bytes | logical byte delta | matched after maintenance | maintenance | agreement\n",
         );
 
         for workload in &context.workloads {
             let report = typed_archive_maintenance_report(context, &typed_context, workload);
 
             output.push_str(&format!(
-                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
                 workload.name,
                 format_archive_maintenance_action(report.selected_action),
                 format_archive_maintenance_reason(report.selected_reason),
@@ -247,6 +250,9 @@ impl BenchmarkApplicationRenderer {
                 report.tombstone_archive_bytes_before_maintenance,
                 report.tombstone_archive_bytes_after_maintenance,
                 report.tombstone_archive_byte_delta,
+                report.logical_archive_bytes_before_maintenance,
+                report.logical_archive_bytes_after_maintenance,
+                report.logical_archive_byte_delta,
                 report.matched_records_after_maintenance,
                 format_duration_ascii(report.maintenance_timing.average_elapsed),
             ));
@@ -401,6 +407,21 @@ fn append_target_typed_archive_compaction_report(
     );
     append_debug_line(
         output,
+        "logical archive bytes before compaction",
+        report.logical_archive_bytes_before_compaction,
+    );
+    append_debug_line(
+        output,
+        "logical archive bytes after compaction",
+        report.logical_archive_bytes_after_compaction,
+    );
+    append_debug_line(
+        output,
+        "logical archive byte delta",
+        report.logical_archive_byte_delta,
+    );
+    append_debug_line(
+        output,
         "matched records after compaction",
         report.matched_records_after_compaction,
     );
@@ -468,6 +489,21 @@ fn append_target_typed_archive_maintenance_report(
         output,
         "tombstone archive byte delta",
         report.tombstone_archive_byte_delta,
+    );
+    append_debug_line(
+        output,
+        "logical archive bytes before maintenance",
+        report.logical_archive_bytes_before_maintenance,
+    );
+    append_debug_line(
+        output,
+        "logical archive bytes after maintenance",
+        report.logical_archive_bytes_after_maintenance,
+    );
+    append_debug_line(
+        output,
+        "logical archive byte delta",
+        report.logical_archive_byte_delta,
     );
     append_debug_line(
         output,

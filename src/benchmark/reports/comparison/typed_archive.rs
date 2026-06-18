@@ -19,11 +19,12 @@ use crate::persistence::{
     FSEArchiveMaintenanceAction, FSEArchiveMaintenancePolicy, FSEArchiveMaintenanceReason,
     FSETombstonedTypedQueryIndex, FSETombstonedTypedQueryIndexArchiveError,
     FSETypedQueryIndexArchiveCompactionError, FSETypedQueryIndexArchiveError,
-    FSETypedQueryIndexArchiveMaintenanceError, FSETypedRowTombstoneArchiveError,
-    append_typed_query_index_archive_file, compact_typed_query_index_archive_file,
-    load_typed_query_index_archive_file, load_typed_query_index_archive_with_tombstones,
-    maintain_typed_query_index_archive_file, save_typed_query_index_archive_file,
-    save_typed_row_tombstone_archive_file,
+    FSETypedQueryIndexArchiveFootprintError, FSETypedQueryIndexArchiveMaintenanceError,
+    FSETypedRowTombstoneArchiveError, append_typed_query_index_archive_file,
+    compact_typed_query_index_archive_file, load_typed_query_index_archive_file,
+    load_typed_query_index_archive_with_tombstones, maintain_typed_query_index_archive_file,
+    save_typed_query_index_archive_file, save_typed_row_tombstone_archive_file,
+    typed_query_index_archive_with_tombstones_footprint,
 };
 use crate::query::{IndexedTypedQueryError, TypedQueryIndex, TypedQueryPlan};
 
@@ -44,6 +45,9 @@ pub enum TypedArchiveLoadTimingError {
 
     /// Applying typed archive maintenance failed.
     Maintenance(FSETypedQueryIndexArchiveMaintenanceError),
+
+    /// Reporting typed archive footprint failed.
+    ArchiveFootprint(FSETypedQueryIndexArchiveFootprintError),
 
     /// Typed indexed query execution failed.
     Query(IndexedTypedQueryError),
@@ -81,6 +85,7 @@ impl fmt::Display for TypedArchiveLoadTimingError {
             Self::ArchiveCompaction(error) => error.fmt(formatter),
             Self::TombstonedArchive(error) => error.fmt(formatter),
             Self::Maintenance(error) => error.fmt(formatter),
+            Self::ArchiveFootprint(error) => error.fmt(formatter),
             Self::Query(error) => error.fmt(formatter),
             Self::ArchiveFileMetadata { .. } => {
                 formatter.write_str("typed archive file metadata could not be read")
@@ -105,6 +110,7 @@ impl Error for TypedArchiveLoadTimingError {
             Self::ArchiveCompaction(error) => Some(error),
             Self::TombstonedArchive(error) => Some(error),
             Self::Maintenance(error) => Some(error),
+            Self::ArchiveFootprint(error) => Some(error),
             Self::Query(error) => Some(error),
             Self::ArchiveFileMetadata { .. } => None,
             Self::ResultMismatch { .. } => None,
@@ -139,6 +145,12 @@ impl From<FSETombstonedTypedQueryIndexArchiveError> for TypedArchiveLoadTimingEr
 impl From<FSETypedQueryIndexArchiveMaintenanceError> for TypedArchiveLoadTimingError {
     fn from(error: FSETypedQueryIndexArchiveMaintenanceError) -> Self {
         Self::Maintenance(error)
+    }
+}
+
+impl From<FSETypedQueryIndexArchiveFootprintError> for TypedArchiveLoadTimingError {
+    fn from(error: FSETypedQueryIndexArchiveFootprintError) -> Self {
+        Self::ArchiveFootprint(error)
     }
 }
 
@@ -234,6 +246,15 @@ pub struct TypedArchiveCompactionTimingReport {
     /// Tombstone archive byte delta after compaction.
     pub tombstone_archive_byte_delta: i128,
 
+    /// Combined query index and tombstone archive byte length before compaction.
+    pub logical_archive_bytes_before_compaction: u64,
+
+    /// Combined query index and tombstone archive byte length after compaction.
+    pub logical_archive_bytes_after_compaction: u64,
+
+    /// Combined query index and tombstone archive byte delta after compaction.
+    pub logical_archive_byte_delta: i128,
+
     /// Number of records matched by the typed query plan after compaction.
     pub matched_records_after_compaction: usize,
 
@@ -282,6 +303,15 @@ pub struct TypedArchiveMaintenanceTimingReport {
 
     /// Tombstone archive byte delta after maintenance.
     pub tombstone_archive_byte_delta: i128,
+
+    /// Combined query index and tombstone archive byte length before maintenance.
+    pub logical_archive_bytes_before_maintenance: u64,
+
+    /// Combined query index and tombstone archive byte length after maintenance.
+    pub logical_archive_bytes_after_maintenance: u64,
+
+    /// Combined query index and tombstone archive byte delta after maintenance.
+    pub logical_archive_byte_delta: i128,
 
     /// Number of records matched by the typed query plan after maintenance.
     pub matched_records_after_maintenance: usize,
@@ -477,16 +507,29 @@ where
     let tombstoned_index =
         load_typed_query_index_archive_with_tombstones(query_archive_path, tombstone_archive_path)?;
     let tombstoned_row_ids = tombstoned_index.query_row_ids(plan)?;
-    let query_archive_bytes_before_compaction = archive_file_len(query_archive_path)?;
-    let tombstone_archive_bytes_before_compaction = archive_file_len(tombstone_archive_path)?;
+    let footprint_before_compaction = typed_query_index_archive_with_tombstones_footprint(
+        query_archive_path,
+        tombstone_archive_path,
+    )?;
+    let query_archive_bytes_before_compaction =
+        footprint_before_compaction.query_index_archive_bytes;
+    let tombstone_archive_bytes_before_compaction =
+        footprint_before_compaction.tombstone_archive_bytes;
+    let logical_archive_bytes_before_compaction = footprint_before_compaction.total_archive_bytes;
     let compaction_result = compact_typed_query_index_archive_file(
         query_archive_path,
         tombstone_archive_path,
         encoder,
         builder,
     )?;
-    let query_archive_bytes_after_compaction = archive_file_len(query_archive_path)?;
-    let tombstone_archive_bytes_after_compaction = archive_file_len(tombstone_archive_path)?;
+    let footprint_after_compaction = typed_query_index_archive_with_tombstones_footprint(
+        query_archive_path,
+        tombstone_archive_path,
+    )?;
+    let query_archive_bytes_after_compaction = footprint_after_compaction.query_index_archive_bytes;
+    let tombstone_archive_bytes_after_compaction =
+        footprint_after_compaction.tombstone_archive_bytes;
+    let logical_archive_bytes_after_compaction = footprint_after_compaction.total_archive_bytes;
     let compacted_index =
         load_typed_query_index_archive_with_tombstones(query_archive_path, tombstone_archive_path)?;
     let compacted_row_ids = compacted_index.query_row_ids(plan)?;
@@ -525,6 +568,12 @@ where
         ),
         tombstone_archive_bytes_before_compaction,
         tombstone_archive_bytes_after_compaction,
+        logical_archive_byte_delta: byte_delta(
+            logical_archive_bytes_before_compaction,
+            logical_archive_bytes_after_compaction,
+        ),
+        logical_archive_bytes_before_compaction,
+        logical_archive_bytes_after_compaction,
         matched_records_after_compaction: compacted_row_ids.len(),
         compaction_timing,
     })
@@ -559,8 +608,15 @@ where
     save_typed_query_index_archive_file(query_archive_path, query_index)?;
     save_typed_row_tombstone_archive_file(tombstone_archive_path, tombstone_row_ids)?;
 
-    let query_archive_bytes_before_maintenance = archive_file_len(query_archive_path)?;
-    let tombstone_archive_bytes_before_maintenance = archive_file_len(tombstone_archive_path)?;
+    let footprint_before_maintenance = typed_query_index_archive_with_tombstones_footprint(
+        query_archive_path,
+        tombstone_archive_path,
+    )?;
+    let query_archive_bytes_before_maintenance =
+        footprint_before_maintenance.query_index_archive_bytes;
+    let tombstone_archive_bytes_before_maintenance =
+        footprint_before_maintenance.tombstone_archive_bytes;
+    let logical_archive_bytes_before_maintenance = footprint_before_maintenance.total_archive_bytes;
     let maintenance_result = maintain_typed_query_index_archive_file(
         query_archive_path,
         tombstone_archive_path,
@@ -569,8 +625,15 @@ where
         builder,
         policy,
     )?;
-    let query_archive_bytes_after_maintenance = archive_file_len(query_archive_path)?;
-    let tombstone_archive_bytes_after_maintenance = archive_file_len(tombstone_archive_path)?;
+    let footprint_after_maintenance = typed_query_index_archive_with_tombstones_footprint(
+        query_archive_path,
+        tombstone_archive_path,
+    )?;
+    let query_archive_bytes_after_maintenance =
+        footprint_after_maintenance.query_index_archive_bytes;
+    let tombstone_archive_bytes_after_maintenance =
+        footprint_after_maintenance.tombstone_archive_bytes;
+    let logical_archive_bytes_after_maintenance = footprint_after_maintenance.total_archive_bytes;
     let loaded_effective_index =
         load_typed_query_index_archive_with_tombstones(query_archive_path, tombstone_archive_path)?;
     let surviving_tombstones = surviving_tombstone_row_ids_for_maintenance_action(
@@ -626,6 +689,12 @@ where
         ),
         tombstone_archive_bytes_before_maintenance,
         tombstone_archive_bytes_after_maintenance,
+        logical_archive_byte_delta: byte_delta(
+            logical_archive_bytes_before_maintenance,
+            logical_archive_bytes_after_maintenance,
+        ),
+        logical_archive_bytes_before_maintenance,
+        logical_archive_bytes_after_maintenance,
         matched_records_after_maintenance: loaded_row_ids.len(),
         maintenance_timing,
     })
