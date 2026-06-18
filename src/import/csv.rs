@@ -15,7 +15,8 @@ use crate::encoding::{
     FSERecordEncoderMetadataError,
 };
 use crate::persistence::{
-    FSEArchiveMaintenancePolicy, FSERecordBatchArchiveError, FSETypedQueryIndexArchiveAppendResult,
+    FSEArchiveMaintenancePolicy, FSERecordBatchArchiveError,
+    FSETypedQueryIndexAppendDeltaArchiveMaintenanceError, FSETypedQueryIndexArchiveAppendResult,
     FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveMaintenanceError,
     FSETypedQueryIndexArchiveMaintenanceResult, FSETypedRowTombstoneArchiveAppendResult,
     FSETypedRowTombstoneArchiveError, append_typed_query_index_archive_file,
@@ -24,6 +25,7 @@ use crate::persistence::{
     load_typed_query_index_archive_file_with_encoder_metadata,
     load_typed_record_batch_archive_file, load_typed_row_tombstone_archive_file,
     maintain_typed_query_index_archive_file,
+    maintain_typed_query_index_archive_file_with_append_batch_archive,
 };
 use crate::query::{
     FSEPredicate, IndexedTypedQueryError, IndexedTypedQueryReport, IndexedTypedQueryRowReport,
@@ -245,6 +247,59 @@ impl From<FSERecordEncoderMetadataError> for FSECsvArchiveMaintenanceImportError
 
 impl From<FSETypedQueryIndexArchiveMaintenanceError> for FSECsvArchiveMaintenanceImportError {
     fn from(error: FSETypedQueryIndexArchiveMaintenanceError) -> Self {
+        Self::Maintenance(error)
+    }
+}
+
+/// Error returned when append-delta archive maintenance import fails.
+#[derive(Debug)]
+pub enum FSECsvAppendDeltaArchiveMaintenanceImportError {
+    /// Loading the typed query index archive metadata failed.
+    Archive(FSETypedQueryIndexArchiveError),
+
+    /// Stored record encoder metadata could not rebuild a runtime encoder.
+    EncoderMetadata(FSERecordEncoderMetadataError),
+
+    /// Typed query index append-delta archive maintenance failed.
+    Maintenance(FSETypedQueryIndexAppendDeltaArchiveMaintenanceError),
+}
+
+impl fmt::Display for FSECsvAppendDeltaArchiveMaintenanceImportError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Archive(error) => error.fmt(formatter),
+            Self::EncoderMetadata(error) => error.fmt(formatter),
+            Self::Maintenance(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for FSECsvAppendDeltaArchiveMaintenanceImportError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Archive(error) => Some(error),
+            Self::EncoderMetadata(error) => Some(error),
+            Self::Maintenance(error) => Some(error),
+        }
+    }
+}
+
+impl From<FSETypedQueryIndexArchiveError> for FSECsvAppendDeltaArchiveMaintenanceImportError {
+    fn from(error: FSETypedQueryIndexArchiveError) -> Self {
+        Self::Archive(error)
+    }
+}
+
+impl From<FSERecordEncoderMetadataError> for FSECsvAppendDeltaArchiveMaintenanceImportError {
+    fn from(error: FSERecordEncoderMetadataError) -> Self {
+        Self::EncoderMetadata(error)
+    }
+}
+
+impl From<FSETypedQueryIndexAppendDeltaArchiveMaintenanceError>
+    for FSECsvAppendDeltaArchiveMaintenanceImportError
+{
+    fn from(error: FSETypedQueryIndexAppendDeltaArchiveMaintenanceError) -> Self {
         Self::Maintenance(error)
     }
 }
@@ -1353,4 +1408,40 @@ where
         builder,
         policy,
     )?)
+}
+
+/// Applies archive maintenance using a persisted append-delta archive.
+///
+/// The typed query index archive supplies the schema and record encoder
+/// metadata used by maintenance rebuilds.
+pub fn maintain_typed_query_index_archive_from_append_delta_archive<A, D, T>(
+    archive_path: A,
+    append_path: D,
+    tombstone_path: T,
+    builder: &FSEBuilder,
+    policy: &FSEArchiveMaintenancePolicy,
+) -> Result<
+    FSETypedQueryIndexArchiveMaintenanceResult,
+    FSECsvAppendDeltaArchiveMaintenanceImportError,
+>
+where
+    A: AsRef<Path>,
+    D: AsRef<Path>,
+    T: AsRef<Path>,
+{
+    let archive_path = archive_path.as_ref();
+    let loaded = load_typed_query_index_archive_file_with_encoder_metadata(archive_path)?;
+    let schema = loaded.query_index.batch().schema();
+    let encoder = loaded.record_encoder_metadata.to_record_encoder(schema)?;
+
+    Ok(
+        maintain_typed_query_index_archive_file_with_append_batch_archive(
+            archive_path,
+            append_path,
+            tombstone_path,
+            &encoder,
+            builder,
+            policy,
+        )?,
+    )
 }
