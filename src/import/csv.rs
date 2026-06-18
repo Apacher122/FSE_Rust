@@ -6,28 +6,30 @@ use std::path::Path;
 
 use crate::build::FSEBuilder;
 use crate::data::{
-    FSECsvFileImportError, FSECsvImportOptions, FSECsvSchemaInferenceOptions, FSESchema,
-    FSESchemaDimensionMapping, RowId, infer_schema_from_csv_file_with_options,
-    record_batch_from_csv_file, row_ids_from_csv_file,
+    FSECsvFileImportError, FSECsvImportOptions, FSECsvSchemaInferenceOptions, FSERecordBatch,
+    FSERecordBatchError, FSESchema, FSESchemaDimensionMapping, RowId,
+    infer_schema_from_csv_file_with_options, record_batch_from_csv_file, row_ids_from_csv_file,
 };
 use crate::encoding::{
     ComposedRecordEncoderFromBatchError, FSERecordEncoder, FSERecordEncoderMetadata,
     FSERecordEncoderMetadataError,
 };
 use crate::persistence::{
-    FSEArchiveMaintenancePolicy, FSETypedQueryIndexArchiveAppendResult,
+    FSEArchiveMaintenancePolicy, FSERecordBatchArchiveError, FSETypedQueryIndexArchiveAppendResult,
     FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveMaintenanceError,
     FSETypedQueryIndexArchiveMaintenanceResult, FSETypedRowTombstoneArchiveAppendResult,
     FSETypedRowTombstoneArchiveError, append_typed_query_index_archive_file,
     append_typed_row_tombstone_archive_file, build_typed_query_index_archive_file,
     build_typed_query_index_archive_file_with_encoder_metadata,
     load_typed_query_index_archive_file_with_encoder_metadata,
-    load_typed_row_tombstone_archive_file, maintain_typed_query_index_archive_file,
+    load_typed_record_batch_archive_file, load_typed_row_tombstone_archive_file,
+    maintain_typed_query_index_archive_file,
 };
 use crate::query::{
     FSEPredicate, IndexedTypedQueryError, IndexedTypedQueryReport, IndexedTypedQueryRowReport,
-    QueryCountReport, QueryExistenceReport, TypedQueryIndex, TypedQueryPlan, TypedQueryPlanBuilder,
-    TypedQueryPlanError, TypedQueryResultRow, TypedRowTombstoneSet,
+    QueryCountReport, QueryExistenceReport, TypedAppendDeltaQueryView, TypedQueryIndex,
+    TypedQueryPlan, TypedQueryPlanBuilder, TypedQueryPlanError, TypedQueryResultRow,
+    TypedRowTombstoneSet,
 };
 
 /// Error returned when CSV archive import fails.
@@ -327,6 +329,57 @@ impl From<FSETypedRowTombstoneArchiveError> for FSECsvTombstonedArchiveQueryCont
     }
 }
 
+/// Error returned when a CSV-backed archive append-delta context cannot be loaded.
+#[derive(Debug)]
+pub enum FSECsvAppendDeltaArchiveQueryContextError {
+    /// Loading the archive query context failed.
+    Context(FSECsvArchiveQueryContextError),
+
+    /// Loading the appended record batch failed.
+    AppendBatch(FSERecordBatchArchiveError),
+
+    /// The appended record batch could not be used with the base query index.
+    AppendDelta(FSERecordBatchError),
+}
+
+impl fmt::Display for FSECsvAppendDeltaArchiveQueryContextError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Context(error) => error.fmt(formatter),
+            Self::AppendBatch(error) => error.fmt(formatter),
+            Self::AppendDelta(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for FSECsvAppendDeltaArchiveQueryContextError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Context(error) => Some(error),
+            Self::AppendBatch(error) => Some(error),
+            Self::AppendDelta(error) => Some(error),
+        }
+    }
+}
+
+impl From<FSECsvArchiveQueryContextError> for FSECsvAppendDeltaArchiveQueryContextError {
+    fn from(error: FSECsvArchiveQueryContextError) -> Self {
+        Self::Context(error)
+    }
+}
+
+impl From<FSERecordBatchArchiveError> for FSECsvAppendDeltaArchiveQueryContextError {
+    fn from(error: FSERecordBatchArchiveError) -> Self {
+        Self::AppendBatch(error)
+    }
+}
+
+impl From<FSERecordBatchError> for FSECsvAppendDeltaArchiveQueryContextError {
+    fn from(error: FSERecordBatchError) -> Self {
+        Self::AppendDelta(error)
+    }
+}
+
 /// Error returned when querying a CSV-backed archive context fails.
 #[derive(Debug)]
 pub enum FSECsvArchiveQueryError {
@@ -362,6 +415,57 @@ impl From<TypedQueryPlanError> for FSECsvArchiveQueryError {
 }
 
 impl From<IndexedTypedQueryError> for FSECsvArchiveQueryError {
+    fn from(error: IndexedTypedQueryError) -> Self {
+        Self::Query(error)
+    }
+}
+
+/// Error returned when querying a CSV-backed archive append-delta context fails.
+#[derive(Debug)]
+pub enum FSECsvAppendDeltaArchiveQueryError {
+    /// Typed predicate planning failed.
+    Plan(TypedQueryPlanError),
+
+    /// Append-delta validation failed.
+    AppendDelta(FSERecordBatchError),
+
+    /// Typed query execution failed.
+    Query(IndexedTypedQueryError),
+}
+
+impl fmt::Display for FSECsvAppendDeltaArchiveQueryError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Plan(error) => error.fmt(formatter),
+            Self::AppendDelta(error) => error.fmt(formatter),
+            Self::Query(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for FSECsvAppendDeltaArchiveQueryError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Plan(error) => Some(error),
+            Self::AppendDelta(error) => Some(error),
+            Self::Query(error) => Some(error),
+        }
+    }
+}
+
+impl From<TypedQueryPlanError> for FSECsvAppendDeltaArchiveQueryError {
+    fn from(error: TypedQueryPlanError) -> Self {
+        Self::Plan(error)
+    }
+}
+
+impl From<FSERecordBatchError> for FSECsvAppendDeltaArchiveQueryError {
+    fn from(error: FSERecordBatchError) -> Self {
+        Self::AppendDelta(error)
+    }
+}
+
+impl From<IndexedTypedQueryError> for FSECsvAppendDeltaArchiveQueryError {
     fn from(error: IndexedTypedQueryError) -> Self {
         Self::Query(error)
     }
@@ -508,6 +612,85 @@ pub struct FSECsvTombstonedArchiveQueryContext {
 
     /// Row identifiers excluded from query results.
     pub tombstones: TypedRowTombstoneSet,
+}
+
+/// Query context loaded from a CSV-backed archive and pending append batch.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FSECsvAppendDeltaArchiveQueryContext {
+    /// Loaded query context for the base typed query index archive.
+    pub context: FSECsvArchiveQueryContext,
+
+    /// Pending appended records loaded from a typed record batch archive.
+    pub appended: FSERecordBatch,
+}
+
+impl FSECsvAppendDeltaArchiveQueryContext {
+    /// Creates a typed query plan builder from the loaded archive metadata.
+    pub fn try_plan_builder(&self) -> Result<TypedQueryPlanBuilder<'_>, TypedQueryPlanError> {
+        self.context.try_plan_builder()
+    }
+
+    /// Builds a typed query plan from predicates using loaded archive metadata.
+    pub fn try_plan<I>(&self, predicates: I) -> Result<TypedQueryPlan, TypedQueryPlanError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        self.context.try_plan(predicates)
+    }
+
+    /// Creates an append-delta query view from the loaded archive state.
+    pub fn append_delta_view(&self) -> Result<TypedAppendDeltaQueryView<'_>, FSERecordBatchError> {
+        TypedAppendDeltaQueryView::try_new(&self.context.query_index, &self.appended)
+    }
+
+    /// Queries matching row identifiers from predicates across base and appended records.
+    pub fn query_row_ids<I>(
+        &self,
+        predicates: I,
+    ) -> Result<Vec<RowId>, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.append_delta_view()?.query_row_ids(&plan)?)
+    }
+
+    /// Queries matching typed rows from predicates across base and appended records.
+    pub fn query_rows<I>(
+        &self,
+        predicates: I,
+    ) -> Result<Vec<TypedQueryResultRow>, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.append_delta_view()?.query_rows(&plan)?)
+    }
+
+    /// Counts records matching predicates across base and appended records.
+    pub fn count_matches<I>(
+        &self,
+        predicates: I,
+    ) -> Result<usize, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.append_delta_view()?.count_matches(&plan)?)
+    }
+
+    /// Returns true when predicates match at least one base or appended record.
+    pub fn has_match<I>(&self, predicates: I) -> Result<bool, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.append_delta_view()?.has_match(&plan)?)
+    }
 }
 
 impl FSECsvTombstonedArchiveQueryContext {
@@ -753,6 +936,23 @@ where
         context,
         tombstones,
     })
+}
+
+/// Loads query planning metadata and pending appended records from CSV-backed archives.
+pub fn load_csv_append_delta_typed_query_index_archive_context<P, Q>(
+    archive_path: P,
+    append_path: Q,
+) -> Result<FSECsvAppendDeltaArchiveQueryContext, FSECsvAppendDeltaArchiveQueryContextError>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+{
+    let context = load_csv_typed_query_index_archive_context(archive_path)?;
+    let appended = load_typed_record_batch_archive_file(append_path)?;
+    let result = FSECsvAppendDeltaArchiveQueryContext { context, appended };
+    result.append_delta_view()?;
+
+    Ok(result)
 }
 
 /// Builds a typed query index archive from a CSV file.
