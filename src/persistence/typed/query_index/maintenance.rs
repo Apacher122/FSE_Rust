@@ -11,7 +11,8 @@ use crate::persistence::{
     FSEArchiveAppendOperationMetadata, FSEArchiveCompactionOperationMetadata,
     FSEArchiveMaintenanceAction, FSEArchiveMaintenanceDecision, FSEArchiveMaintenanceError,
     FSEArchiveMaintenanceInput, FSEArchiveMaintenancePolicy, FSEArchivePayloadKind,
-    FSEArchiveRebuildPlanMetadata, FSERecordBatchArchiveError,
+    FSEArchiveRebuildPlanMetadata, FSERecordBatchArchiveError, FSETypedQueryIndexArchiveFootprint,
+    FSETypedQueryIndexArchiveFootprintError,
 };
 use crate::query::TypedQueryIndex;
 
@@ -29,6 +30,7 @@ use super::{
     compact_typed_query_index_archive_file,
     load_typed_query_index_archive_file_with_encoder_metadata,
     save_typed_query_index_archive_file_with_encoder_metadata,
+    typed_query_index_archive_with_append_delta_and_tombstones_footprint,
 };
 
 /// Error returned when typed query index archive maintenance fails.
@@ -83,6 +85,9 @@ pub enum FSETypedQueryIndexAppendDeltaArchiveMaintenanceError {
     /// Typed query index archive maintenance failed.
     Maintenance(FSETypedQueryIndexArchiveMaintenanceError),
 
+    /// Reading logical archive footprint metadata failed.
+    Footprint(FSETypedQueryIndexArchiveFootprintError),
+
     /// Saving the cleared append archive failed.
     SaveAppendBatch(FSERecordBatchArchiveError),
 }
@@ -92,6 +97,7 @@ impl fmt::Display for FSETypedQueryIndexAppendDeltaArchiveMaintenanceError {
         match self {
             Self::LoadAppendBatch(error) => error.fmt(formatter),
             Self::Maintenance(error) => error.fmt(formatter),
+            Self::Footprint(error) => error.fmt(formatter),
             Self::SaveAppendBatch(error) => error.fmt(formatter),
         }
     }
@@ -102,6 +108,7 @@ impl Error for FSETypedQueryIndexAppendDeltaArchiveMaintenanceError {
         match self {
             Self::LoadAppendBatch(error) => Some(error),
             Self::Maintenance(error) => Some(error),
+            Self::Footprint(error) => Some(error),
             Self::SaveAppendBatch(error) => Some(error),
         }
     }
@@ -129,6 +136,23 @@ pub struct FSETypedQueryIndexArchiveMaintenanceResult {
 
     /// Compaction result when tombstones were applied.
     pub compaction_result: Option<FSETypedQueryIndexArchiveCompactionResult>,
+}
+
+/// Read-only maintenance status for a typed query index archive.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FSETypedQueryIndexArchiveMaintenanceStatus {
+    /// Maintenance decision selected for the current archive state.
+    pub decision: FSEArchiveMaintenanceDecision,
+
+    /// Logical footprint for the archive files included in the decision.
+    pub footprint: FSETypedQueryIndexArchiveFootprint,
+}
+
+impl FSETypedQueryIndexArchiveMaintenanceStatus {
+    /// Returns whether the selected decision would write archive files.
+    pub fn requires_archive_write(&self) -> bool {
+        self.decision.requires_archive_write()
+    }
 }
 
 /// Applies archive maintenance policy to a typed query index `.fse` archive file.
@@ -302,6 +326,50 @@ where
         appended_input,
         policy,
     )?)
+}
+
+/// Reports maintenance status using persisted append and tombstone archives.
+///
+/// The returned status combines maintenance policy output with logical archive
+/// footprint metadata. Archive contents are not modified.
+pub fn inspect_typed_query_index_archive_file_maintenance_status_with_append_batch_archive<
+    P,
+    Q,
+    R,
+>(
+    query_index_path: P,
+    append_path: Q,
+    tombstone_path: R,
+    policy: &FSEArchiveMaintenancePolicy,
+) -> Result<
+    FSETypedQueryIndexArchiveMaintenanceStatus,
+    FSETypedQueryIndexAppendDeltaArchiveMaintenanceError,
+>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+    R: AsRef<Path>,
+{
+    let query_index_path = query_index_path.as_ref();
+    let append_path = append_path.as_ref();
+    let tombstone_path = tombstone_path.as_ref();
+    let decision = inspect_typed_query_index_archive_file_maintenance_with_append_batch_archive(
+        query_index_path,
+        append_path,
+        tombstone_path,
+        policy,
+    )?;
+    let footprint = typed_query_index_archive_with_append_delta_and_tombstones_footprint(
+        query_index_path,
+        append_path,
+        tombstone_path,
+    )
+    .map_err(FSETypedQueryIndexAppendDeltaArchiveMaintenanceError::Footprint)?;
+
+    Ok(FSETypedQueryIndexArchiveMaintenanceStatus {
+        decision,
+        footprint,
+    })
 }
 
 /// Applies archive maintenance using a persisted append batch archive.
