@@ -30,6 +30,7 @@ scripts/benchmark/run/run-low-gap-trials.ps1
 scripts/benchmark/run/run-materialization-mode-trials.ps1
 scripts/benchmark/summarize/summarize-target-workload-trials.ps1
 scripts/benchmark/summarize/summarize-typed-archive-append-rebuild-summary.ps1
+scripts/benchmark/summarize/summarize-typed-archive-append-delta-maintenance-summary.ps1
 scripts/benchmark/summarize/summarize-typed-archive-compaction-summary.ps1
 scripts/benchmark/summarize/summarize-typed-archive-load-summary.ps1
 scripts/benchmark/summarize/summarize-typed-archive-maintenance-summary.ps1

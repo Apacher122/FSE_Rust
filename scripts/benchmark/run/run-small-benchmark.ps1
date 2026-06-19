@@ -64,6 +64,8 @@ $TypedArchiveCompactionSummaryCsvPath = Join-Path $OutputDir "typed-archive-comp
 $TypedArchiveCompactionSummaryNotesPath = Join-Path $OutputDir "typed-archive-compaction-summary-$Label.txt"
 $TypedArchiveMaintenanceSummaryCsvPath = Join-Path $OutputDir "typed-archive-maintenance-summary-$Label.csv"
 $TypedArchiveMaintenanceSummaryNotesPath = Join-Path $OutputDir "typed-archive-maintenance-summary-$Label.txt"
+$TypedArchiveAppendDeltaMaintenanceSummaryCsvPath = Join-Path $OutputDir "typed-archive-append-delta-maintenance-summary-$Label.csv"
+$TypedArchiveAppendDeltaMaintenanceSummaryNotesPath = Join-Path $OutputDir "typed-archive-append-delta-maintenance-summary-$Label.txt"
 $TypedQueryIndexArchivePath = Join-Path $OutputDir "typed-query-index-archive-$Label.fse"
 $LowSelectivityGapCsvPath = Join-Path $OutputDir "low-selectivity-gap-$Label.csv"
 $LowGapRegressionNotesPath = Join-Path $OutputDir "low-gap-regression-notes-$Label.txt"
@@ -76,6 +78,7 @@ $TypedArchiveLoadSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summ
 $TypedArchiveAppendRebuildSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-archive-append-rebuild-summary.ps1"
 $TypedArchiveCompactionSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-archive-compaction-summary.ps1"
 $TypedArchiveMaintenanceSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-archive-maintenance-summary.ps1"
+$TypedArchiveAppendDeltaMaintenanceSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-archive-append-delta-maintenance-summary.ps1"
 
 
 function Write-BenchmarkSection {
@@ -532,6 +535,24 @@ if ($LASTEXITCODE -ne 0) {
     throw "typed archive maintenance summary failed with exit code $LASTEXITCODE"
 }
 
+if (!(Test-Path -LiteralPath $TypedArchiveAppendDeltaMaintenanceSummaryScript)) {
+    throw "required script was not found: $TypedArchiveAppendDeltaMaintenanceSummaryScript"
+}
+
+$TypedArchiveAppendDeltaMaintenanceSummaryArguments = @{
+    DebugOutputPath = $DebugOutputPath
+    OutputCsv       = $TypedArchiveAppendDeltaMaintenanceSummaryCsvPath
+    OutputNotesPath = $TypedArchiveAppendDeltaMaintenanceSummaryNotesPath
+    Dataset         = $Dataset
+    MaxDepth        = $EffectiveMaxDepthText
+}
+
+& $TypedArchiveAppendDeltaMaintenanceSummaryScript @TypedArchiveAppendDeltaMaintenanceSummaryArguments
+
+if ($LASTEXITCODE -ne 0) {
+    throw "typed archive append-delta maintenance summary failed with exit code $LASTEXITCODE"
+}
+
 Add-Utf8Text -Path $TextOutputPath -Text "`r`n---`r`n`r`nArtifacts:`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Dataset:                        $Dataset`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Max depth:                      $EffectiveMaxDepth`r`n"
@@ -555,6 +576,8 @@ Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive compaction CSV:   $Typ
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive compaction notes: $TypedArchiveCompactionSummaryNotesPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive maintenance CSV:  $TypedArchiveMaintenanceSummaryCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive maintenance notes: $TypedArchiveMaintenanceSummaryNotesPath`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive append-delta maintenance CSV: $TypedArchiveAppendDeltaMaintenanceSummaryCsvPath`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive append-delta maintenance notes: $TypedArchiveAppendDeltaMaintenanceSummaryNotesPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed query index archive:      $TypedQueryIndexArchivePath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Low-selectivity gap CSV:        $LowSelectivityGapCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Low-gap regression notes:       $LowGapRegressionNotesPath`r`n"
@@ -582,6 +605,8 @@ Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive compaction CSV:   $Ty
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive compaction notes: $TypedArchiveCompactionSummaryNotesPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive maintenance CSV:  $TypedArchiveMaintenanceSummaryCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive maintenance notes: $TypedArchiveMaintenanceSummaryNotesPath`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive append-delta maintenance CSV: $TypedArchiveAppendDeltaMaintenanceSummaryCsvPath`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive append-delta maintenance notes: $TypedArchiveAppendDeltaMaintenanceSummaryNotesPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed query index archive:      $TypedQueryIndexArchivePath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Low-selectivity gap CSV:        $LowSelectivityGapCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Low-gap regression notes:       $LowGapRegressionNotesPath`r`n"
@@ -610,6 +635,8 @@ Write-Host "  $TypedArchiveCompactionSummaryCsvPath"
 Write-Host "  $TypedArchiveCompactionSummaryNotesPath"
 Write-Host "  $TypedArchiveMaintenanceSummaryCsvPath"
 Write-Host "  $TypedArchiveMaintenanceSummaryNotesPath"
+Write-Host "  $TypedArchiveAppendDeltaMaintenanceSummaryCsvPath"
+Write-Host "  $TypedArchiveAppendDeltaMaintenanceSummaryNotesPath"
 Write-Host "  $TypedQueryIndexArchivePath"
 Write-Host "  $LowSelectivityGapCsvPath"
 Write-Host "  $LowGapRegressionNotesPath"

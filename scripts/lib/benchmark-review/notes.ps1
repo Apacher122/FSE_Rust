@@ -189,6 +189,8 @@ function Add-BenchmarkReviewArtifactSummary {
   Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive compaction notes: $(Join-Path $OutputDir "typed-archive-compaction-summary-$Label.txt")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive maintenance summary: $(Join-Path $OutputDir "typed-archive-maintenance-summary-$Label.csv")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive maintenance notes: $(Join-Path $OutputDir "typed-archive-maintenance-summary-$Label.txt")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive append-delta maintenance summary: $(Join-Path $OutputDir "typed-archive-append-delta-maintenance-summary-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive append-delta maintenance notes: $(Join-Path $OutputDir "typed-archive-append-delta-maintenance-summary-$Label.txt")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "typed query index archive: $(Join-Path $OutputDir "typed-query-index-archive-$Label.fse")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode comparison CSV: $(Join-Path $OutputDir "materialization-mode-summary-comparison-$Label.csv")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode comparison notes: $(Join-Path $OutputDir "materialization-mode-summary-comparison-$Label.txt")`r`n"

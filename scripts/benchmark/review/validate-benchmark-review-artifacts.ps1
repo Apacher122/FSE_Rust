@@ -136,6 +136,8 @@ $TypedArchiveCompactionSummaryEntry = $ResolvedArtifacts.TypedArchiveCompactionS
 $TypedArchiveCompactionNotesEntry = $ResolvedArtifacts.TypedArchiveCompactionNotes
 $TypedArchiveMaintenanceSummaryEntry = $ResolvedArtifacts.TypedArchiveMaintenanceSummary
 $TypedArchiveMaintenanceNotesEntry = $ResolvedArtifacts.TypedArchiveMaintenanceNotes
+$TypedArchiveAppendDeltaMaintenanceSummaryEntry = $ResolvedArtifacts.TypedArchiveAppendDeltaMaintenanceSummary
+$TypedArchiveAppendDeltaMaintenanceNotesEntry = $ResolvedArtifacts.TypedArchiveAppendDeltaMaintenanceNotes
 $TypedQueryIndexArchiveEntry = $ResolvedArtifacts.TypedQueryIndexArchive
 $LowGapEntry = $ResolvedArtifacts.LowGap
 $RegressionNotesEntry = $ResolvedArtifacts.RegressionNotes
@@ -160,6 +162,7 @@ Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedA
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveAppendRebuildNotesEntry -Description "typed archive append rebuild notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveCompactionNotesEntry -Description "typed archive compaction notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveMaintenanceNotesEntry -Description "typed archive maintenance notes"
+Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveAppendDeltaMaintenanceNotesEntry -Description "typed archive append-delta maintenance notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedQueryIndexArchiveEntry -Description "typed query index archive"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $RegressionNotesEntry -Description "low-gap regression notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TrialNotesEntry -Description "low-gap trial notes"
@@ -365,6 +368,44 @@ Test-BenchmarkReviewTextColumnAllEquals `
   -ColumnName "agreement" `
   -ExpectedValue "pass" `
   -Description "typed archive maintenance summary"
+
+$TypedArchiveAppendDeltaMaintenanceSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv `
+  -Entry $TypedArchiveAppendDeltaMaintenanceSummaryEntry `
+  -Description "typed archive append-delta maintenance summary" `
+  -RequiredColumns @(
+  "dataset",
+  "max_depth",
+  "workload_name",
+  "maintenance_action",
+  "maintenance_reason",
+  "base_record_count",
+  "pending_append_record_count",
+  "tombstone_count",
+  "resulting_record_count",
+  "index_bytes_before_maintenance",
+  "index_bytes_after_maintenance",
+  "index_byte_delta",
+  "append_bytes_before_maintenance",
+  "append_bytes_after_maintenance",
+  "append_byte_delta",
+  "tombstone_bytes_before_maintenance",
+  "tombstone_bytes_after_maintenance",
+  "tombstone_byte_delta",
+  "logical_archive_bytes_before_maintenance",
+  "logical_archive_bytes_after_maintenance",
+  "logical_archive_byte_delta",
+  "matched_records_after_maintenance",
+  "maintenance_elapsed",
+  "agreement"
+) `
+  -MinimumRows 1 `
+  -OnFailure $AddValidationFailure
+
+Test-BenchmarkReviewTextColumnAllEquals `
+  -Rows $TypedArchiveAppendDeltaMaintenanceSummaryRows `
+  -ColumnName "agreement" `
+  -ExpectedValue "pass" `
+  -Description "typed archive append-delta maintenance summary"
 
 Invoke-BenchmarkReviewPolicyCsvValidation -OnFailure $AddValidationFailure `
   -Entry $LowGapEntry `

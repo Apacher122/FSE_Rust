@@ -564,6 +564,22 @@ function Resolve-BenchmarkReviewManifestArtifactSet {
     -OnFailure $OnFailure `
     -OnInvalidPath $OnInvalidPath
 
+  $ResolvedArtifacts.TypedArchiveAppendDeltaMaintenanceSummary = Resolve-BenchmarkReviewManifestArtifact `
+    -Entries $Entries `
+    -ArtifactName $BenchmarkReviewArtifactNames.TypedArchiveAppendDeltaMaintenanceSummary `
+    -OutputDir $OutputDir `
+    -Label $Label `
+    -OnFailure $OnFailure `
+    -OnInvalidPath $OnInvalidPath
+
+  $ResolvedArtifacts.TypedArchiveAppendDeltaMaintenanceNotes = Resolve-BenchmarkReviewManifestArtifact `
+    -Entries $Entries `
+    -ArtifactName $BenchmarkReviewArtifactNames.TypedArchiveAppendDeltaMaintenanceNotes `
+    -OutputDir $OutputDir `
+    -Label $Label `
+    -OnFailure $OnFailure `
+    -OnInvalidPath $OnInvalidPath
+
   $ResolvedArtifacts.TypedQueryIndexArchive = Resolve-BenchmarkReviewManifestArtifact `
     -Entries $Entries `
     -ArtifactName $BenchmarkReviewArtifactNames.TypedQueryIndexArchive `

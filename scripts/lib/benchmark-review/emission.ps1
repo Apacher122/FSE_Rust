@@ -173,6 +173,16 @@ function New-BenchmarkReviewRunManifestArtifacts {
       -Skipped $false
 
     New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.TypedArchiveAppendDeltaMaintenanceSummary `
+      -Path $Context.CurrentTypedArchiveAppendDeltaMaintenanceSummaryCsv `
+      -Skipped $false
+
+    New-BenchmarkReviewManifestArtifact `
+      -Name $BenchmarkReviewArtifactNames.TypedArchiveAppendDeltaMaintenanceNotes `
+      -Path $Context.CurrentTypedArchiveAppendDeltaMaintenanceSummaryNotes `
+      -Skipped $false
+
+    New-BenchmarkReviewManifestArtifact `
       -Name $BenchmarkReviewArtifactNames.TypedQueryIndexArchive `
       -Path $Context.CurrentTypedQueryIndexArchive `
       -Skipped $false
