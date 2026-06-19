@@ -38,6 +38,10 @@ impl BenchmarkApplicationRenderer {
         self.append_target_workload_typed_archive_append_rebuild_debug_output(&mut output, context);
         self.append_target_workload_typed_archive_compaction_debug_output(&mut output, context);
         self.append_target_workload_typed_archive_maintenance_debug_output(&mut output, context);
+        self.append_target_workload_typed_archive_append_delta_maintenance_debug_output(
+            &mut output,
+            context,
+        );
         self.append_workload_materialization_mode_summary_debug_output(&mut output, context);
         self.append_workload_existence_timing_summary_debug_output(&mut output, context);
         self.append_workload_typed_indexed_comparison_summary_debug_output(&mut output, context);
@@ -48,6 +52,10 @@ impl BenchmarkApplicationRenderer {
         );
         self.append_workload_typed_archive_compaction_summary_debug_output(&mut output, context);
         self.append_workload_typed_archive_maintenance_summary_debug_output(&mut output, context);
+        self.append_workload_typed_archive_append_delta_maintenance_summary_debug_output(
+            &mut output,
+            context,
+        );
         self.append_debug_suite_terminal_output(&mut output, context, result_bundle);
 
         output
