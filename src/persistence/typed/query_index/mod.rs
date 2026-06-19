@@ -31,6 +31,8 @@ pub use file::{
 pub use footprint::{
     FSETypedQueryIndexArchiveFootprint, FSETypedQueryIndexArchiveFootprintComponent,
     FSETypedQueryIndexArchiveFootprintError, typed_query_index_archive_footprint,
+    typed_query_index_archive_with_append_delta_and_tombstones_footprint,
+    typed_query_index_archive_with_append_delta_footprint,
     typed_query_index_archive_with_tombstones_footprint,
 };
 pub use maintenance::{

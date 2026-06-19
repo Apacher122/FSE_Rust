@@ -78,7 +78,10 @@ pub use typed::{
     read_typed_row_tombstone_archive_snapshot_file, save_typed_query_index_archive_file,
     save_typed_query_index_archive_file_with_encoder_metadata,
     save_typed_record_batch_archive_file, save_typed_row_tombstone_archive_file,
-    typed_query_index_archive_footprint, typed_query_index_archive_with_tombstones_footprint,
+    typed_query_index_archive_footprint,
+    typed_query_index_archive_with_append_delta_and_tombstones_footprint,
+    typed_query_index_archive_with_append_delta_footprint,
+    typed_query_index_archive_with_tombstones_footprint,
     write_typed_query_index_archive_snapshot_file, write_typed_record_batch_archive_snapshot_file,
     write_typed_row_tombstone_archive_snapshot_file,
 };

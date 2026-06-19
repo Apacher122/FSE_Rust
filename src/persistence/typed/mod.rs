@@ -26,6 +26,8 @@ pub use query_index::{
     maintain_typed_query_index_archive_file_with_append_batch_archive,
     read_typed_query_index_archive_snapshot_file, save_typed_query_index_archive_file,
     save_typed_query_index_archive_file_with_encoder_metadata, typed_query_index_archive_footprint,
+    typed_query_index_archive_with_append_delta_and_tombstones_footprint,
+    typed_query_index_archive_with_append_delta_footprint,
     typed_query_index_archive_with_tombstones_footprint,
     write_typed_query_index_archive_snapshot_file,
 };

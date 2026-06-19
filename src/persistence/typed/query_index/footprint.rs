@@ -14,6 +14,9 @@ pub enum FSETypedQueryIndexArchiveFootprintComponent {
     /// Typed query index archive file.
     QueryIndex,
 
+    /// Typed record batch append archive file.
+    AppendDelta,
+
     /// Typed row tombstone archive file.
     Tombstones,
 }
@@ -22,6 +25,7 @@ impl FSETypedQueryIndexArchiveFootprintComponent {
     fn name(self) -> &'static str {
         match self {
             Self::QueryIndex => "typed query index archive",
+            Self::AppendDelta => "typed record batch append archive",
             Self::Tombstones => "typed row tombstone archive",
         }
     }
@@ -58,6 +62,9 @@ pub enum FSETypedQueryIndexArchiveFootprintError {
     TotalArchiveByteCountOverflow {
         /// Bytes in the typed query index archive.
         query_index_archive_bytes: u64,
+
+        /// Bytes in the typed record batch append archive.
+        append_delta_archive_bytes: u64,
 
         /// Bytes in the typed row tombstone archive.
         tombstone_archive_bytes: u64,
@@ -101,12 +108,15 @@ impl Error for FSETypedQueryIndexArchiveFootprintError {}
 
 /// Byte footprint for a logical typed query index archive.
 ///
-/// The report counts the typed query index archive and the active tombstone
-/// archive as one logical archive footprint.
+/// The report counts the typed query index archive, append-delta archive, and
+/// active tombstone archive as one logical archive footprint.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FSETypedQueryIndexArchiveFootprint {
     /// Bytes in the typed query index archive file.
     pub query_index_archive_bytes: u64,
+
+    /// Bytes in the typed record batch append archive file.
+    pub append_delta_archive_bytes: u64,
 
     /// Bytes in the typed row tombstone archive file.
     pub tombstone_archive_bytes: u64,
@@ -116,25 +126,50 @@ pub struct FSETypedQueryIndexArchiveFootprint {
 }
 
 impl FSETypedQueryIndexArchiveFootprint {
-    /// Creates a logical archive footprint report.
+    /// Creates a logical archive footprint report without an append-delta archive.
     pub fn try_new(
         query_index_archive_bytes: u64,
         tombstone_archive_bytes: u64,
     ) -> Result<Self, FSETypedQueryIndexArchiveFootprintError> {
-        let total_archive_bytes = query_index_archive_bytes
+        Self::try_new_with_append_delta(query_index_archive_bytes, 0, tombstone_archive_bytes)
+    }
+
+    /// Creates a logical archive footprint report with an append-delta archive.
+    pub fn try_new_with_append_delta(
+        query_index_archive_bytes: u64,
+        append_delta_archive_bytes: u64,
+        tombstone_archive_bytes: u64,
+    ) -> Result<Self, FSETypedQueryIndexArchiveFootprintError> {
+        let query_and_append_bytes = query_index_archive_bytes
+            .checked_add(append_delta_archive_bytes)
+            .ok_or(
+                FSETypedQueryIndexArchiveFootprintError::TotalArchiveByteCountOverflow {
+                    query_index_archive_bytes,
+                    append_delta_archive_bytes,
+                    tombstone_archive_bytes,
+                },
+            )?;
+        let total_archive_bytes = query_and_append_bytes
             .checked_add(tombstone_archive_bytes)
             .ok_or(
                 FSETypedQueryIndexArchiveFootprintError::TotalArchiveByteCountOverflow {
                     query_index_archive_bytes,
+                    append_delta_archive_bytes,
                     tombstone_archive_bytes,
                 },
             )?;
 
         Ok(Self {
             query_index_archive_bytes,
+            append_delta_archive_bytes,
             tombstone_archive_bytes,
             total_archive_bytes,
         })
+    }
+
+    /// Returns true when the footprint includes an append-delta archive.
+    pub fn includes_append_delta_archive(&self) -> bool {
+        self.append_delta_archive_bytes > 0
     }
 
     /// Returns true when the footprint includes a tombstone archive.
@@ -158,6 +193,31 @@ where
     FSETypedQueryIndexArchiveFootprint::try_new(query_index_archive_bytes, 0)
 }
 
+/// Reports the logical file footprint for a typed query index archive with append records.
+pub fn typed_query_index_archive_with_append_delta_footprint<P, Q>(
+    query_index_path: P,
+    append_delta_path: Q,
+) -> Result<FSETypedQueryIndexArchiveFootprint, FSETypedQueryIndexArchiveFootprintError>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+{
+    let query_index_archive_bytes = archive_file_len(
+        query_index_path.as_ref(),
+        FSETypedQueryIndexArchiveFootprintComponent::QueryIndex,
+    )?;
+    let append_delta_archive_bytes = archive_file_len(
+        append_delta_path.as_ref(),
+        FSETypedQueryIndexArchiveFootprintComponent::AppendDelta,
+    )?;
+
+    FSETypedQueryIndexArchiveFootprint::try_new_with_append_delta(
+        query_index_archive_bytes,
+        append_delta_archive_bytes,
+        0,
+    )
+}
+
 /// Reports the logical file footprint for a typed query index archive with tombstones.
 pub fn typed_query_index_archive_with_tombstones_footprint<P, Q>(
     query_index_path: P,
@@ -177,6 +237,37 @@ where
     )?;
 
     FSETypedQueryIndexArchiveFootprint::try_new(query_index_archive_bytes, tombstone_archive_bytes)
+}
+
+/// Reports the logical file footprint for all typed query index archive components.
+pub fn typed_query_index_archive_with_append_delta_and_tombstones_footprint<P, Q, R>(
+    query_index_path: P,
+    append_delta_path: Q,
+    tombstone_path: R,
+) -> Result<FSETypedQueryIndexArchiveFootprint, FSETypedQueryIndexArchiveFootprintError>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+    R: AsRef<Path>,
+{
+    let query_index_archive_bytes = archive_file_len(
+        query_index_path.as_ref(),
+        FSETypedQueryIndexArchiveFootprintComponent::QueryIndex,
+    )?;
+    let append_delta_archive_bytes = archive_file_len(
+        append_delta_path.as_ref(),
+        FSETypedQueryIndexArchiveFootprintComponent::AppendDelta,
+    )?;
+    let tombstone_archive_bytes = archive_file_len(
+        tombstone_path.as_ref(),
+        FSETypedQueryIndexArchiveFootprintComponent::Tombstones,
+    )?;
+
+    FSETypedQueryIndexArchiveFootprint::try_new_with_append_delta(
+        query_index_archive_bytes,
+        append_delta_archive_bytes,
+        tombstone_archive_bytes,
+    )
 }
 
 fn archive_file_len(
