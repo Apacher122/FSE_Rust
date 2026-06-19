@@ -17,14 +17,16 @@ use crate::data::RowId;
 use crate::encoding::FSERecordEncoder;
 use crate::persistence::{
     FSEArchiveMaintenanceAction, FSEArchiveMaintenancePolicy, FSEArchiveMaintenanceReason,
-    FSETombstonedTypedQueryIndex, FSETombstonedTypedQueryIndexArchiveError,
+    FSERecordBatchArchiveError, FSETombstonedTypedQueryIndex,
+    FSETombstonedTypedQueryIndexArchiveError, FSETypedQueryIndexAppendDeltaArchiveMaintenanceError,
     FSETypedQueryIndexArchiveCompactionError, FSETypedQueryIndexArchiveError,
     FSETypedQueryIndexArchiveFootprintError, FSETypedQueryIndexArchiveMaintenanceError,
     FSETypedRowTombstoneArchiveError, append_typed_query_index_archive_file,
     compact_typed_query_index_archive_file, load_typed_query_index_archive_file,
     load_typed_query_index_archive_with_tombstones, maintain_typed_query_index_archive_file,
-    save_typed_query_index_archive_file, save_typed_row_tombstone_archive_file,
-    typed_query_index_archive_with_tombstones_footprint,
+    maintain_typed_query_index_archive_file_with_append_batch_archive,
+    save_typed_query_index_archive_file, save_typed_record_batch_archive_file,
+    save_typed_row_tombstone_archive_file, typed_query_index_archive_with_tombstones_footprint,
 };
 use crate::query::{IndexedTypedQueryError, TypedQueryIndex, TypedQueryPlan};
 
@@ -37,6 +39,9 @@ pub enum TypedArchiveLoadTimingError {
     /// Saving or loading the typed row tombstone archive failed.
     Tombstones(FSETypedRowTombstoneArchiveError),
 
+    /// Saving or loading a typed record batch append archive failed.
+    AppendArchive(FSERecordBatchArchiveError),
+
     /// Compacting the typed query index archive failed.
     ArchiveCompaction(FSETypedQueryIndexArchiveCompactionError),
 
@@ -45,6 +50,9 @@ pub enum TypedArchiveLoadTimingError {
 
     /// Applying typed archive maintenance failed.
     Maintenance(FSETypedQueryIndexArchiveMaintenanceError),
+
+    /// Applying append-delta typed archive maintenance failed.
+    AppendDeltaMaintenance(FSETypedQueryIndexAppendDeltaArchiveMaintenanceError),
 
     /// Reporting typed archive footprint failed.
     ArchiveFootprint(FSETypedQueryIndexArchiveFootprintError),
@@ -82,9 +90,11 @@ impl fmt::Display for TypedArchiveLoadTimingError {
         match self {
             Self::Archive(error) => error.fmt(formatter),
             Self::Tombstones(error) => error.fmt(formatter),
+            Self::AppendArchive(error) => error.fmt(formatter),
             Self::ArchiveCompaction(error) => error.fmt(formatter),
             Self::TombstonedArchive(error) => error.fmt(formatter),
             Self::Maintenance(error) => error.fmt(formatter),
+            Self::AppendDeltaMaintenance(error) => error.fmt(formatter),
             Self::ArchiveFootprint(error) => error.fmt(formatter),
             Self::Query(error) => error.fmt(formatter),
             Self::ArchiveFileMetadata { .. } => {
@@ -107,9 +117,11 @@ impl Error for TypedArchiveLoadTimingError {
         match self {
             Self::Archive(error) => Some(error),
             Self::Tombstones(error) => Some(error),
+            Self::AppendArchive(error) => Some(error),
             Self::ArchiveCompaction(error) => Some(error),
             Self::TombstonedArchive(error) => Some(error),
             Self::Maintenance(error) => Some(error),
+            Self::AppendDeltaMaintenance(error) => Some(error),
             Self::ArchiveFootprint(error) => Some(error),
             Self::Query(error) => Some(error),
             Self::ArchiveFileMetadata { .. } => None,
@@ -130,6 +142,12 @@ impl From<FSETypedRowTombstoneArchiveError> for TypedArchiveLoadTimingError {
     }
 }
 
+impl From<FSERecordBatchArchiveError> for TypedArchiveLoadTimingError {
+    fn from(error: FSERecordBatchArchiveError) -> Self {
+        Self::AppendArchive(error)
+    }
+}
+
 impl From<FSETypedQueryIndexArchiveCompactionError> for TypedArchiveLoadTimingError {
     fn from(error: FSETypedQueryIndexArchiveCompactionError) -> Self {
         Self::ArchiveCompaction(error)
@@ -145,6 +163,12 @@ impl From<FSETombstonedTypedQueryIndexArchiveError> for TypedArchiveLoadTimingEr
 impl From<FSETypedQueryIndexArchiveMaintenanceError> for TypedArchiveLoadTimingError {
     fn from(error: FSETypedQueryIndexArchiveMaintenanceError) -> Self {
         Self::Maintenance(error)
+    }
+}
+
+impl From<FSETypedQueryIndexAppendDeltaArchiveMaintenanceError> for TypedArchiveLoadTimingError {
+    fn from(error: FSETypedQueryIndexAppendDeltaArchiveMaintenanceError) -> Self {
+        Self::AppendDeltaMaintenance(error)
     }
 }
 
@@ -317,6 +341,73 @@ pub struct TypedArchiveMaintenanceTimingReport {
     pub matched_records_after_maintenance: usize,
 
     /// Timing for policy evaluation and archive maintenance work.
+    pub maintenance_timing: RepeatedTimingReport,
+}
+
+/// Timing report for append-delta typed query index archive maintenance.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedArchiveAppendDeltaMaintenanceTimingReport {
+    /// Number of records in the source archive.
+    pub base_record_count: usize,
+
+    /// Number of records in the append-delta archive before maintenance.
+    pub pending_append_record_count: usize,
+
+    /// Number of tombstones waiting to be applied.
+    pub tombstone_count: usize,
+
+    /// Maintenance action selected by the policy.
+    pub selected_action: FSEArchiveMaintenanceAction,
+
+    /// Reason the maintenance action was selected.
+    pub selected_reason: FSEArchiveMaintenanceReason,
+
+    /// Tombstone-to-base-record ratio used by the policy, in basis points.
+    pub tombstone_ratio_basis_points: u64,
+
+    /// Number of records in the query archive after maintenance.
+    pub resulting_record_count: usize,
+
+    /// Typed query index archive byte length before maintenance.
+    pub query_archive_bytes_before_maintenance: u64,
+
+    /// Typed query index archive byte length after maintenance.
+    pub query_archive_bytes_after_maintenance: u64,
+
+    /// Typed query index archive byte delta after maintenance.
+    pub query_archive_byte_delta: i128,
+
+    /// Append-delta archive byte length before maintenance.
+    pub append_archive_bytes_before_maintenance: u64,
+
+    /// Append-delta archive byte length after maintenance.
+    pub append_archive_bytes_after_maintenance: u64,
+
+    /// Append-delta archive byte delta after maintenance.
+    pub append_archive_byte_delta: i128,
+
+    /// Tombstone archive byte length before maintenance.
+    pub tombstone_archive_bytes_before_maintenance: u64,
+
+    /// Tombstone archive byte length after maintenance.
+    pub tombstone_archive_bytes_after_maintenance: u64,
+
+    /// Tombstone archive byte delta after maintenance.
+    pub tombstone_archive_byte_delta: i128,
+
+    /// Combined archive byte length before maintenance.
+    pub logical_archive_bytes_before_maintenance: u64,
+
+    /// Combined archive byte length after maintenance.
+    pub logical_archive_bytes_after_maintenance: u64,
+
+    /// Combined archive byte delta after maintenance.
+    pub logical_archive_byte_delta: i128,
+
+    /// Number of records matched by the typed query plan after maintenance.
+    pub matched_records_after_maintenance: usize,
+
+    /// Timing for persisted append-delta archive maintenance.
     pub maintenance_timing: RepeatedTimingReport,
 }
 
@@ -700,6 +791,132 @@ where
     })
 }
 
+/// Measures persisted append-delta archive maintenance timing with repeated timing.
+///
+/// # Runtime Role
+///
+/// The function writes query-index, append-delta, and tombstone archives, applies
+/// the archive maintenance policy through the persisted append-delta workflow,
+/// validates the loaded result, and reports archive byte movement with timing.
+pub fn compare_typed_archive_append_delta_maintenance_execution_repeated<P, Q, R>(
+    query_archive_path: P,
+    append_archive_path: Q,
+    tombstone_archive_path: R,
+    query_index: &TypedQueryIndex,
+    appended: &FSERecordBatch,
+    tombstone_row_ids: &[RowId],
+    encoder: &impl FSERecordEncoder,
+    builder: &FSEBuilder,
+    policy: &FSEArchiveMaintenancePolicy,
+    plan: &TypedQueryPlan,
+    timing_config: &RepeatedTimingConfig,
+) -> Result<TypedArchiveAppendDeltaMaintenanceTimingReport, TypedArchiveLoadTimingError>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+    R: AsRef<Path>,
+{
+    let query_archive_path = query_archive_path.as_ref();
+    let append_archive_path = append_archive_path.as_ref();
+    let tombstone_archive_path = tombstone_archive_path.as_ref();
+
+    save_typed_query_index_archive_file(query_archive_path, query_index)?;
+    save_typed_record_batch_archive_file(append_archive_path, appended)?;
+    save_typed_row_tombstone_archive_file(tombstone_archive_path, tombstone_row_ids)?;
+
+    let query_archive_bytes_before_maintenance = archive_file_len(query_archive_path)?;
+    let append_archive_bytes_before_maintenance = archive_file_len(append_archive_path)?;
+    let tombstone_archive_bytes_before_maintenance = archive_file_len(tombstone_archive_path)?;
+    let logical_archive_bytes_before_maintenance = query_archive_bytes_before_maintenance
+        + append_archive_bytes_before_maintenance
+        + tombstone_archive_bytes_before_maintenance;
+    let maintenance_result = maintain_typed_query_index_archive_file_with_append_batch_archive(
+        query_archive_path,
+        append_archive_path,
+        tombstone_archive_path,
+        encoder,
+        builder,
+        policy,
+    )?;
+    let query_archive_bytes_after_maintenance = archive_file_len(query_archive_path)?;
+    let append_archive_bytes_after_maintenance = archive_file_len(append_archive_path)?;
+    let tombstone_archive_bytes_after_maintenance = archive_file_len(tombstone_archive_path)?;
+    let logical_archive_bytes_after_maintenance = query_archive_bytes_after_maintenance
+        + append_archive_bytes_after_maintenance
+        + tombstone_archive_bytes_after_maintenance;
+    let loaded_effective_index =
+        load_typed_query_index_archive_with_tombstones(query_archive_path, tombstone_archive_path)?;
+    let surviving_tombstones = surviving_tombstone_row_ids_for_maintenance_action(
+        maintenance_result.decision.action,
+        tombstone_row_ids,
+    );
+    let expected_effective_index = FSETombstonedTypedQueryIndex::from_row_ids(
+        maintenance_result.query_index.clone(),
+        surviving_tombstones.iter().copied(),
+    );
+    let expected_row_ids = expected_effective_index.query_row_ids(plan)?;
+    let loaded_row_ids = loaded_effective_index.query_row_ids(plan)?;
+
+    validate_same_row_id_set(
+        "append-delta maintained typed archive result",
+        &expected_row_ids,
+        "loaded append-delta maintained typed archive",
+        &loaded_row_ids,
+    )?;
+
+    let maintenance_timing = measure_repeated_archive_append_delta_maintenance(
+        query_archive_path,
+        append_archive_path,
+        tombstone_archive_path,
+        query_index,
+        appended,
+        tombstone_row_ids,
+        encoder,
+        builder,
+        policy,
+        timing_config,
+    )?;
+
+    Ok(TypedArchiveAppendDeltaMaintenanceTimingReport {
+        base_record_count: maintenance_result.decision.input.base_record_count as usize,
+        pending_append_record_count: maintenance_result
+            .decision
+            .input
+            .pending_append_record_count as usize,
+        tombstone_count: maintenance_result.decision.input.tombstone_count as usize,
+        selected_action: maintenance_result.decision.action,
+        selected_reason: maintenance_result.decision.reason,
+        tombstone_ratio_basis_points: maintenance_result.decision.tombstone_ratio_basis_points,
+        resulting_record_count: maintenance_result.query_index.batch().len(),
+        query_archive_byte_delta: byte_delta(
+            query_archive_bytes_before_maintenance,
+            query_archive_bytes_after_maintenance,
+        ),
+        query_archive_bytes_before_maintenance,
+        query_archive_bytes_after_maintenance,
+        append_archive_byte_delta: byte_delta(
+            append_archive_bytes_before_maintenance,
+            append_archive_bytes_after_maintenance,
+        ),
+        append_archive_bytes_before_maintenance,
+        append_archive_bytes_after_maintenance,
+        tombstone_archive_byte_delta: byte_delta(
+            tombstone_archive_bytes_before_maintenance,
+            tombstone_archive_bytes_after_maintenance,
+        ),
+        tombstone_archive_bytes_before_maintenance,
+        tombstone_archive_bytes_after_maintenance,
+        logical_archive_byte_delta: byte_delta(
+            logical_archive_bytes_before_maintenance,
+            logical_archive_bytes_after_maintenance,
+        ),
+        logical_archive_bytes_before_maintenance,
+        logical_archive_bytes_after_maintenance,
+        matched_records_after_maintenance: loaded_row_ids.len(),
+        maintenance_timing,
+    })
+}
+
 fn measure_repeated_archive_append_rebuild<P>(
     archive_path: P,
     query_index: &TypedQueryIndex,
@@ -800,6 +1017,56 @@ where
                 query_archive_path,
                 tombstone_archive_path,
                 appended,
+                encoder,
+                builder,
+                policy,
+            )
+        });
+        let maintenance_result = maintenance_result?;
+
+        std::hint::black_box(maintenance_result.query_index.batch().len());
+        std::hint::black_box(maintenance_result.decision.tombstone_ratio_basis_points);
+        total_elapsed += elapsed;
+    }
+
+    Ok(RepeatedTimingReport {
+        iterations: timing_config.iterations,
+        total_elapsed,
+        average_elapsed: duration_div(total_elapsed, timing_config.iterations),
+    })
+}
+
+fn measure_repeated_archive_append_delta_maintenance<P, Q, R>(
+    query_archive_path: P,
+    append_archive_path: Q,
+    tombstone_archive_path: R,
+    query_index: &TypedQueryIndex,
+    appended: &FSERecordBatch,
+    tombstone_row_ids: &[RowId],
+    encoder: &impl FSERecordEncoder,
+    builder: &FSEBuilder,
+    policy: &FSEArchiveMaintenancePolicy,
+    timing_config: &RepeatedTimingConfig,
+) -> Result<RepeatedTimingReport, TypedArchiveLoadTimingError>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+    R: AsRef<Path>,
+{
+    let query_archive_path = query_archive_path.as_ref();
+    let append_archive_path = append_archive_path.as_ref();
+    let tombstone_archive_path = tombstone_archive_path.as_ref();
+    let mut total_elapsed = Duration::ZERO;
+
+    for _ in 0..timing_config.iterations {
+        save_typed_query_index_archive_file(query_archive_path, query_index)?;
+        save_typed_record_batch_archive_file(append_archive_path, appended)?;
+        save_typed_row_tombstone_archive_file(tombstone_archive_path, tombstone_row_ids)?;
+        let (maintenance_result, elapsed) = measure_elapsed(|| {
+            maintain_typed_query_index_archive_file_with_append_batch_archive(
+                query_archive_path,
+                append_archive_path,
+                tombstone_archive_path,
                 encoder,
                 builder,
                 policy,
