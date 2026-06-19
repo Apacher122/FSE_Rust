@@ -28,6 +28,7 @@ use crate::import::{
     build_typed_record_batch_archive_from_csv_file,
     build_typed_record_batch_archive_from_csv_file_with_archive_schema,
     inspect_typed_query_index_archive_from_append_delta_archive,
+    inspect_typed_query_index_archive_status_from_append_delta_archive,
     load_csv_append_delta_typed_query_index_archive_context,
     load_csv_tombstoned_append_delta_typed_query_index_archive_context,
     load_csv_tombstoned_typed_query_index_archive_context,
@@ -1524,6 +1525,98 @@ fn csv_archive_import_maintenance_inspects_append_delta_and_tombstone_archives()
     assert_eq!(decision.input.tombstone_count, 1);
     assert_eq!(decision.tombstone_ratio_basis_points, 2_500);
     assert!(decision.requires_archive_write());
+    assert_eq!(
+        load_typed_query_index_archive_file(&archive_path).unwrap(),
+        base.query_index
+    );
+    assert_eq!(
+        load_typed_record_batch_archive_file(&append_path).unwrap(),
+        appended
+    );
+    assert_eq!(
+        load_typed_row_tombstone_archive_file(&tombstone_path).unwrap(),
+        tombstones
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(append_csv_path);
+    let _ = fs::remove_file(archive_path);
+    let _ = fs::remove_file(append_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
+fn csv_archive_import_maintenance_status_reports_decision_and_footprint() {
+    let builder = builder();
+    let policy = FSEArchiveMaintenancePolicy::try_new(10, 1, 9_000).unwrap();
+    let csv_path = temp_csv_path("maintenance-status-append-delta-base");
+    let append_csv_path = temp_csv_path("maintenance-status-append-delta-records");
+    let archive_path = temp_archive_path("maintenance-status-append-delta-base", ".fse");
+    let append_path = temp_archive_path("maintenance-status-append-delta-records", ".fse");
+    let tombstone_path = temp_archive_path("maintenance-status-append-delta-tombstones", ".fse");
+    let import_options = FSECsvImportOptions::new().with_row_id_column("entity_id");
+    let schema_options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("class", FSEFieldType::Category)
+        .with_field_type("observed_at", FSEFieldType::TimestampMillis);
+    let tombstones = vec![RowId::new(103)];
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+    fs::write(&append_csv_path, appended_entity_csv()).unwrap();
+
+    let base = build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &import_options,
+        &builder,
+    )
+    .unwrap();
+    let appended = build_typed_record_batch_archive_from_csv_file_with_archive_schema(
+        &append_csv_path,
+        &archive_path,
+        &append_path,
+        &import_options,
+    )
+    .unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &tombstones).unwrap();
+
+    let expected_query_index_bytes = fs::metadata(&archive_path).unwrap().len();
+    let expected_append_bytes = fs::metadata(&append_path).unwrap().len();
+    let expected_tombstone_bytes = fs::metadata(&tombstone_path).unwrap().len();
+    let status = inspect_typed_query_index_archive_status_from_append_delta_archive(
+        &archive_path,
+        &append_path,
+        &tombstone_path,
+        &policy,
+    )
+    .unwrap();
+
+    assert_eq!(status.decision.action, FSEArchiveMaintenanceAction::Rebuild);
+    assert_eq!(
+        status.decision.reason,
+        FSEArchiveMaintenanceReason::AppendAndCompactionThresholdsReached
+    );
+    assert_eq!(status.decision.input.base_record_count, 4);
+    assert_eq!(status.decision.input.pending_append_record_count, 2);
+    assert_eq!(status.decision.input.tombstone_count, 1);
+    assert_eq!(status.decision.tombstone_ratio_basis_points, 2_500);
+    assert!(status.requires_archive_write());
+    assert_eq!(
+        status.footprint.query_index_archive_bytes,
+        expected_query_index_bytes
+    );
+    assert_eq!(
+        status.footprint.append_delta_archive_bytes,
+        expected_append_bytes
+    );
+    assert_eq!(
+        status.footprint.tombstone_archive_bytes,
+        expected_tombstone_bytes
+    );
+    assert_eq!(
+        status.footprint.total_archive_bytes,
+        expected_query_index_bytes + expected_append_bytes + expected_tombstone_bytes
+    );
     assert_eq!(
         load_typed_query_index_archive_file(&archive_path).unwrap(),
         base.query_index
