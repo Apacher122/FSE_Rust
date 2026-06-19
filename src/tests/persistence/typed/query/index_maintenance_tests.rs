@@ -14,6 +14,7 @@ use crate::persistence::{
     FSEArchiveMaintenanceAction, FSEArchiveMaintenancePolicy, FSEArchiveMaintenanceReason,
     FSETypedQueryIndexAppendDeltaArchiveMaintenanceError, FSETypedQueryIndexArchiveCompactionError,
     FSETypedQueryIndexArchiveMaintenanceError, FSETypedQueryIndexCompactionError,
+    inspect_typed_query_index_archive_file_maintenance_with_append_batch_archive,
     load_typed_query_index_archive_file, load_typed_record_batch_archive_file,
     load_typed_row_tombstone_archive_file,
     maintain_typed_query_index_archive_file_with_append_batch_archive,
@@ -24,6 +25,107 @@ use crate::query::{
     FSEPredicate, FSEPredicateField, TypedAppendDeltaQueryView, TypedQueryIndex,
     TypedQueryPlanBuilder, TypedRowTombstoneSet,
 };
+
+#[test]
+fn typed_query_index_archive_file_maintenance_inspects_append_batch_archive_without_writes() {
+    let schema = entity_schema();
+    let policy = FSEArchiveMaintenancePolicy::try_new(10, 10, 5_000).unwrap();
+    let query_index = typed_query_index();
+    let appended = appended_entity_batch(&schema);
+    let query_index_path = temp_archive_path("append-delta-maintenance-inspect-index", ".fse");
+    let append_path = temp_archive_path("append-delta-maintenance-inspect-append", ".fse");
+    let tombstone_path = temp_archive_path("append-delta-maintenance-inspect-tombstones", ".fse");
+
+    save_typed_query_index_archive_file(&query_index_path, &query_index).unwrap();
+    save_typed_record_batch_archive_file(&append_path, &appended).unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[]).unwrap();
+
+    let decision = inspect_typed_query_index_archive_file_maintenance_with_append_batch_archive(
+        &query_index_path,
+        &append_path,
+        &tombstone_path,
+        &policy,
+    )
+    .unwrap();
+
+    assert_eq!(decision.action, FSEArchiveMaintenanceAction::Append);
+    assert_eq!(
+        decision.reason,
+        FSEArchiveMaintenanceReason::PendingAppendRecords
+    );
+    assert_eq!(decision.input.base_record_count, 4);
+    assert_eq!(decision.input.pending_append_record_count, 2);
+    assert_eq!(decision.input.tombstone_count, 0);
+    assert_eq!(decision.tombstone_ratio_basis_points, 0);
+    assert!(decision.requires_archive_write());
+    assert_eq!(
+        load_typed_query_index_archive_file(&query_index_path).unwrap(),
+        query_index
+    );
+    assert_eq!(
+        load_typed_record_batch_archive_file(&append_path).unwrap(),
+        appended
+    );
+    assert_eq!(
+        load_typed_row_tombstone_archive_file(&tombstone_path).unwrap(),
+        Vec::new()
+    );
+
+    let _ = fs::remove_file(query_index_path);
+    let _ = fs::remove_file(append_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
+fn typed_query_index_archive_file_maintenance_inspects_empty_append_batch_archive() {
+    let schema = entity_schema();
+    let policy = FSEArchiveMaintenancePolicy::try_new(10, 10, 5_000).unwrap();
+    let query_index = typed_query_index();
+    let appended = FSERecordBatch::new(schema.clone(), Vec::new(), Vec::new());
+    let query_index_path =
+        temp_archive_path("append-delta-maintenance-inspect-empty-index", ".fse");
+    let append_path = temp_archive_path("append-delta-maintenance-inspect-empty-append", ".fse");
+    let tombstone_path =
+        temp_archive_path("append-delta-maintenance-inspect-empty-tombstones", ".fse");
+
+    save_typed_query_index_archive_file(&query_index_path, &query_index).unwrap();
+    save_typed_record_batch_archive_file(&append_path, &appended).unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[]).unwrap();
+
+    let decision = inspect_typed_query_index_archive_file_maintenance_with_append_batch_archive(
+        &query_index_path,
+        &append_path,
+        &tombstone_path,
+        &policy,
+    )
+    .unwrap();
+
+    assert_eq!(decision.action, FSEArchiveMaintenanceAction::NoMaintenance);
+    assert_eq!(
+        decision.reason,
+        FSEArchiveMaintenanceReason::NoPendingMaintenance
+    );
+    assert_eq!(decision.input.base_record_count, 4);
+    assert_eq!(decision.input.pending_append_record_count, 0);
+    assert_eq!(decision.input.tombstone_count, 0);
+    assert!(!decision.requires_archive_write());
+    assert_eq!(
+        load_typed_query_index_archive_file(&query_index_path).unwrap(),
+        query_index
+    );
+    assert_eq!(
+        load_typed_record_batch_archive_file(&append_path).unwrap(),
+        appended
+    );
+    assert_eq!(
+        load_typed_row_tombstone_archive_file(&tombstone_path).unwrap(),
+        Vec::new()
+    );
+
+    let _ = fs::remove_file(query_index_path);
+    let _ = fs::remove_file(append_path);
+    let _ = fs::remove_file(tombstone_path);
+}
 
 #[test]
 fn typed_query_index_archive_file_maintenance_consumes_append_batch_archive() {

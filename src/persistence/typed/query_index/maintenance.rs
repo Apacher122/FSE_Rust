@@ -156,15 +156,12 @@ where
     let base = loaded.query_index;
     let tombstones = load_typed_row_tombstone_archive_file(tombstone_path)
         .map_err(FSETypedQueryIndexArchiveMaintenanceError::LoadTombstones)?;
-    let input = FSEArchiveMaintenanceInput::try_new(
+    let decision = evaluate_typed_query_index_archive_maintenance(
         base.batch().len() as u64,
         appended.map_or(0, |batch| batch.len() as u64),
         tombstones.len() as u64,
-    )
-    .map_err(FSETypedQueryIndexArchiveMaintenanceError::Policy)?;
-    let decision = policy
-        .evaluate(input)
-        .map_err(FSETypedQueryIndexArchiveMaintenanceError::Policy)?;
+        policy,
+    )?;
     let mut query_index = base;
     let mut append_result = None;
     let mut compaction_result = None;
@@ -245,6 +242,68 @@ where
     })
 }
 
+/// Inspects archive maintenance policy output for typed query index archives.
+///
+/// This function loads the archive counts needed by the maintenance policy and
+/// returns the selected action without writing archive files.
+pub fn inspect_typed_query_index_archive_file_maintenance<P, Q>(
+    query_index_path: P,
+    tombstone_path: Q,
+    appended: Option<&FSERecordBatch>,
+    policy: &FSEArchiveMaintenancePolicy,
+) -> Result<FSEArchiveMaintenanceDecision, FSETypedQueryIndexArchiveMaintenanceError>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+{
+    policy
+        .validate()
+        .map_err(FSETypedQueryIndexArchiveMaintenanceError::Policy)?;
+
+    let loaded = load_typed_query_index_archive_file_with_encoder_metadata(query_index_path)
+        .map_err(FSETypedQueryIndexArchiveMaintenanceError::LoadIndex)?;
+    let tombstones = load_typed_row_tombstone_archive_file(tombstone_path)
+        .map_err(FSETypedQueryIndexArchiveMaintenanceError::LoadTombstones)?;
+
+    evaluate_typed_query_index_archive_maintenance(
+        loaded.query_index.batch().len() as u64,
+        appended.map_or(0, |batch| batch.len() as u64),
+        tombstones.len() as u64,
+        policy,
+    )
+}
+
+/// Inspects archive maintenance policy output using a persisted append batch.
+///
+/// The append batch archive is loaded for its record count. Archive contents are
+/// not modified.
+pub fn inspect_typed_query_index_archive_file_maintenance_with_append_batch_archive<P, Q, R>(
+    query_index_path: P,
+    append_path: Q,
+    tombstone_path: R,
+    policy: &FSEArchiveMaintenancePolicy,
+) -> Result<FSEArchiveMaintenanceDecision, FSETypedQueryIndexAppendDeltaArchiveMaintenanceError>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+    R: AsRef<Path>,
+{
+    let appended = load_typed_record_batch_archive_file(append_path)
+        .map_err(FSETypedQueryIndexAppendDeltaArchiveMaintenanceError::LoadAppendBatch)?;
+    let appended_input = if appended.is_empty() {
+        None
+    } else {
+        Some(&appended)
+    };
+
+    Ok(inspect_typed_query_index_archive_file_maintenance(
+        query_index_path,
+        tombstone_path,
+        appended_input,
+        policy,
+    )?)
+}
+
 /// Applies archive maintenance using a persisted append batch archive.
 ///
 /// The append batch archive is cleared after appended records are applied to
@@ -289,6 +348,24 @@ where
     }
 
     Ok(result)
+}
+
+fn evaluate_typed_query_index_archive_maintenance(
+    base_record_count: u64,
+    pending_append_record_count: u64,
+    tombstone_count: u64,
+    policy: &FSEArchiveMaintenancePolicy,
+) -> Result<FSEArchiveMaintenanceDecision, FSETypedQueryIndexArchiveMaintenanceError> {
+    let input = FSEArchiveMaintenanceInput::try_new(
+        base_record_count,
+        pending_append_record_count,
+        tombstone_count,
+    )
+    .map_err(FSETypedQueryIndexArchiveMaintenanceError::Policy)?;
+
+    policy
+        .evaluate(input)
+        .map_err(FSETypedQueryIndexArchiveMaintenanceError::Policy)
 }
 
 struct CombinedArchiveMaintenanceResult {
