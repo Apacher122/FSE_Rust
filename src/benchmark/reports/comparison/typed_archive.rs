@@ -22,11 +22,15 @@ use crate::persistence::{
     FSETypedQueryIndexArchiveCompactionError, FSETypedQueryIndexArchiveError,
     FSETypedQueryIndexArchiveFootprintError, FSETypedQueryIndexArchiveMaintenanceError,
     FSETypedRowTombstoneArchiveError, append_typed_query_index_archive_file,
-    compact_typed_query_index_archive_file, load_typed_query_index_archive_file,
-    load_typed_query_index_archive_with_tombstones, maintain_typed_query_index_archive_file,
+    compact_typed_query_index_archive_file,
+    inspect_typed_query_index_archive_file_maintenance_status_with_append_batch_archive,
+    load_typed_query_index_archive_file, load_typed_query_index_archive_with_tombstones,
+    maintain_typed_query_index_archive_file,
     maintain_typed_query_index_archive_file_with_append_batch_archive,
     save_typed_query_index_archive_file, save_typed_record_batch_archive_file,
-    save_typed_row_tombstone_archive_file, typed_query_index_archive_with_tombstones_footprint,
+    save_typed_row_tombstone_archive_file,
+    typed_query_index_archive_with_append_delta_and_tombstones_footprint,
+    typed_query_index_archive_with_tombstones_footprint,
 };
 use crate::query::{IndexedTypedQueryError, TypedQueryIndex, TypedQueryPlan};
 
@@ -364,6 +368,9 @@ pub struct TypedArchiveAppendDeltaMaintenanceTimingReport {
 
     /// Tombstone-to-base-record ratio used by the policy, in basis points.
     pub tombstone_ratio_basis_points: u64,
+
+    /// Whether the inspected maintenance status requires archive writes.
+    pub maintenance_status_requires_archive_write: bool,
 
     /// Number of records in the query archive after maintenance.
     pub resulting_record_count: usize,
@@ -824,12 +831,14 @@ where
     save_typed_record_batch_archive_file(append_archive_path, appended)?;
     save_typed_row_tombstone_archive_file(tombstone_archive_path, tombstone_row_ids)?;
 
-    let query_archive_bytes_before_maintenance = archive_file_len(query_archive_path)?;
-    let append_archive_bytes_before_maintenance = archive_file_len(append_archive_path)?;
-    let tombstone_archive_bytes_before_maintenance = archive_file_len(tombstone_archive_path)?;
-    let logical_archive_bytes_before_maintenance = query_archive_bytes_before_maintenance
-        + append_archive_bytes_before_maintenance
-        + tombstone_archive_bytes_before_maintenance;
+    let maintenance_status =
+        inspect_typed_query_index_archive_file_maintenance_status_with_append_batch_archive(
+            query_archive_path,
+            append_archive_path,
+            tombstone_archive_path,
+            policy,
+        )?;
+    let footprint_before_maintenance = maintenance_status.footprint;
     let maintenance_result = maintain_typed_query_index_archive_file_with_append_batch_archive(
         query_archive_path,
         append_archive_path,
@@ -838,12 +847,12 @@ where
         builder,
         policy,
     )?;
-    let query_archive_bytes_after_maintenance = archive_file_len(query_archive_path)?;
-    let append_archive_bytes_after_maintenance = archive_file_len(append_archive_path)?;
-    let tombstone_archive_bytes_after_maintenance = archive_file_len(tombstone_archive_path)?;
-    let logical_archive_bytes_after_maintenance = query_archive_bytes_after_maintenance
-        + append_archive_bytes_after_maintenance
-        + tombstone_archive_bytes_after_maintenance;
+    let footprint_after_maintenance =
+        typed_query_index_archive_with_append_delta_and_tombstones_footprint(
+            query_archive_path,
+            append_archive_path,
+            tombstone_archive_path,
+        )?;
     let loaded_effective_index =
         load_typed_query_index_archive_with_tombstones(query_archive_path, tombstone_archive_path)?;
     let surviving_tombstones = surviving_tombstone_row_ids_for_maintenance_action(
@@ -878,40 +887,47 @@ where
     )?;
 
     Ok(TypedArchiveAppendDeltaMaintenanceTimingReport {
-        base_record_count: maintenance_result.decision.input.base_record_count as usize,
-        pending_append_record_count: maintenance_result
+        base_record_count: maintenance_status.decision.input.base_record_count as usize,
+        pending_append_record_count: maintenance_status
             .decision
             .input
             .pending_append_record_count as usize,
-        tombstone_count: maintenance_result.decision.input.tombstone_count as usize,
-        selected_action: maintenance_result.decision.action,
-        selected_reason: maintenance_result.decision.reason,
-        tombstone_ratio_basis_points: maintenance_result.decision.tombstone_ratio_basis_points,
+        tombstone_count: maintenance_status.decision.input.tombstone_count as usize,
+        selected_action: maintenance_status.decision.action,
+        selected_reason: maintenance_status.decision.reason,
+        tombstone_ratio_basis_points: maintenance_status.decision.tombstone_ratio_basis_points,
+        maintenance_status_requires_archive_write: maintenance_status.requires_archive_write(),
         resulting_record_count: maintenance_result.query_index.batch().len(),
         query_archive_byte_delta: byte_delta(
-            query_archive_bytes_before_maintenance,
-            query_archive_bytes_after_maintenance,
+            footprint_before_maintenance.query_index_archive_bytes,
+            footprint_after_maintenance.query_index_archive_bytes,
         ),
-        query_archive_bytes_before_maintenance,
-        query_archive_bytes_after_maintenance,
+        query_archive_bytes_before_maintenance: footprint_before_maintenance
+            .query_index_archive_bytes,
+        query_archive_bytes_after_maintenance: footprint_after_maintenance
+            .query_index_archive_bytes,
         append_archive_byte_delta: byte_delta(
-            append_archive_bytes_before_maintenance,
-            append_archive_bytes_after_maintenance,
+            footprint_before_maintenance.append_delta_archive_bytes,
+            footprint_after_maintenance.append_delta_archive_bytes,
         ),
-        append_archive_bytes_before_maintenance,
-        append_archive_bytes_after_maintenance,
+        append_archive_bytes_before_maintenance: footprint_before_maintenance
+            .append_delta_archive_bytes,
+        append_archive_bytes_after_maintenance: footprint_after_maintenance
+            .append_delta_archive_bytes,
         tombstone_archive_byte_delta: byte_delta(
-            tombstone_archive_bytes_before_maintenance,
-            tombstone_archive_bytes_after_maintenance,
+            footprint_before_maintenance.tombstone_archive_bytes,
+            footprint_after_maintenance.tombstone_archive_bytes,
         ),
-        tombstone_archive_bytes_before_maintenance,
-        tombstone_archive_bytes_after_maintenance,
+        tombstone_archive_bytes_before_maintenance: footprint_before_maintenance
+            .tombstone_archive_bytes,
+        tombstone_archive_bytes_after_maintenance: footprint_after_maintenance
+            .tombstone_archive_bytes,
         logical_archive_byte_delta: byte_delta(
-            logical_archive_bytes_before_maintenance,
-            logical_archive_bytes_after_maintenance,
+            footprint_before_maintenance.total_archive_bytes,
+            footprint_after_maintenance.total_archive_bytes,
         ),
-        logical_archive_bytes_before_maintenance,
-        logical_archive_bytes_after_maintenance,
+        logical_archive_bytes_before_maintenance: footprint_before_maintenance.total_archive_bytes,
+        logical_archive_bytes_after_maintenance: footprint_after_maintenance.total_archive_bytes,
         matched_records_after_maintenance: loaded_row_ids.len(),
         maintenance_timing,
     })

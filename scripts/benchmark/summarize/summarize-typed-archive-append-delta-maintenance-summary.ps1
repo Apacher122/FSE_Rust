@@ -75,7 +75,7 @@ $HeaderIndex = -1
 for ($Index = $SectionIndex + 1; $Index -lt $Lines.Count; $Index++) {
   $Trimmed = $Lines[$Index].Trim()
 
-  if ($Trimmed.StartsWith("workload | action | reason | base records | pending append | tombstones | resulting records | index before bytes | index after bytes | index byte delta | append before bytes | append after bytes | append byte delta | tombstone before bytes | tombstone after bytes | tombstone byte delta | logical before bytes | logical after bytes | logical byte delta | matched after maintenance | maintenance | agreement")) {
+  if ($Trimmed.StartsWith("workload | action | reason | status write required | base records | pending append | tombstones | resulting records | index before bytes | index after bytes | index byte delta | append before bytes | append after bytes | append byte delta | tombstone before bytes | tombstone after bytes | tombstone byte delta | logical before bytes | logical after bytes | logical byte delta | matched after maintenance | maintenance | agreement")) {
     $HeaderIndex = $Index
     break
   }
@@ -101,7 +101,7 @@ for ($Index = $HeaderIndex + 1; $Index -lt $Lines.Count; $Index++) {
 
   $Columns = @($Trimmed.Split("|") | ForEach-Object { $_.Trim() })
 
-  if ($Columns.Count -ne 22) {
+  if ($Columns.Count -ne 23) {
     throw "unexpected typed archive append-delta maintenance timing summary column count at line $($Index + 1): $($Columns.Count)"
   }
 
@@ -129,7 +129,8 @@ for ($Index = $HeaderIndex + 1; $Index -lt $Lines.Count; $Index++) {
       $Columns[18],
       $Columns[19],
       $Columns[20],
-      $Columns[21]
+      $Columns[21],
+      $Columns[22]
     )) | Out-Null
 }
 
@@ -143,6 +144,7 @@ $Header = @(
   "workload_name",
   "maintenance_action",
   "maintenance_reason",
+  "maintenance_status_requires_archive_write",
   "base_record_count",
   "pending_append_record_count",
   "tombstone_count",
@@ -169,23 +171,24 @@ Write-CsvDocument `
   -Header $Header `
   -Rows $Rows
 
-$FailedRows = @($Rows | Where-Object { $_[23] -ne "pass" })
+$FailedRows = @($Rows | Where-Object { $_[24] -ne "pass" })
 $TotalMatchedRecordsAfterMaintenance = 0
 
 foreach ($Row in $Rows) {
-  $TotalMatchedRecordsAfterMaintenance += Convert-ToInvariantIntOrZero -Value $Row[21]
+  $TotalMatchedRecordsAfterMaintenance += Convert-ToInvariantIntOrZero -Value $Row[22]
 }
 
 $MaintenanceActions = @($Rows | ForEach-Object { $_[3] } | Sort-Object -Unique)
 $MaintenanceReasons = @($Rows | ForEach-Object { $_[4] } | Sort-Object -Unique)
-$BaseRecordCounts = @($Rows | ForEach-Object { $_[5] } | Sort-Object -Unique)
-$PendingAppendRecordCounts = @($Rows | ForEach-Object { $_[6] } | Sort-Object -Unique)
-$TombstoneCounts = @($Rows | ForEach-Object { $_[7] } | Sort-Object -Unique)
-$ResultingRecordCounts = @($Rows | ForEach-Object { $_[8] } | Sort-Object -Unique)
-$IndexByteDeltaValues = @($Rows | ForEach-Object { $_[11] } | Sort-Object -Unique)
-$AppendByteDeltaValues = @($Rows | ForEach-Object { $_[14] } | Sort-Object -Unique)
-$TombstoneByteDeltaValues = @($Rows | ForEach-Object { $_[17] } | Sort-Object -Unique)
-$LogicalArchiveByteDeltaValues = @($Rows | ForEach-Object { $_[20] } | Sort-Object -Unique)
+$MaintenanceStatusWriteRequiredValues = @($Rows | ForEach-Object { $_[5] } | Sort-Object -Unique)
+$BaseRecordCounts = @($Rows | ForEach-Object { $_[6] } | Sort-Object -Unique)
+$PendingAppendRecordCounts = @($Rows | ForEach-Object { $_[7] } | Sort-Object -Unique)
+$TombstoneCounts = @($Rows | ForEach-Object { $_[8] } | Sort-Object -Unique)
+$ResultingRecordCounts = @($Rows | ForEach-Object { $_[9] } | Sort-Object -Unique)
+$IndexByteDeltaValues = @($Rows | ForEach-Object { $_[12] } | Sort-Object -Unique)
+$AppendByteDeltaValues = @($Rows | ForEach-Object { $_[15] } | Sort-Object -Unique)
+$TombstoneByteDeltaValues = @($Rows | ForEach-Object { $_[18] } | Sort-Object -Unique)
+$LogicalArchiveByteDeltaValues = @($Rows | ForEach-Object { $_[21] } | Sort-Object -Unique)
 
 Set-Utf8Text -Path $OutputNotesPath -Text "Typed archive append-delta maintenance timing summary notes`r`n"
 Add-Utf8Text -Path $OutputNotesPath -Text "==============================================================`r`n`r`n"
@@ -198,6 +201,7 @@ Add-Utf8Text -Path $OutputNotesPath -Text "Agreement failures: $($FailedRows.Cou
 Add-Utf8Text -Path $OutputNotesPath -Text "Total matched records after maintenance: $TotalMatchedRecordsAfterMaintenance`r`n"
 Add-Utf8Text -Path $OutputNotesPath -Text "Maintenance actions: $($MaintenanceActions -join ', ')`r`n"
 Add-Utf8Text -Path $OutputNotesPath -Text "Maintenance reasons: $($MaintenanceReasons -join ', ')`r`n"
+Add-Utf8Text -Path $OutputNotesPath -Text "Maintenance status write required values: $($MaintenanceStatusWriteRequiredValues -join ', ')`r`n"
 Add-Utf8Text -Path $OutputNotesPath -Text "Base record counts: $($BaseRecordCounts -join ', ')`r`n"
 Add-Utf8Text -Path $OutputNotesPath -Text "Pending append record counts: $($PendingAppendRecordCounts -join ', ')`r`n"
 Add-Utf8Text -Path $OutputNotesPath -Text "Tombstone counts: $($TombstoneCounts -join ', ')`r`n"
@@ -212,7 +216,7 @@ if ($FailedRows.Count -gt 0) {
   Add-Utf8Text -Path $OutputNotesPath -Text "--------------------`r`n"
 
   foreach ($FailedRow in $FailedRows) {
-    Add-Utf8Text -Path $OutputNotesPath -Text "$($FailedRow[2]): $($FailedRow[23])`r`n"
+    Add-Utf8Text -Path $OutputNotesPath -Text "$($FailedRow[2]): $($FailedRow[24])`r`n"
   }
 }
 
