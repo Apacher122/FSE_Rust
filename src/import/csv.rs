@@ -15,17 +15,19 @@ use crate::encoding::{
     FSERecordEncoderMetadataError,
 };
 use crate::persistence::{
-    FSEArchiveMaintenancePolicy, FSERecordBatchArchiveError,
+    FSEArchiveMaintenancePolicy, FSERecordBatchArchiveAppendResult, FSERecordBatchArchiveError,
     FSETypedQueryIndexAppendDeltaArchiveMaintenanceError, FSETypedQueryIndexArchiveAppendResult,
     FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveMaintenanceError,
     FSETypedQueryIndexArchiveMaintenanceResult, FSETypedRowTombstoneArchiveAppendResult,
     FSETypedRowTombstoneArchiveError, append_typed_query_index_archive_file,
-    append_typed_row_tombstone_archive_file, build_typed_query_index_archive_file,
+    append_typed_record_batch_archive_file, append_typed_row_tombstone_archive_file,
+    build_typed_query_index_archive_file,
     build_typed_query_index_archive_file_with_encoder_metadata,
-    load_typed_query_index_archive_file_with_encoder_metadata,
+    load_typed_query_index_archive_file, load_typed_query_index_archive_file_with_encoder_metadata,
     load_typed_record_batch_archive_file, load_typed_row_tombstone_archive_file,
     maintain_typed_query_index_archive_file,
     maintain_typed_query_index_archive_file_with_append_batch_archive,
+    save_typed_record_batch_archive_file,
 };
 use crate::query::{
     FSEPredicate, IndexedTypedQueryError, IndexedTypedQueryReport, IndexedTypedQueryRowReport,
@@ -82,6 +84,57 @@ impl From<FSERecordEncoderMetadataError> for FSECsvArchiveImportError {
 impl From<FSETypedQueryIndexArchiveError> for FSECsvArchiveImportError {
     fn from(error: FSETypedQueryIndexArchiveError) -> Self {
         Self::Archive(error)
+    }
+}
+
+/// Error returned when CSV append-delta archive import fails.
+#[derive(Debug)]
+pub enum FSECsvAppendDeltaArchiveImportError {
+    /// Reading or parsing the CSV file failed.
+    Csv(FSECsvFileImportError),
+
+    /// Loading the typed query index archive failed.
+    Archive(FSETypedQueryIndexArchiveError),
+
+    /// Writing or appending the typed record batch archive failed.
+    AppendBatch(FSERecordBatchArchiveError),
+}
+
+impl fmt::Display for FSECsvAppendDeltaArchiveImportError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Csv(error) => error.fmt(formatter),
+            Self::Archive(error) => error.fmt(formatter),
+            Self::AppendBatch(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for FSECsvAppendDeltaArchiveImportError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Csv(error) => Some(error),
+            Self::Archive(error) => Some(error),
+            Self::AppendBatch(error) => Some(error),
+        }
+    }
+}
+
+impl From<FSECsvFileImportError> for FSECsvAppendDeltaArchiveImportError {
+    fn from(error: FSECsvFileImportError) -> Self {
+        Self::Csv(error)
+    }
+}
+
+impl From<FSETypedQueryIndexArchiveError> for FSECsvAppendDeltaArchiveImportError {
+    fn from(error: FSETypedQueryIndexArchiveError) -> Self {
+        Self::Archive(error)
+    }
+}
+
+impl From<FSERecordBatchArchiveError> for FSECsvAppendDeltaArchiveImportError {
+    fn from(error: FSERecordBatchArchiveError) -> Self {
+        Self::AppendBatch(error)
     }
 }
 
@@ -1281,6 +1334,80 @@ where
         &encoder,
         builder,
     )?)
+}
+
+/// Builds a typed record batch append-delta archive from a CSV file.
+///
+/// The caller supplies the schema and CSV row-id options used to parse the
+/// append-delta records.
+pub fn build_typed_record_batch_archive_from_csv_file<C, A>(
+    csv_path: C,
+    append_path: A,
+    schema: &FSESchema,
+    options: &FSECsvImportOptions,
+) -> Result<FSERecordBatch, FSECsvAppendDeltaArchiveImportError>
+where
+    C: AsRef<Path>,
+    A: AsRef<Path>,
+{
+    let batch = record_batch_from_csv_file(csv_path, schema, options)?;
+    save_typed_record_batch_archive_file(append_path, &batch)?;
+
+    Ok(batch)
+}
+
+/// Builds a typed record batch append-delta archive using the index archive schema.
+pub fn build_typed_record_batch_archive_from_csv_file_with_archive_schema<C, I, A>(
+    csv_path: C,
+    query_index_path: I,
+    append_path: A,
+    options: &FSECsvImportOptions,
+) -> Result<FSERecordBatch, FSECsvAppendDeltaArchiveImportError>
+where
+    C: AsRef<Path>,
+    I: AsRef<Path>,
+    A: AsRef<Path>,
+{
+    let query_index = load_typed_query_index_archive_file(query_index_path)?;
+    let schema = query_index.batch().schema();
+
+    build_typed_record_batch_archive_from_csv_file(csv_path, append_path, schema, options)
+}
+
+/// Appends CSV records to an existing typed record batch append-delta archive.
+///
+/// The CSV file is parsed with the caller supplied schema and row-id options.
+pub fn append_typed_record_batch_archive_from_csv_file<C, A>(
+    csv_path: C,
+    append_path: A,
+    schema: &FSESchema,
+    options: &FSECsvImportOptions,
+) -> Result<FSERecordBatchArchiveAppendResult, FSECsvAppendDeltaArchiveImportError>
+where
+    C: AsRef<Path>,
+    A: AsRef<Path>,
+{
+    let batch = record_batch_from_csv_file(csv_path, schema, options)?;
+
+    Ok(append_typed_record_batch_archive_file(append_path, &batch)?)
+}
+
+/// Appends CSV records to an append-delta archive using the index archive schema.
+pub fn append_typed_record_batch_archive_from_csv_file_with_archive_schema<C, I, A>(
+    csv_path: C,
+    query_index_path: I,
+    append_path: A,
+    options: &FSECsvImportOptions,
+) -> Result<FSERecordBatchArchiveAppendResult, FSECsvAppendDeltaArchiveImportError>
+where
+    C: AsRef<Path>,
+    I: AsRef<Path>,
+    A: AsRef<Path>,
+{
+    let query_index = load_typed_query_index_archive_file(query_index_path)?;
+    let schema = query_index.batch().schema();
+
+    append_typed_record_batch_archive_from_csv_file(csv_path, append_path, schema, options)
 }
 
 /// Appends row tombstones from a CSV file to a typed row tombstone archive.

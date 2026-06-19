@@ -13,16 +13,20 @@ use crate::encoding::{
     FSEFieldEncoderMetadata, FloatEncoder, IntegerEncoder, TimestampMillisEncoder,
 };
 use crate::import::{
-    FSECsvAppendDeltaArchiveMaintenanceImportError, FSECsvAppendDeltaArchiveQueryContextError,
-    FSECsvAppendDeltaArchiveQueryError, FSECsvArchiveImportError,
-    FSECsvArchiveMaintenanceImportError, FSECsvArchiveQueryContextError, FSECsvArchiveQueryError,
-    FSECsvInferredArchiveImportError, FSECsvTombstoneImportError,
+    FSECsvAppendDeltaArchiveImportError, FSECsvAppendDeltaArchiveMaintenanceImportError,
+    FSECsvAppendDeltaArchiveQueryContextError, FSECsvAppendDeltaArchiveQueryError,
+    FSECsvArchiveImportError, FSECsvArchiveMaintenanceImportError, FSECsvArchiveQueryContextError,
+    FSECsvArchiveQueryError, FSECsvInferredArchiveImportError, FSECsvTombstoneImportError,
     FSECsvTombstoneMaintenanceImportError, FSECsvTombstonedAppendDeltaArchiveQueryContextError,
     FSECsvTombstonedArchiveQueryContextError, append_typed_query_index_archive_from_csv_file,
     append_typed_query_index_archive_from_csv_file_with_archive_metadata,
+    append_typed_record_batch_archive_from_csv_file,
+    append_typed_record_batch_archive_from_csv_file_with_archive_schema,
     append_typed_row_tombstone_archive_from_csv_file,
     build_typed_query_index_archive_from_csv_file,
     build_typed_query_index_archive_from_inferred_csv_file,
+    build_typed_record_batch_archive_from_csv_file,
+    build_typed_record_batch_archive_from_csv_file_with_archive_schema,
     load_csv_append_delta_typed_query_index_archive_context,
     load_csv_tombstoned_append_delta_typed_query_index_archive_context,
     load_csv_tombstoned_typed_query_index_archive_context,
@@ -510,6 +514,196 @@ fn csv_append_delta_archive_query_context_reports_predicate_plan_error() {
 
     let _ = fs::remove_file(csv_path);
     let _ = fs::remove_file(append_csv_path);
+    let _ = fs::remove_file(archive_path);
+    let _ = fs::remove_file(append_path);
+}
+
+#[test]
+fn csv_append_delta_archive_import_builds_record_batch_fse_file() {
+    let expected_schema = entity_schema();
+    let builder = builder();
+    let csv_path = temp_csv_path("append-delta-import-build-base");
+    let append_csv_path = temp_csv_path("append-delta-import-build-records");
+    let archive_path = temp_archive_path("append-delta-import-build-base", ".fse");
+    let append_path = temp_archive_path("append-delta-import-build-records", ".fse");
+    let import_options = FSECsvImportOptions::new().with_row_id_column("entity_id");
+    let schema_options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("class", FSEFieldType::Category)
+        .with_field_type("observed_at", FSEFieldType::TimestampMillis);
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+    fs::write(&append_csv_path, appended_entity_csv()).unwrap();
+
+    build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &import_options,
+        &builder,
+    )
+    .unwrap();
+
+    let batch = build_typed_record_batch_archive_from_csv_file(
+        &append_csv_path,
+        &append_path,
+        &expected_schema,
+        &import_options,
+    )
+    .unwrap();
+    let loaded_append = load_typed_record_batch_archive_file(&append_path).unwrap();
+    let context =
+        load_csv_append_delta_typed_query_index_archive_context(&archive_path, &append_path)
+            .unwrap();
+    let row_ids = context.query_row_ids(score_and_class_predicates()).unwrap();
+
+    assert_eq!(loaded_append, batch);
+    assert_eq!(loaded_append.row_ids(), &[RowId::new(104), RowId::new(105)]);
+    assert_eq!(
+        row_ids,
+        vec![RowId::new(100), RowId::new(103), RowId::new(104)]
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(append_csv_path);
+    let _ = fs::remove_file(archive_path);
+    let _ = fs::remove_file(append_path);
+}
+
+#[test]
+fn csv_append_delta_archive_import_appends_records_with_archive_schema() {
+    let builder = builder();
+    let csv_path = temp_csv_path("append-delta-import-append-base");
+    let append_csv_path = temp_csv_path("append-delta-import-append-records");
+    let second_append_csv_path = temp_csv_path("append-delta-import-append-more-records");
+    let archive_path = temp_archive_path("append-delta-import-append-base", ".fse");
+    let append_path = temp_archive_path("append-delta-import-append-records", ".fse");
+    let import_options = FSECsvImportOptions::new().with_row_id_column("entity_id");
+    let schema_options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("class", FSEFieldType::Category)
+        .with_field_type("observed_at", FSEFieldType::TimestampMillis);
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+    fs::write(&append_csv_path, appended_entity_csv()).unwrap();
+    fs::write(&second_append_csv_path, second_appended_entity_csv()).unwrap();
+
+    build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &import_options,
+        &builder,
+    )
+    .unwrap();
+    build_typed_record_batch_archive_from_csv_file_with_archive_schema(
+        &append_csv_path,
+        &archive_path,
+        &append_path,
+        &import_options,
+    )
+    .unwrap();
+
+    let result = append_typed_record_batch_archive_from_csv_file_with_archive_schema(
+        &second_append_csv_path,
+        &archive_path,
+        &append_path,
+        &import_options,
+    )
+    .unwrap();
+    let loaded_append = load_typed_record_batch_archive_file(&append_path).unwrap();
+    let context =
+        load_csv_append_delta_typed_query_index_archive_context(&archive_path, &append_path)
+            .unwrap();
+    let row_ids = context.query_row_ids(score_and_class_predicates()).unwrap();
+
+    assert_eq!(result.append_metadata.base_record_count, 2);
+    assert_eq!(result.append_metadata.appended_record_count, 2);
+    assert_eq!(result.append_metadata.resulting_record_count, 4);
+    assert_eq!(
+        loaded_append.row_ids(),
+        &[
+            RowId::new(104),
+            RowId::new(105),
+            RowId::new(106),
+            RowId::new(107),
+        ]
+    );
+    assert_eq!(
+        row_ids,
+        vec![
+            RowId::new(100),
+            RowId::new(103),
+            RowId::new(104),
+            RowId::new(106),
+        ]
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(append_csv_path);
+    let _ = fs::remove_file(second_append_csv_path);
+    let _ = fs::remove_file(archive_path);
+    let _ = fs::remove_file(append_path);
+}
+
+#[test]
+fn csv_append_delta_archive_import_reports_duplicate_row_ids_and_preserves_archive() {
+    let expected_schema = entity_schema();
+    let builder = builder();
+    let csv_path = temp_csv_path("append-delta-import-duplicate-base");
+    let append_csv_path = temp_csv_path("append-delta-import-duplicate-records");
+    let duplicate_csv_path = temp_csv_path("append-delta-import-duplicate-row-id");
+    let archive_path = temp_archive_path("append-delta-import-duplicate-base", ".fse");
+    let append_path = temp_archive_path("append-delta-import-duplicate-records", ".fse");
+    let import_options = FSECsvImportOptions::new().with_row_id_column("entity_id");
+    let schema_options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("class", FSEFieldType::Category)
+        .with_field_type("observed_at", FSEFieldType::TimestampMillis);
+    let duplicate_csv = "\
+entity_id,score,class,observed_at
+104,19.0,alpha,1800
+";
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+    fs::write(&append_csv_path, appended_entity_csv()).unwrap();
+    fs::write(&duplicate_csv_path, duplicate_csv).unwrap();
+
+    build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &import_options,
+        &builder,
+    )
+    .unwrap();
+    let original_append = build_typed_record_batch_archive_from_csv_file(
+        &append_csv_path,
+        &append_path,
+        &expected_schema,
+        &import_options,
+    )
+    .unwrap();
+
+    let error = append_typed_record_batch_archive_from_csv_file(
+        &duplicate_csv_path,
+        &append_path,
+        &expected_schema,
+        &import_options,
+    )
+    .unwrap_err();
+
+    match error {
+        FSECsvAppendDeltaArchiveImportError::AppendBatch(
+            FSERecordBatchArchiveError::RecordBatch(FSERecordBatchError::DuplicateRowId { row_id }),
+        ) => assert_eq!(row_id, RowId::new(104)),
+        other => panic!("expected duplicate append-delta row-id error, got {other}"),
+    }
+    assert_eq!(
+        load_typed_record_batch_archive_file(&append_path).unwrap(),
+        original_append
+    );
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(append_csv_path);
+    let _ = fs::remove_file(duplicate_csv_path);
     let _ = fs::remove_file(archive_path);
     let _ = fs::remove_file(append_path);
 }
@@ -2209,6 +2403,14 @@ fn appended_entity_csv() -> &'static str {
 entity_id,score,class,observed_at
 104,16.0,alpha,1400
 105,80.0,beta,1500
+"
+}
+
+fn second_appended_entity_csv() -> &'static str {
+    "\
+entity_id,score,class,observed_at
+106,14.0,alpha,1600
+107,8.0,beta,1700
 "
 }
 
