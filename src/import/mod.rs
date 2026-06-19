@@ -23,6 +23,7 @@ pub use csv::{
     build_typed_query_index_archive_from_inferred_csv_file,
     build_typed_record_batch_archive_from_csv_file,
     build_typed_record_batch_archive_from_csv_file_with_archive_schema,
+    inspect_typed_query_index_archive_from_append_delta_archive,
     load_csv_append_delta_typed_query_index_archive_context,
     load_csv_tombstoned_append_delta_typed_query_index_archive_context,
     load_csv_tombstoned_typed_query_index_archive_context,

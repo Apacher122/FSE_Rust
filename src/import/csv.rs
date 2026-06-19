@@ -15,14 +15,15 @@ use crate::encoding::{
     FSERecordEncoderMetadataError,
 };
 use crate::persistence::{
-    FSEArchiveMaintenancePolicy, FSERecordBatchArchiveAppendResult, FSERecordBatchArchiveError,
-    FSETypedQueryIndexAppendDeltaArchiveMaintenanceError, FSETypedQueryIndexArchiveAppendResult,
-    FSETypedQueryIndexArchiveError, FSETypedQueryIndexArchiveMaintenanceError,
-    FSETypedQueryIndexArchiveMaintenanceResult, FSETypedRowTombstoneArchiveAppendResult,
-    FSETypedRowTombstoneArchiveError, append_typed_query_index_archive_file,
-    append_typed_record_batch_archive_file, append_typed_row_tombstone_archive_file,
-    build_typed_query_index_archive_file,
+    FSEArchiveMaintenanceDecision, FSEArchiveMaintenancePolicy, FSERecordBatchArchiveAppendResult,
+    FSERecordBatchArchiveError, FSETypedQueryIndexAppendDeltaArchiveMaintenanceError,
+    FSETypedQueryIndexArchiveAppendResult, FSETypedQueryIndexArchiveError,
+    FSETypedQueryIndexArchiveMaintenanceError, FSETypedQueryIndexArchiveMaintenanceResult,
+    FSETypedRowTombstoneArchiveAppendResult, FSETypedRowTombstoneArchiveError,
+    append_typed_query_index_archive_file, append_typed_record_batch_archive_file,
+    append_typed_row_tombstone_archive_file, build_typed_query_index_archive_file,
     build_typed_query_index_archive_file_with_encoder_metadata,
+    inspect_typed_query_index_archive_file_maintenance_with_append_batch_archive,
     load_typed_query_index_archive_file, load_typed_query_index_archive_file_with_encoder_metadata,
     load_typed_record_batch_archive_file, load_typed_row_tombstone_archive_file,
     maintain_typed_query_index_archive_file,
@@ -1568,6 +1569,31 @@ where
             tombstone_path,
             &encoder,
             builder,
+            policy,
+        )?,
+    )
+}
+
+/// Inspects archive maintenance for a CSV-backed append-delta archive.
+///
+/// The archive, append-delta archive, and tombstone archive are loaded for
+/// maintenance counts. Archive files are not modified.
+pub fn inspect_typed_query_index_archive_from_append_delta_archive<A, D, T>(
+    archive_path: A,
+    append_path: D,
+    tombstone_path: T,
+    policy: &FSEArchiveMaintenancePolicy,
+) -> Result<FSEArchiveMaintenanceDecision, FSECsvAppendDeltaArchiveMaintenanceImportError>
+where
+    A: AsRef<Path>,
+    D: AsRef<Path>,
+    T: AsRef<Path>,
+{
+    Ok(
+        inspect_typed_query_index_archive_file_maintenance_with_append_batch_archive(
+            archive_path,
+            append_path,
+            tombstone_path,
             policy,
         )?,
     )
