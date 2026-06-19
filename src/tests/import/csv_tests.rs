@@ -1651,6 +1651,102 @@ fn csv_archive_import_maintenance_reports_append_delta_policy_error_and_preserve
 }
 
 #[test]
+fn csv_archive_update_lifecycle_preserves_logical_results_after_maintenance() {
+    let expected_schema = entity_schema();
+    let builder = builder();
+    let policy = FSEArchiveMaintenancePolicy::try_new(10, 1, 9_000).unwrap();
+    let csv_path = temp_csv_path("update-lifecycle-base");
+    let append_csv_path = temp_csv_path("update-lifecycle-append");
+    let archive_path = temp_archive_path("update-lifecycle-base", ".fse");
+    let append_path = temp_archive_path("update-lifecycle-append", ".fse");
+    let tombstone_path = temp_archive_path("update-lifecycle-tombstones", ".fse");
+    let import_options = FSECsvImportOptions::new().with_row_id_column("entity_id");
+    let schema_options = FSECsvSchemaInferenceOptions::new()
+        .with_field_type("class", FSEFieldType::Category)
+        .with_field_type("observed_at", FSEFieldType::TimestampMillis);
+
+    fs::write(&csv_path, entity_csv()).unwrap();
+    fs::write(&append_csv_path, appended_entity_csv()).unwrap();
+
+    build_typed_query_index_archive_from_inferred_csv_file(
+        &csv_path,
+        &archive_path,
+        &schema_options,
+        &import_options,
+        &builder,
+    )
+    .unwrap();
+    build_typed_record_batch_archive_from_csv_file_with_archive_schema(
+        &append_csv_path,
+        &archive_path,
+        &append_path,
+        &import_options,
+    )
+    .unwrap();
+    save_typed_row_tombstone_archive_file(&tombstone_path, &[RowId::new(100)]).unwrap();
+
+    let before = load_csv_tombstoned_append_delta_typed_query_index_archive_context(
+        &archive_path,
+        &append_path,
+        &tombstone_path,
+    )
+    .unwrap();
+    let before_metadata = before
+        .context
+        .context
+        .record_encoder_metadata
+        .fields()
+        .to_vec();
+    let before_row_ids = before.query_row_ids(score_and_class_predicates()).unwrap();
+
+    let result = maintain_typed_query_index_archive_from_append_delta_archive(
+        &archive_path,
+        &append_path,
+        &tombstone_path,
+        &builder,
+        &policy,
+    )
+    .unwrap();
+    let after = load_csv_typed_query_index_archive_context(&archive_path).unwrap();
+    let after_row_ids = after.query_row_ids(score_and_class_predicates()).unwrap();
+    let cleared_append = load_typed_record_batch_archive_file(&append_path).unwrap();
+    let cleared_tombstones = load_typed_row_tombstone_archive_file(&tombstone_path).unwrap();
+
+    assert_eq!(before_row_ids, vec![RowId::new(103), RowId::new(104)]);
+    assert_eq!(after_row_ids, before_row_ids);
+    assert_eq!(result.decision.action, FSEArchiveMaintenanceAction::Rebuild);
+    assert_eq!(
+        result.decision.reason,
+        FSEArchiveMaintenanceReason::AppendAndCompactionThresholdsReached
+    );
+    assert!(result.append_result.is_some());
+    assert!(result.compaction_result.is_some());
+    assert_eq!(
+        after.query_index.batch().row_ids(),
+        &[
+            RowId::new(101),
+            RowId::new(102),
+            RowId::new(103),
+            RowId::new(104),
+            RowId::new(105),
+        ]
+    );
+    assert_eq!(
+        after.record_encoder_metadata.fields(),
+        before_metadata.as_slice()
+    );
+    assert!(cleared_append.is_empty());
+    assert_eq!(cleared_append.schema(), &expected_schema);
+    assert_eq!(cleared_tombstones, Vec::new());
+
+    let _ = fs::remove_file(csv_path);
+    let _ = fs::remove_file(append_csv_path);
+    let _ = fs::remove_file(archive_path);
+    let _ = fs::remove_file(append_path);
+    let _ = fs::remove_file(tombstone_path);
+}
+
+#[test]
 fn csv_tombstone_import_appends_row_ids_to_fse_file() {
     let schema = entity_schema();
     let mapping = entity_mapping(&schema);
