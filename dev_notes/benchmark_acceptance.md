@@ -15,6 +15,7 @@ Use this file as the entry point.
 | Exact existence query timing and artifact-scope decision | `dev_notes/benchmark/existence-workflow.md` |
 | Reference visitor output contract and materialization evidence | `dev_notes/benchmark/reference-visitor-workflow.md` |
 | Low-gap review runner, target workload review, and comparison commands | `dev_notes/benchmark/review-workflow.md` |
+| Review validator artifact contracts and equivalence gates | `dev_notes/benchmark/validation-coverage.md` |
 | Artifact organization, organized previous-label resolution, organized copy, and cleanup | `dev_notes/benchmark/artifact-workflow.md` |
 | Leaf policy review and current policy conclusion | `dev_notes/benchmark/leaf-policy.md` |
 
@@ -50,6 +51,12 @@ count-only query execution:
 
 existence query execution:
   returns whether the exact result set is non-empty
+
+typed archive append-delta query execution:
+  queries persisted base archives plus append-delta archives before rebuild
+
+typed archive maintenance execution:
+  applies policy-selected append, rebuild, and compaction actions to persisted archives
 ```
 
 ## Preferred review command

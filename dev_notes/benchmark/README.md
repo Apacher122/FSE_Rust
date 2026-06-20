@@ -35,6 +35,9 @@ The benchmark workflow currently separates:
     existence query execution
     typed indexed query execution
     typed archive load execution
+    typed archive append-delta query execution
+    typed archive compaction execution
+    typed archive maintenance execution
     index footprint reporting
     debug-only retained execution diagnostics
 
@@ -51,6 +54,12 @@ Count-only timing answers exact-cardinality performance.
 Existence timing answers exact non-empty-result performance and inspected-record behavior.
 
 Typed archive load timing answers `.fse` typed query index reload cost under warm-loaded and cold-loaded execution paths.
+
+Typed archive append-delta query timing answers base-plus-append-delta query cost against an equivalent rebuilt typed query index.
+
+Typed archive compaction timing answers tombstone-driven archive rebuild cost and logical archive byte movement.
+
+Typed archive maintenance timing answers policy-selected update, rebuild, and compaction cost for typed archives.
 
 Index footprint reporting answers how many coordinate-like scalars are represented by residuals, centroids, bounds, and the total counted FSE index footprint. It also reports scalar payload byte estimates derived from the scalar counts and the configured scalar width.
 
@@ -75,6 +84,11 @@ The benchmark workflow now has:
     row-view materialization summary evidence
     typed indexed comparison summary evidence
     typed archive load timing summary evidence
+    typed archive append rebuild summary evidence
+    typed archive append-delta query summary evidence
+    typed archive compaction summary evidence
+    typed archive maintenance summary evidence
+    typed archive append-delta maintenance summary evidence
     repeated materialization mode trial summaries
     per-workload CSV metrics
     index footprint metrics
@@ -86,7 +100,7 @@ The benchmark workflow now has:
     small and large dataset review workflows
     review artifact validation gates
     organized artifact management
-    benchmark history ledgers, including index footprint and baseline footprint history
+    benchmark history ledgers, including typed archive summary history, index footprint history, and baseline footprint history
 
 ## Primary review files
 
@@ -258,6 +272,8 @@ Current benchmark interpretation:
     existence query mode is a valid separate output contract with timing-summary benchmark evidence
     typed indexed query execution is available for FSE-native record queries
     typed archive load timing is available for comparing in-memory, warm-loaded, and cold-loaded `.fse` query indexes
+    typed archive append-delta query timing is available for comparing unrebuilt append-delta execution against rebuilt typed query execution
+    typed archive compaction and maintenance timing are available for update/rebuild/compaction evidence
     reference visitor is a valid exact reference-delivery output contract with small and large materialization evidence
     row-view query mode is a valid borrowed row-delivery output contract but not the current performance direction
     repeated materialization trials are available for output-contract stability checks
@@ -278,4 +294,5 @@ Current footprint interpretation:
     structural metadata scalars are counted separately from residual scalars
     index-footprint-history.csv is the cross-run ledger for index scalar and byte estimate fields
     baseline-footprint-history.csv is the cross-run ledger for per-baseline footprint fields and shared index byte estimates
+    typed archive history CSVs are cross-run ledgers for load, append rebuild, append-delta query, compaction, maintenance, and append-delta maintenance summaries
     footprint reporting does not prove storage replacement by itself

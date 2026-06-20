@@ -15,6 +15,7 @@ count-only summary artifacts
 materialization summary artifacts
 typed archive load artifacts
 typed archive append rebuild artifacts
+typed archive append-delta query artifacts
 typed archive compaction artifacts
 typed archive maintenance artifacts
 typed archive append-delta maintenance artifacts
@@ -45,6 +46,8 @@ typed-archive-load-summary-<label>.csv
 typed-archive-load-summary-<label>.txt
 typed-archive-append-rebuild-summary-<label>.csv
 typed-archive-append-rebuild-summary-<label>.txt
+typed-archive-append-delta-query-summary-<label>.csv
+typed-archive-append-delta-query-summary-<label>.txt
 typed-archive-compaction-summary-<label>.csv
 typed-archive-compaction-summary-<label>.txt
 typed-archive-maintenance-summary-<label>.csv
@@ -216,6 +219,132 @@ typed-archive-append-rebuild-summary-<label>.txt
 ```
 
 The notes file records the row count, agreement failure count, total matched records after append, distinct record counts, and archive byte-growth values.
+
+## Typed archive append-delta query validation
+
+The typed archive append-delta query summary must include:
+
+```text
+dataset
+max_depth
+workload_name
+base_record_count
+appended_record_count
+rebuilt_record_count
+append_delta_matched_records
+rebuilt_matched_records
+append_delta_reconstructed_records
+rebuilt_reconstructed_records
+append_delta_candidate_ratio
+rebuilt_candidate_ratio
+rebuilt_to_append_delta_ratio
+rebuilt_query_elapsed
+append_delta_query_elapsed
+agreement
+```
+
+Every row must have:
+
+```text
+agreement = pass
+```
+
+The append-delta and rebuilt query paths must also report the same matched-record count:
+
+```text
+append_delta_matched_records = rebuilt_matched_records
+```
+
+This check verifies that querying the persisted base archive plus append-delta archive preserves the same logical results as querying a fully rebuilt typed query index.
+
+The typed archive append-delta query notes artifact must exist and be non-empty:
+
+```text
+typed-archive-append-delta-query-summary-<label>.txt
+```
+
+## Typed archive compaction validation
+
+The typed archive compaction summary must include:
+
+```text
+dataset
+max_depth
+workload_name
+base_record_count
+tombstone_count
+removed_record_count
+retained_record_count
+index_bytes_before_compaction
+index_bytes_after_compaction
+index_byte_delta
+tombstone_bytes_before_compaction
+tombstone_bytes_after_compaction
+tombstone_byte_delta
+logical_archive_bytes_before_compaction
+logical_archive_bytes_after_compaction
+logical_archive_byte_delta
+matched_records_after_compaction
+compaction_elapsed
+agreement
+```
+
+Every row must have:
+
+```text
+agreement = pass
+```
+
+This check verifies that compaction timing evidence preserves the logical query result set after tombstoned rows are removed and archive bytes are rewritten.
+
+The typed archive compaction notes artifact must exist and be non-empty:
+
+```text
+typed-archive-compaction-summary-<label>.txt
+```
+
+## Typed archive maintenance validation
+
+The typed archive maintenance summary must include:
+
+```text
+dataset
+max_depth
+workload_name
+maintenance_action
+maintenance_reason
+maintenance_status_requires_archive_write
+base_record_count
+pending_append_record_count
+tombstone_count
+resulting_record_count
+index_bytes_before_maintenance
+index_bytes_after_maintenance
+index_byte_delta
+tombstone_bytes_before_maintenance
+tombstone_bytes_after_maintenance
+tombstone_byte_delta
+logical_archive_bytes_before_maintenance
+logical_archive_bytes_after_maintenance
+logical_archive_byte_delta
+matched_records_after_maintenance
+maintenance_elapsed
+agreement
+```
+
+Every row must have:
+
+```text
+agreement = pass
+```
+
+This check verifies that policy-driven typed archive maintenance preserves exact query results after the selected archive action is applied.
+
+The typed archive maintenance notes artifact must exist and be non-empty:
+
+```text
+typed-archive-maintenance-summary-<label>.txt
+```
 
 ## Typed archive append-delta maintenance validation
 

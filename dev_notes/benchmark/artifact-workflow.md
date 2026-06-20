@@ -22,6 +22,12 @@ benchmark_artifacts/
     weakest-workload-history.csv
     count-only-workload-history.csv
     materialization-mode-history.csv
+    typed-archive-load-history.csv
+    typed-archive-append-rebuild-history.csv
+    typed-archive-append-delta-query-history.csv
+    typed-archive-compaction-history.csv
+    typed-archive-maintenance-history.csv
+    typed-archive-append-delta-maintenance-history.csv
     target-workload-history.csv
     index-footprint-history.csv
     baseline-footprint-history.csv
@@ -47,6 +53,14 @@ benchmark_artifacts/
       typed-archive-load-summary-<label>.txt
       typed-archive-append-rebuild-summary-<label>.csv
       typed-archive-append-rebuild-summary-<label>.txt
+      typed-archive-append-delta-query-summary-<label>.csv
+      typed-archive-append-delta-query-summary-<label>.txt
+      typed-archive-compaction-summary-<label>.csv
+      typed-archive-compaction-summary-<label>.txt
+      typed-archive-maintenance-summary-<label>.csv
+      typed-archive-maintenance-summary-<label>.txt
+      typed-archive-append-delta-maintenance-summary-<label>.csv
+      typed-archive-append-delta-maintenance-summary-<label>.txt
       typed-query-index-archive-<label>.fse
       low-gap-review-notes-<label>.txt
       low-gap-review-manifest-<label>.txt
@@ -338,6 +352,14 @@ benchmark_artifacts/
       typed-archive-load-summary-<label>.txt
       typed-archive-append-rebuild-summary-<label>.csv
       typed-archive-append-rebuild-summary-<label>.txt
+      typed-archive-append-delta-query-summary-<label>.csv
+      typed-archive-append-delta-query-summary-<label>.txt
+      typed-archive-compaction-summary-<label>.csv
+      typed-archive-compaction-summary-<label>.txt
+      typed-archive-maintenance-summary-<label>.csv
+      typed-archive-maintenance-summary-<label>.txt
+      typed-archive-append-delta-maintenance-summary-<label>.csv
+      typed-archive-append-delta-maintenance-summary-<label>.txt
       typed-query-index-archive-<label>.fse
       low-gap-review-notes-<label>.txt
       low-gap-review-manifest-<label>.txt
@@ -411,6 +433,12 @@ low-selectivity-performance-history.csv
 weakest-workload-history.csv
 count-only-workload-history.csv
 materialization-mode-history.csv
+typed-archive-load-history.csv
+typed-archive-append-rebuild-history.csv
+typed-archive-append-delta-query-history.csv
+typed-archive-compaction-history.csv
+typed-archive-maintenance-history.csv
+typed-archive-append-delta-maintenance-history.csv
 target-workload-history.csv
 index-footprint-history.csv
 baseline-footprint-history.csv
@@ -433,6 +461,24 @@ count-only-workload-history.csv:
 
 materialization-mode-history.csv:
   how output-contract materialization costs changed by workload
+
+typed-archive-load-history.csv:
+  how loaded `.fse` query execution changed by workload
+
+typed-archive-append-rebuild-history.csv:
+  how append/rebuild archive timing and archive growth changed by workload
+
+typed-archive-append-delta-query-history.csv:
+  how base-plus-append-delta query execution compared with rebuilt query execution by workload
+
+typed-archive-compaction-history.csv:
+  how tombstone compaction changed logical archive bytes and query result counts by workload
+
+typed-archive-maintenance-history.csv:
+  how policy-selected archive maintenance changed logical archive bytes and query result counts by workload
+
+typed-archive-append-delta-maintenance-history.csv:
+  how persisted append-delta maintenance changed logical archive bytes and query result counts by workload
 
 target-workload-history.csv:
   how the selected boundary workload changed across baselines
@@ -616,6 +662,10 @@ count-only comparison artifacts
 typed indexed comparison summaries
 typed archive load summaries
 typed archive append rebuild summaries
+typed archive append-delta query summaries
+typed archive compaction summaries
+typed archive maintenance summaries
+typed archive append-delta maintenance summaries
 typed query index archives
 repeated-trial folders
 repeated materialization trial folders
@@ -907,6 +957,14 @@ typed-archive-load-summary-<label>.csv
 typed-archive-load-summary-<label>.txt
 typed-archive-append-rebuild-summary-<label>.csv
 typed-archive-append-rebuild-summary-<label>.txt
+typed-archive-append-delta-query-summary-<label>.csv
+typed-archive-append-delta-query-summary-<label>.txt
+typed-archive-compaction-summary-<label>.csv
+typed-archive-compaction-summary-<label>.txt
+typed-archive-maintenance-summary-<label>.csv
+typed-archive-maintenance-summary-<label>.txt
+typed-archive-append-delta-maintenance-summary-<label>.csv
+typed-archive-append-delta-maintenance-summary-<label>.txt
 typed-query-index-archive-<label>.fse
 ```
 
@@ -983,6 +1041,73 @@ agreement = pass
 ```
 
 The notes file records row count, agreement failures, total matched records after append, distinct record-count values, and distinct archive byte-growth values. The append rebuild elapsed field is the formatted duration emitted by the debug report.
+
+## Typed archive append-delta query artifacts
+
+Typed archive append-delta query artifacts are extracted from the debug report workload summary.
+
+Artifacts:
+
+```text
+typed-archive-append-delta-query-summary-<label>.csv
+typed-archive-append-delta-query-summary-<label>.txt
+```
+
+The CSV preserves the workload-level relationship between querying a base typed query index with a persisted append-delta batch and querying an equivalent rebuilt typed query index.
+
+Required CSV fields include:
+
+```text
+dataset
+max_depth
+workload_name
+base_record_count
+appended_record_count
+rebuilt_record_count
+append_delta_matched_records
+rebuilt_matched_records
+append_delta_reconstructed_records
+rebuilt_reconstructed_records
+append_delta_candidate_ratio
+rebuilt_candidate_ratio
+rebuilt_to_append_delta_ratio
+rebuilt_query_elapsed
+append_delta_query_elapsed
+agreement
+```
+
+Every row should have:
+
+```text
+agreement = pass
+```
+
+The append-delta and rebuilt paths should also report the same matched-record count. This artifact is the review evidence for querying inserts before a full hierarchy rebuild.
+
+## Typed archive compaction and maintenance artifacts
+
+Typed archive compaction and maintenance artifacts are extracted from debug report workload summaries.
+
+Artifacts:
+
+```text
+typed-archive-compaction-summary-<label>.csv
+typed-archive-compaction-summary-<label>.txt
+typed-archive-maintenance-summary-<label>.csv
+typed-archive-maintenance-summary-<label>.txt
+typed-archive-append-delta-maintenance-summary-<label>.csv
+typed-archive-append-delta-maintenance-summary-<label>.txt
+```
+
+The compaction summary records tombstone-driven archive rebuild evidence. The maintenance summaries record policy-selected archive actions and logical archive byte movement before and after maintenance.
+
+Every row should have:
+
+```text
+agreement = pass
+```
+
+Use these artifacts to review Milestone H update, rebuild, and compaction behavior separately from owned-result query timing.
 
 ## Target workload artifacts
 
