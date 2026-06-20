@@ -581,6 +581,36 @@ function Update-BenchmarkReviewHistory {
 
   Add-BenchmarkSourceCsvToHistory `
     -Context $Context `
+    -SourceCsv $Context.CurrentTypedArchiveLoadSummaryCsv `
+    -HistoryCsv (Join-Path $Context.HistoryDir "typed-archive-load-history.csv")
+
+  Add-BenchmarkSourceCsvToHistory `
+    -Context $Context `
+    -SourceCsv $Context.CurrentTypedArchiveAppendRebuildSummaryCsv `
+    -HistoryCsv (Join-Path $Context.HistoryDir "typed-archive-append-rebuild-history.csv")
+
+  Add-BenchmarkSourceCsvToHistory `
+    -Context $Context `
+    -SourceCsv $Context.CurrentTypedArchiveAppendDeltaQuerySummaryCsv `
+    -HistoryCsv (Join-Path $Context.HistoryDir "typed-archive-append-delta-query-history.csv")
+
+  Add-BenchmarkSourceCsvToHistory `
+    -Context $Context `
+    -SourceCsv $Context.CurrentTypedArchiveCompactionSummaryCsv `
+    -HistoryCsv (Join-Path $Context.HistoryDir "typed-archive-compaction-history.csv")
+
+  Add-BenchmarkSourceCsvToHistory `
+    -Context $Context `
+    -SourceCsv $Context.CurrentTypedArchiveMaintenanceSummaryCsv `
+    -HistoryCsv (Join-Path $Context.HistoryDir "typed-archive-maintenance-history.csv")
+
+  Add-BenchmarkSourceCsvToHistory `
+    -Context $Context `
+    -SourceCsv $Context.CurrentTypedArchiveAppendDeltaMaintenanceSummaryCsv `
+    -HistoryCsv (Join-Path $Context.HistoryDir "typed-archive-append-delta-maintenance-history.csv")
+
+  Add-BenchmarkSourceCsvToHistory `
+    -Context $Context `
     -SourceCsv $Context.CurrentTargetSummaryCsv `
     -HistoryCsv (Join-Path $Context.HistoryDir "target-workload-history.csv")
 
