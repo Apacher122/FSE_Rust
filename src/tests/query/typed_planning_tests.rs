@@ -1,0 +1,252 @@
+use crate::build::{BuildConfig, FSEBuilder};
+use crate::data::{
+    FSEDimensionMapping, FSEField, FSEFieldType, FSERecord, FSERecordBatch, FSESchema,
+    FSESchemaDimensionMapping, FSEValue, RowId,
+};
+use crate::encoding::{
+    CategoricalDictionaryEncoder, ComposedRecordEncoder, FloatEncoder, IntegerEncoder,
+    TimestampMillisEncoder,
+};
+use crate::query::{
+    FSEPredicate, FSEPredicateField, TypedAppendDeltaQueryView, TypedQueryExecutionStrategy,
+    TypedQueryIndex, TypedQueryOutputContract, TypedQueryPlan, TypedQueryPlanBuilder,
+    TypedQueryPlanningReason, plan_typed_append_delta_query_execution, plan_typed_query_execution,
+};
+
+#[test]
+fn typed_query_planning_diagnostics_selects_fse_for_selective_plan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let plan = score_and_class_plan(&schema, &mapping);
+
+    let diagnostics =
+        plan_typed_query_execution(&query_index, &plan, TypedQueryOutputContract::RowIds);
+
+    assert_eq!(
+        diagnostics.strategy,
+        TypedQueryExecutionStrategy::FseTraversal
+    );
+    assert_eq!(
+        diagnostics.reason,
+        TypedQueryPlanningReason::SelectiveGeometry
+    );
+    assert_eq!(
+        diagnostics.output_contract,
+        TypedQueryOutputContract::RowIds
+    );
+    assert_eq!(diagnostics.total_records, 4);
+    assert_eq!(diagnostics.base_record_count, 4);
+    assert_eq!(diagnostics.append_delta_record_count, 0);
+    assert_eq!(diagnostics.predicate_count, 2);
+    assert_eq!(diagnostics.constrained_dimensions, 2);
+    assert!(diagnostics.estimated_candidate_records > 0);
+    assert!(diagnostics.estimated_candidate_ratio <= 0.35);
+    assert!(diagnostics.estimated_retained_leaf_count <= diagnostics.leaf_count);
+    assert!(!diagnostics.requires_append_delta_scan);
+    assert!(diagnostics.uses_geometric_traversal());
+    assert!(!diagnostics.uses_flat_scan());
+}
+
+#[test]
+fn typed_query_planning_diagnostics_selects_flat_scan_for_broad_materialized_plan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let plan = score_range_plan(&schema, &mapping, 0.0, 100.0);
+
+    let diagnostics =
+        plan_typed_query_execution(&query_index, &plan, TypedQueryOutputContract::Rows);
+
+    assert_eq!(diagnostics.strategy, TypedQueryExecutionStrategy::FlatScan);
+    assert_eq!(
+        diagnostics.reason,
+        TypedQueryPlanningReason::BroadMaterializedQuery
+    );
+    assert_eq!(diagnostics.estimated_candidate_records, 4);
+    assert_eq!(diagnostics.estimated_candidate_ratio, 1.0);
+    assert!(diagnostics.output_contract.materializes_records());
+    assert!(diagnostics.uses_flat_scan());
+}
+
+#[test]
+fn typed_query_planning_diagnostics_reports_noop_for_unsatisfiable_plan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let low_plan = score_range_plan(&schema, &mapping, 0.0, 1.0);
+    let high_plan = score_range_plan(&schema, &mapping, 10.0, 11.0);
+    let plan = TypedQueryPlan::conjunctive(vec![low_plan, high_plan])
+        .expect("valid plans should produce a conjunction");
+
+    let diagnostics =
+        plan_typed_query_execution(&query_index, &plan, TypedQueryOutputContract::Count);
+
+    assert!(plan.is_unsatisfiable());
+    assert_eq!(diagnostics.strategy, TypedQueryExecutionStrategy::NoOp);
+    assert_eq!(
+        diagnostics.reason,
+        TypedQueryPlanningReason::UnsatisfiablePlan
+    );
+    assert_eq!(diagnostics.estimated_candidate_records, 0);
+    assert_eq!(diagnostics.estimated_candidate_ratio, 0.0);
+    assert!(!diagnostics.uses_geometric_traversal());
+}
+
+#[test]
+fn typed_query_planning_diagnostics_selects_hybrid_for_append_delta_view() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let view = TypedAppendDeltaQueryView::try_new(&query_index, &appended)
+        .expect("valid append batch should produce a query view");
+    let plan = score_and_class_plan(&schema, &mapping);
+
+    let diagnostics =
+        plan_typed_append_delta_query_execution(&view, &plan, TypedQueryOutputContract::RowIds);
+
+    assert_eq!(diagnostics.strategy, TypedQueryExecutionStrategy::Hybrid);
+    assert_eq!(
+        diagnostics.reason,
+        TypedQueryPlanningReason::AppendDeltaScan
+    );
+    assert_eq!(diagnostics.total_records, 6);
+    assert_eq!(diagnostics.base_record_count, 4);
+    assert_eq!(diagnostics.append_delta_record_count, 2);
+    assert!(diagnostics.estimated_candidate_records >= 2);
+    assert!(diagnostics.requires_append_delta_scan);
+    assert!(diagnostics.uses_geometric_traversal());
+}
+
+fn score_and_class_plan(schema: &FSESchema, mapping: &FSESchemaDimensionMapping) -> TypedQueryPlan {
+    TypedQueryPlanBuilder::new(schema, mapping)
+        .with_categorical_encoder(2, class_encoder())
+        .with_predicate(FSEPredicate::range(
+            FSEPredicateField::name("score"),
+            FSEValue::Float(10.0),
+            FSEValue::Float(20.0),
+        ))
+        .with_predicate(FSEPredicate::equals(
+            FSEPredicateField::name("class"),
+            FSEValue::Category("alpha".to_string()),
+        ))
+        .build()
+        .expect("valid predicates should produce a plan")
+}
+
+fn score_range_plan(
+    schema: &FSESchema,
+    mapping: &FSESchemaDimensionMapping,
+    min: f64,
+    max: f64,
+) -> TypedQueryPlan {
+    TypedQueryPlanBuilder::new(schema, mapping)
+        .with_predicate(FSEPredicate::range(
+            FSEPredicateField::name("score"),
+            FSEValue::Float(min),
+            FSEValue::Float(max),
+        ))
+        .build()
+        .expect("valid predicate should produce a plan")
+}
+
+fn entity_schema() -> FSESchema {
+    FSESchema::new(vec![
+        FSEField::new("entity_id", FSEFieldType::Integer, false),
+        FSEField::new("score", FSEFieldType::Float, false),
+        FSEField::new("class", FSEFieldType::Category, false),
+        FSEField::new("observed_at", FSEFieldType::TimestampMillis, false),
+    ])
+}
+
+fn entity_mapping(schema: &FSESchema) -> FSESchemaDimensionMapping {
+    FSESchemaDimensionMapping::new(
+        schema,
+        vec![
+            FSEDimensionMapping::new(0, 0),
+            FSEDimensionMapping::new(1, 1),
+            FSEDimensionMapping::new(2, 2),
+            FSEDimensionMapping::new(3, 3),
+        ],
+    )
+}
+
+fn entity_encoder(schema: &FSESchema) -> ComposedRecordEncoder {
+    ComposedRecordEncoder::new(
+        schema,
+        vec![
+            Box::new(IntegerEncoder),
+            Box::new(FloatEncoder),
+            Box::new(class_encoder()),
+            Box::new(TimestampMillisEncoder),
+        ],
+    )
+}
+
+fn entity_batch(schema: &FSESchema) -> FSERecordBatch {
+    FSERecordBatch::new(
+        schema.clone(),
+        vec![
+            RowId::new(100),
+            RowId::new(101),
+            RowId::new(102),
+            RowId::new(103),
+        ],
+        vec![
+            entity_record(schema, 1, 12.5, "alpha", 1_000),
+            entity_record(schema, 2, 12.5, "beta", 1_100),
+            entity_record(schema, 3, 25.0, "alpha", 1_200),
+            entity_record(schema, 4, 18.0, "alpha", 1_300),
+        ],
+    )
+}
+
+fn appended_entity_batch(schema: &FSESchema) -> FSERecordBatch {
+    FSERecordBatch::new(
+        schema.clone(),
+        vec![RowId::new(104), RowId::new(105)],
+        vec![
+            entity_record(schema, 5, 16.0, "alpha", 1_400),
+            entity_record(schema, 6, 80.0, "beta", 1_500),
+        ],
+    )
+}
+
+fn entity_record(
+    schema: &FSESchema,
+    entity_id: i64,
+    score: f64,
+    class: &str,
+    observed_at: i64,
+) -> FSERecord {
+    FSERecord::new(
+        vec![
+            FSEValue::Integer(entity_id),
+            FSEValue::Float(score),
+            FSEValue::Category(class.to_string()),
+            FSEValue::TimestampMillis(observed_at),
+        ],
+        schema,
+    )
+}
+
+fn class_encoder() -> CategoricalDictionaryEncoder {
+    CategoricalDictionaryEncoder::new(vec!["alpha".to_string(), "beta".to_string()])
+}
+
+fn builder() -> FSEBuilder {
+    FSEBuilder::new(BuildConfig::new(2, 8))
+}
