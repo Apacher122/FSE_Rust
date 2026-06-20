@@ -112,6 +112,7 @@ function Test-BenchmarkScriptLayout {
     "benchmark\summarize\summarize-existence-timing-summary.ps1",
     "benchmark\summarize\summarize-materialization-mode-summary.ps1",
     "benchmark\summarize\summarize-typed-archive-append-rebuild-summary.ps1",
+    "benchmark\summarize\summarize-typed-archive-append-delta-query-summary.ps1",
     "benchmark\summarize\summarize-typed-archive-append-delta-maintenance-summary.ps1",
     "benchmark\summarize\summarize-typed-archive-compaction-summary.ps1",
     "benchmark\summarize\summarize-typed-archive-load-summary.ps1",
@@ -146,6 +147,7 @@ function Test-BenchmarkScriptLayout {
     "summarize-existence-timing-summary.ps1"                       = "benchmark\summarize\summarize-existence-timing-summary.ps1"
     "summarize-materialization-mode-summary.ps1"                   = "benchmark\summarize\summarize-materialization-mode-summary.ps1"
     "summarize-typed-archive-append-rebuild-summary.ps1"           = "benchmark\summarize\summarize-typed-archive-append-rebuild-summary.ps1"
+    "summarize-typed-archive-append-delta-query-summary.ps1"       = "benchmark\summarize\summarize-typed-archive-append-delta-query-summary.ps1"
     "summarize-typed-archive-append-delta-maintenance-summary.ps1" = "benchmark\summarize\summarize-typed-archive-append-delta-maintenance-summary.ps1"
     "summarize-typed-archive-compaction-summary.ps1"               = "benchmark\summarize\summarize-typed-archive-compaction-summary.ps1"
     "summarize-typed-archive-load-summary.ps1"                     = "benchmark\summarize\summarize-typed-archive-load-summary.ps1"

@@ -60,6 +60,8 @@ $TypedArchiveLoadSummaryCsvPath = Join-Path $OutputDir "typed-archive-load-summa
 $TypedArchiveLoadSummaryNotesPath = Join-Path $OutputDir "typed-archive-load-summary-$Label.txt"
 $TypedArchiveAppendRebuildSummaryCsvPath = Join-Path $OutputDir "typed-archive-append-rebuild-summary-$Label.csv"
 $TypedArchiveAppendRebuildSummaryNotesPath = Join-Path $OutputDir "typed-archive-append-rebuild-summary-$Label.txt"
+$TypedArchiveAppendDeltaQuerySummaryCsvPath = Join-Path $OutputDir "typed-archive-append-delta-query-summary-$Label.csv"
+$TypedArchiveAppendDeltaQuerySummaryNotesPath = Join-Path $OutputDir "typed-archive-append-delta-query-summary-$Label.txt"
 $TypedArchiveCompactionSummaryCsvPath = Join-Path $OutputDir "typed-archive-compaction-summary-$Label.csv"
 $TypedArchiveCompactionSummaryNotesPath = Join-Path $OutputDir "typed-archive-compaction-summary-$Label.txt"
 $TypedArchiveMaintenanceSummaryCsvPath = Join-Path $OutputDir "typed-archive-maintenance-summary-$Label.csv"
@@ -76,6 +78,7 @@ $ExistenceTimingSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summa
 $TypedIndexedComparisonSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-indexed-comparison-summary.ps1"
 $TypedArchiveLoadSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-archive-load-summary.ps1"
 $TypedArchiveAppendRebuildSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-archive-append-rebuild-summary.ps1"
+$TypedArchiveAppendDeltaQuerySummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-archive-append-delta-query-summary.ps1"
 $TypedArchiveCompactionSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-archive-compaction-summary.ps1"
 $TypedArchiveMaintenanceSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-archive-maintenance-summary.ps1"
 $TypedArchiveAppendDeltaMaintenanceSummaryScript = Join-Path (Join-Path $BenchmarkScriptRoot "summarize") "summarize-typed-archive-append-delta-maintenance-summary.ps1"
@@ -499,6 +502,24 @@ if ($LASTEXITCODE -ne 0) {
     throw "typed archive append rebuild summary failed with exit code $LASTEXITCODE"
 }
 
+if (!(Test-Path -LiteralPath $TypedArchiveAppendDeltaQuerySummaryScript)) {
+    throw "required script was not found: $TypedArchiveAppendDeltaQuerySummaryScript"
+}
+
+$TypedArchiveAppendDeltaQuerySummaryArguments = @{
+    DebugOutputPath = $DebugOutputPath
+    OutputCsv       = $TypedArchiveAppendDeltaQuerySummaryCsvPath
+    OutputNotesPath = $TypedArchiveAppendDeltaQuerySummaryNotesPath
+    Dataset         = $Dataset
+    MaxDepth        = $EffectiveMaxDepthText
+}
+
+& $TypedArchiveAppendDeltaQuerySummaryScript @TypedArchiveAppendDeltaQuerySummaryArguments
+
+if ($LASTEXITCODE -ne 0) {
+    throw "typed archive append-delta query summary failed with exit code $LASTEXITCODE"
+}
+
 if (!(Test-Path -LiteralPath $TypedArchiveCompactionSummaryScript)) {
     throw "required script was not found: $TypedArchiveCompactionSummaryScript"
 }
@@ -572,6 +593,8 @@ Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive load summary CSV: $Typ
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive load notes:       $TypedArchiveLoadSummaryNotesPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive append CSV:       $TypedArchiveAppendRebuildSummaryCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive append notes:     $TypedArchiveAppendRebuildSummaryNotesPath`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive append-delta query CSV: $TypedArchiveAppendDeltaQuerySummaryCsvPath`r`n"
+Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive append-delta query notes: $TypedArchiveAppendDeltaQuerySummaryNotesPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive compaction CSV:   $TypedArchiveCompactionSummaryCsvPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive compaction notes: $TypedArchiveCompactionSummaryNotesPath`r`n"
 Add-Utf8Text -Path $TextOutputPath -Text "  Typed archive maintenance CSV:  $TypedArchiveMaintenanceSummaryCsvPath`r`n"
@@ -601,6 +624,8 @@ Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive load summary CSV: $Ty
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive load notes:       $TypedArchiveLoadSummaryNotesPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive append CSV:       $TypedArchiveAppendRebuildSummaryCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive append notes:     $TypedArchiveAppendRebuildSummaryNotesPath`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive append-delta query CSV: $TypedArchiveAppendDeltaQuerySummaryCsvPath`r`n"
+Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive append-delta query notes: $TypedArchiveAppendDeltaQuerySummaryNotesPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive compaction CSV:   $TypedArchiveCompactionSummaryCsvPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive compaction notes: $TypedArchiveCompactionSummaryNotesPath`r`n"
 Add-Utf8Text -Path $DebugOutputPath -Text "  Typed archive maintenance CSV:  $TypedArchiveMaintenanceSummaryCsvPath`r`n"
@@ -631,6 +656,8 @@ Write-Host "  $TypedArchiveLoadSummaryCsvPath"
 Write-Host "  $TypedArchiveLoadSummaryNotesPath"
 Write-Host "  $TypedArchiveAppendRebuildSummaryCsvPath"
 Write-Host "  $TypedArchiveAppendRebuildSummaryNotesPath"
+Write-Host "  $TypedArchiveAppendDeltaQuerySummaryCsvPath"
+Write-Host "  $TypedArchiveAppendDeltaQuerySummaryNotesPath"
 Write-Host "  $TypedArchiveCompactionSummaryCsvPath"
 Write-Host "  $TypedArchiveCompactionSummaryNotesPath"
 Write-Host "  $TypedArchiveMaintenanceSummaryCsvPath"

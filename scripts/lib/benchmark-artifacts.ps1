@@ -10,6 +10,7 @@ $BenchmarkArtifactFilePrefixes = @(
   "materialization-mode-trial-notes-",
   "typed-query-index-archive-",
   "typed-archive-append-delta-maintenance-summary-",
+  "typed-archive-append-delta-query-summary-",
   "typed-archive-append-rebuild-summary-",
   "typed-indexed-comparison-summary-",
   "typed-archive-load-summary-",
