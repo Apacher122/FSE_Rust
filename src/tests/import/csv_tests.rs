@@ -349,13 +349,34 @@ fn csv_append_delta_archive_query_context_queries_base_and_append_archives() {
             .unwrap();
     let row_ids = context.query_row_ids(score_and_class_predicates()).unwrap();
     let rows = context.query_rows(score_and_class_predicates()).unwrap();
+    let row_report = context
+        .query_row_ids_with_stats(score_and_class_predicates())
+        .unwrap();
+    let row_result_report = context
+        .query_rows_with_stats(score_and_class_predicates())
+        .unwrap();
+    let count_report = context
+        .count_matches_with_stats(score_and_class_predicates())
+        .unwrap();
+    let existence_report = context
+        .has_match_with_stats(score_and_class_predicates())
+        .unwrap();
 
     assert_eq!(
         row_ids,
         vec![RowId::new(100), RowId::new(103), RowId::new(104)]
     );
+    assert_eq!(row_report.row_ids, row_ids);
     assert_eq!(
         rows.iter().map(|row| row.row_id()).collect::<Vec<_>>(),
+        row_ids
+    );
+    assert_eq!(
+        row_result_report
+            .rows
+            .iter()
+            .map(|row| row.row_id())
+            .collect::<Vec<_>>(),
         row_ids
     );
     assert_eq!(context.appended, appended);
@@ -364,7 +385,14 @@ fn csv_append_delta_archive_query_context_queries_base_and_append_archives() {
         context.count_matches(score_and_class_predicates()).unwrap(),
         3
     );
+    assert_eq!(count_report.matched_records, 3);
+    assert_eq!(row_report.stats.total_records, 6);
+    assert_eq!(row_report.stats.matched_records, 3);
+    assert_eq!(row_result_report.stats, row_report.stats);
+    assert_eq!(count_report.stats, row_report.stats);
     assert!(context.has_match(score_and_class_predicates()).unwrap());
+    assert!(existence_report.has_match);
+    assert_eq!(existence_report.stats.total_records, 6);
     assert!(
         !context
             .has_match(vec![FSEPredicate::range(
@@ -749,21 +777,49 @@ fn csv_tombstoned_append_delta_archive_query_context_excludes_tombstones() {
     .unwrap();
     let row_ids = context.query_row_ids(score_and_class_predicates()).unwrap();
     let rows = context.query_rows(score_and_class_predicates()).unwrap();
+    let row_report = context
+        .query_row_ids_with_stats(score_and_class_predicates())
+        .unwrap();
+    let row_result_report = context
+        .query_rows_with_stats(score_and_class_predicates())
+        .unwrap();
+    let count_report = context
+        .count_matches_with_stats(score_and_class_predicates())
+        .unwrap();
+    let existence_report = context
+        .has_match_with_stats(score_and_class_predicates())
+        .unwrap();
 
     assert_eq!(
         context.tombstones.row_ids(),
         &[RowId::new(103), RowId::new(104)]
     );
     assert_eq!(row_ids, vec![RowId::new(100)]);
+    assert_eq!(row_report.row_ids, row_ids);
     assert_eq!(
         rows.iter().map(|row| row.row_id()).collect::<Vec<_>>(),
+        row_ids
+    );
+    assert_eq!(
+        row_result_report
+            .rows
+            .iter()
+            .map(|row| row.row_id())
+            .collect::<Vec<_>>(),
         row_ids
     );
     assert_eq!(
         context.count_matches(score_and_class_predicates()).unwrap(),
         1
     );
+    assert_eq!(count_report.matched_records, 1);
+    assert_eq!(row_report.stats.total_records, 6);
+    assert_eq!(row_report.stats.matched_records, 1);
+    assert_eq!(row_result_report.stats, row_report.stats);
+    assert_eq!(count_report.stats, row_report.stats);
     assert!(context.has_match(score_and_class_predicates()).unwrap());
+    assert!(existence_report.has_match);
+    assert_eq!(existence_report.stats.total_records, 6);
     assert!(!context.has_match(score_18_and_class_predicates()).unwrap());
     assert!(
         !context

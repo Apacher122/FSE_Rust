@@ -99,6 +99,132 @@ fn typed_append_delta_view_counts_and_reports_existence_across_batches() {
 }
 
 #[test]
+fn typed_append_delta_view_reports_stats_across_base_and_appended_records() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let base_batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let base_index = TypedQueryIndex::try_build(base_batch, &encoder, &builder())
+        .expect("valid base index should build");
+    let view = TypedAppendDeltaQueryView::try_new(&base_index, &appended)
+        .expect("valid append delta should build a query view");
+    let plan = score_and_class_plan(&schema, &mapping);
+    let base_report = base_index
+        .query_row_ids_with_stats(&plan)
+        .expect("base query stats should execute");
+
+    let row_report = view
+        .query_row_ids_with_stats(&plan)
+        .expect("append delta row-id stats should execute");
+    let row_result_report = view
+        .query_rows_with_stats(&plan)
+        .expect("append delta row stats should execute");
+    let count_report = view
+        .count_matches_with_stats(&plan)
+        .expect("append delta count stats should execute");
+
+    assert_eq!(
+        row_report.row_ids,
+        vec![RowId::new(100), RowId::new(103), RowId::new(104)]
+    );
+    assert_eq!(
+        row_result_report
+            .rows
+            .iter()
+            .map(|row| row.row_id())
+            .collect::<Vec<_>>(),
+        row_report.row_ids
+    );
+    assert_eq!(count_report.matched_records, 3);
+    assert_eq!(row_report.stats.total_records, 6);
+    assert_eq!(
+        row_report.stats.reconstructed_records,
+        base_report.stats.reconstructed_records + appended.len()
+    );
+    assert_eq!(row_report.stats.matched_records, 3);
+    assert_eq!(row_result_report.stats, row_report.stats);
+    assert_eq!(count_report.stats, row_report.stats);
+}
+
+#[test]
+fn typed_append_delta_view_reports_stats_with_tombstones() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let base_batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let base_index = TypedQueryIndex::try_build(base_batch, &encoder, &builder())
+        .expect("valid base index should build");
+    let view = TypedAppendDeltaQueryView::try_new(&base_index, &appended)
+        .expect("valid append delta should build a query view");
+    let tombstones = TypedRowTombstoneSet::from_row_ids([RowId::new(103), RowId::new(104)]);
+    let plan = score_and_class_plan(&schema, &mapping);
+    let base_report = base_index
+        .query_row_ids_with_stats_excluding_tombstones(&plan, &tombstones)
+        .expect("base query stats should execute");
+
+    let row_report = view
+        .query_row_ids_with_stats_excluding_tombstones(&plan, &tombstones)
+        .expect("append delta row-id stats should execute");
+    let row_result_report = view
+        .query_rows_with_stats_excluding_tombstones(&plan, &tombstones)
+        .expect("append delta row stats should execute");
+    let count_report = view
+        .count_matches_with_stats_excluding_tombstones(&plan, &tombstones)
+        .expect("append delta count stats should execute");
+
+    assert_eq!(row_report.row_ids, vec![RowId::new(100)]);
+    assert_eq!(
+        row_result_report
+            .rows
+            .iter()
+            .map(|row| row.row_id())
+            .collect::<Vec<_>>(),
+        row_report.row_ids
+    );
+    assert_eq!(count_report.matched_records, 1);
+    assert_eq!(row_report.stats.total_records, 6);
+    assert_eq!(
+        row_report.stats.reconstructed_records,
+        base_report.stats.reconstructed_records + appended.len()
+    );
+    assert_eq!(row_report.stats.matched_records, 1);
+    assert_eq!(row_result_report.stats, row_report.stats);
+    assert_eq!(count_report.stats, row_report.stats);
+}
+
+#[test]
+fn typed_append_delta_view_reports_existence_stats_across_batches() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let base_batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let base_index = TypedQueryIndex::try_build(base_batch, &encoder, &builder())
+        .expect("valid base index should build");
+    let view = TypedAppendDeltaQueryView::try_new(&base_index, &appended)
+        .expect("valid append delta should build a query view");
+    let appended_only_plan = score_range_plan(&schema, &mapping, 16.0, 16.0);
+    let tombstones = TypedRowTombstoneSet::from_row_ids([RowId::new(104)]);
+
+    let match_report = view
+        .has_match_with_stats(&appended_only_plan)
+        .expect("append delta existence stats should execute");
+    let tombstoned_report = view
+        .has_match_with_stats_excluding_tombstones(&appended_only_plan, &tombstones)
+        .expect("append delta tombstoned existence stats should execute");
+
+    assert!(match_report.has_match);
+    assert_eq!(match_report.stats.total_records, 6);
+    assert_eq!(match_report.stats.matched_records, 1);
+    assert!(!tombstoned_report.has_match);
+    assert_eq!(tombstoned_report.stats.total_records, 6);
+    assert_eq!(tombstoned_report.stats.matched_records, 0);
+    assert!(tombstoned_report.inspected_records >= match_report.inspected_records);
+}
+
+#[test]
 fn typed_append_delta_view_visits_base_and_appended_matches() {
     let schema = entity_schema();
     let mapping = entity_mapping(&schema);
