@@ -108,6 +108,38 @@ function Test-BenchmarkReviewTextColumnAllInSet {
 }
 
 
+function Test-BenchmarkReviewTextColumnsAllEqual {
+  param(
+    [object[]]$Rows,
+    [string]$LeftColumnName,
+    [string]$RightColumnName,
+    [string]$Description
+  )
+
+  foreach ($Row in $Rows) {
+    $LeftRawValue = $Row.$LeftColumnName
+    $RightRawValue = $Row.$RightColumnName
+
+    if ($null -eq $LeftRawValue) {
+      Add-Failure "$Description has missing value in column '$LeftColumnName'"
+      continue
+    }
+
+    if ($null -eq $RightRawValue) {
+      Add-Failure "$Description has missing value in column '$RightColumnName'"
+      continue
+    }
+
+    $LeftTextValue = $LeftRawValue.ToString().Trim()
+    $RightTextValue = $RightRawValue.ToString().Trim()
+
+    if ($LeftTextValue -ne $RightTextValue) {
+      Add-Failure "$Description has mismatched values for '$LeftColumnName' and '$RightColumnName'. left '$LeftTextValue', right '$RightTextValue'"
+    }
+  }
+}
+
+
 function Fail-Validation {
   param(
     [string]$ManifestPath,
@@ -163,6 +195,8 @@ $TypedArchiveLoadSummaryEntry = $ResolvedArtifacts.TypedArchiveLoadSummary
 $TypedArchiveLoadNotesEntry = $ResolvedArtifacts.TypedArchiveLoadNotes
 $TypedArchiveAppendRebuildSummaryEntry = $ResolvedArtifacts.TypedArchiveAppendRebuildSummary
 $TypedArchiveAppendRebuildNotesEntry = $ResolvedArtifacts.TypedArchiveAppendRebuildNotes
+$TypedArchiveAppendDeltaQuerySummaryEntry = $ResolvedArtifacts.TypedArchiveAppendDeltaQuerySummary
+$TypedArchiveAppendDeltaQueryNotesEntry = $ResolvedArtifacts.TypedArchiveAppendDeltaQueryNotes
 $TypedArchiveCompactionSummaryEntry = $ResolvedArtifacts.TypedArchiveCompactionSummary
 $TypedArchiveCompactionNotesEntry = $ResolvedArtifacts.TypedArchiveCompactionNotes
 $TypedArchiveMaintenanceSummaryEntry = $ResolvedArtifacts.TypedArchiveMaintenanceSummary
@@ -191,6 +225,7 @@ Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $CountO
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $MaterializationNotesEntry -Description "materialization mode notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveLoadNotesEntry -Description "typed archive load notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveAppendRebuildNotesEntry -Description "typed archive append rebuild notes"
+Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveAppendDeltaQueryNotesEntry -Description "typed archive append-delta query notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveCompactionNotesEntry -Description "typed archive compaction notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveMaintenanceNotesEntry -Description "typed archive maintenance notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveAppendDeltaMaintenanceNotesEntry -Description "typed archive append-delta maintenance notes"
@@ -331,6 +366,42 @@ Test-BenchmarkReviewTextColumnAllEquals `
   -ColumnName "agreement" `
   -ExpectedValue "pass" `
   -Description "typed archive append rebuild summary"
+
+$TypedArchiveAppendDeltaQuerySummaryRows = Read-BenchmarkReviewPolicyValidatedCsv `
+  -Entry $TypedArchiveAppendDeltaQuerySummaryEntry `
+  -Description "typed archive append-delta query summary" `
+  -RequiredColumns @(
+  "dataset",
+  "max_depth",
+  "workload_name",
+  "base_record_count",
+  "appended_record_count",
+  "rebuilt_record_count",
+  "append_delta_matched_records",
+  "rebuilt_matched_records",
+  "append_delta_reconstructed_records",
+  "rebuilt_reconstructed_records",
+  "append_delta_candidate_ratio",
+  "rebuilt_candidate_ratio",
+  "rebuilt_to_append_delta_ratio",
+  "rebuilt_query_elapsed",
+  "append_delta_query_elapsed",
+  "agreement"
+) `
+  -MinimumRows 1 `
+  -OnFailure $AddValidationFailure
+
+Test-BenchmarkReviewTextColumnAllEquals `
+  -Rows $TypedArchiveAppendDeltaQuerySummaryRows `
+  -ColumnName "agreement" `
+  -ExpectedValue "pass" `
+  -Description "typed archive append-delta query summary"
+
+Test-BenchmarkReviewTextColumnsAllEqual `
+  -Rows $TypedArchiveAppendDeltaQuerySummaryRows `
+  -LeftColumnName "append_delta_matched_records" `
+  -RightColumnName "rebuilt_matched_records" `
+  -Description "typed archive append-delta query summary"
 
 $TypedArchiveCompactionSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv `
   -Entry $TypedArchiveCompactionSummaryEntry `

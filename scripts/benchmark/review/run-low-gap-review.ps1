@@ -128,6 +128,8 @@ $CurrentTypedArchiveLoadSummaryCsv = $ReviewPaths.CurrentTypedArchiveLoadSummary
 $CurrentTypedArchiveLoadSummaryNotes = $ReviewPaths.CurrentTypedArchiveLoadSummaryNotes
 $CurrentTypedArchiveAppendRebuildSummaryCsv = $ReviewPaths.CurrentTypedArchiveAppendRebuildSummaryCsv
 $CurrentTypedArchiveAppendRebuildSummaryNotes = $ReviewPaths.CurrentTypedArchiveAppendRebuildSummaryNotes
+$CurrentTypedArchiveAppendDeltaQuerySummaryCsv = $ReviewPaths.CurrentTypedArchiveAppendDeltaQuerySummaryCsv
+$CurrentTypedArchiveAppendDeltaQuerySummaryNotes = $ReviewPaths.CurrentTypedArchiveAppendDeltaQuerySummaryNotes
 $CurrentTypedArchiveCompactionSummaryCsv = $ReviewPaths.CurrentTypedArchiveCompactionSummaryCsv
 $CurrentTypedArchiveCompactionSummaryNotes = $ReviewPaths.CurrentTypedArchiveCompactionSummaryNotes
 $CurrentTypedArchiveMaintenanceSummaryCsv = $ReviewPaths.CurrentTypedArchiveMaintenanceSummaryCsv
@@ -284,6 +286,8 @@ Add-ReviewLine "typed archive load summary: $CurrentTypedArchiveLoadSummaryCsv"
 Add-ReviewLine "typed archive load notes: $CurrentTypedArchiveLoadSummaryNotes"
 Add-ReviewLine "typed archive append rebuild summary: $CurrentTypedArchiveAppendRebuildSummaryCsv"
 Add-ReviewLine "typed archive append rebuild notes: $CurrentTypedArchiveAppendRebuildSummaryNotes"
+Add-ReviewLine "typed archive append-delta query summary: $CurrentTypedArchiveAppendDeltaQuerySummaryCsv"
+Add-ReviewLine "typed archive append-delta query notes: $CurrentTypedArchiveAppendDeltaQuerySummaryNotes"
 Add-ReviewLine "typed archive compaction summary: $CurrentTypedArchiveCompactionSummaryCsv"
 Add-ReviewLine "typed archive compaction notes: $CurrentTypedArchiveCompactionSummaryNotes"
 Add-ReviewLine "typed archive maintenance summary: $CurrentTypedArchiveMaintenanceSummaryCsv"
@@ -564,6 +568,8 @@ $ReviewManifestContext = [PSCustomObject]@{
   CurrentTypedArchiveLoadSummaryNotes                   = $CurrentTypedArchiveLoadSummaryNotes
   CurrentTypedArchiveAppendRebuildSummaryCsv            = $CurrentTypedArchiveAppendRebuildSummaryCsv
   CurrentTypedArchiveAppendRebuildSummaryNotes          = $CurrentTypedArchiveAppendRebuildSummaryNotes
+  CurrentTypedArchiveAppendDeltaQuerySummaryCsv         = $CurrentTypedArchiveAppendDeltaQuerySummaryCsv
+  CurrentTypedArchiveAppendDeltaQuerySummaryNotes       = $CurrentTypedArchiveAppendDeltaQuerySummaryNotes
   CurrentTypedArchiveCompactionSummaryCsv               = $CurrentTypedArchiveCompactionSummaryCsv
   CurrentTypedArchiveCompactionSummaryNotes             = $CurrentTypedArchiveCompactionSummaryNotes
   CurrentTypedArchiveMaintenanceSummaryCsv              = $CurrentTypedArchiveMaintenanceSummaryCsv

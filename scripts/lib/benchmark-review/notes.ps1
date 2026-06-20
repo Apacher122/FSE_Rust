@@ -185,6 +185,8 @@ function Add-BenchmarkReviewArtifactSummary {
   Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive load notes: $(Join-Path $OutputDir "typed-archive-load-summary-$Label.txt")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive append rebuild summary: $(Join-Path $OutputDir "typed-archive-append-rebuild-summary-$Label.csv")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive append rebuild notes: $(Join-Path $OutputDir "typed-archive-append-rebuild-summary-$Label.txt")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive append-delta query summary: $(Join-Path $OutputDir "typed-archive-append-delta-query-summary-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive append-delta query notes: $(Join-Path $OutputDir "typed-archive-append-delta-query-summary-$Label.txt")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive compaction summary: $(Join-Path $OutputDir "typed-archive-compaction-summary-$Label.csv")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive compaction notes: $(Join-Path $OutputDir "typed-archive-compaction-summary-$Label.txt")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive maintenance summary: $(Join-Path $OutputDir "typed-archive-maintenance-summary-$Label.csv")`r`n"
