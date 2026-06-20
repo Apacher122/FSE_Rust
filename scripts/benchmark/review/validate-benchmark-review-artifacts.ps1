@@ -77,6 +77,37 @@ function Test-BenchmarkReviewTextColumnAllEquals {
 }
 
 
+function Test-BenchmarkReviewTextColumnAllInSet {
+  param(
+    [object[]]$Rows,
+    [string]$ColumnName,
+    [string[]]$ExpectedValues,
+    [string]$Description
+  )
+
+  $ExpectedSet = @{}
+
+  foreach ($ExpectedValue in $ExpectedValues) {
+    $ExpectedSet[$ExpectedValue.Trim().ToLowerInvariant()] = $true
+  }
+
+  foreach ($Row in $Rows) {
+    $RawValue = $Row.$ColumnName
+
+    if ($null -eq $RawValue) {
+      Add-Failure "$Description has missing value in column '$ColumnName'"
+      continue
+    }
+
+    $TextValue = $RawValue.ToString().Trim().ToLowerInvariant()
+
+    if (!$ExpectedSet.ContainsKey($TextValue)) {
+      Add-Failure "$Description has unexpected value in column '$ColumnName': $RawValue"
+    }
+  }
+}
+
+
 function Fail-Validation {
   param(
     [string]$ManifestPath,
@@ -343,6 +374,7 @@ $TypedArchiveMaintenanceSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv `
   "workload_name",
   "maintenance_action",
   "maintenance_reason",
+  "maintenance_status_requires_archive_write",
   "base_record_count",
   "pending_append_record_count",
   "tombstone_count",
@@ -405,6 +437,12 @@ Test-BenchmarkReviewTextColumnAllEquals `
   -Rows $TypedArchiveAppendDeltaMaintenanceSummaryRows `
   -ColumnName "agreement" `
   -ExpectedValue "pass" `
+  -Description "typed archive append-delta maintenance summary"
+
+Test-BenchmarkReviewTextColumnAllInSet `
+  -Rows $TypedArchiveAppendDeltaMaintenanceSummaryRows `
+  -ColumnName "maintenance_status_requires_archive_write" `
+  -ExpectedValues @("true", "false") `
   -Description "typed archive append-delta maintenance summary"
 
 Invoke-BenchmarkReviewPolicyCsvValidation -OnFailure $AddValidationFailure `

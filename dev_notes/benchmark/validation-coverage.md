@@ -15,6 +15,9 @@ count-only summary artifacts
 materialization summary artifacts
 typed archive load artifacts
 typed archive append rebuild artifacts
+typed archive compaction artifacts
+typed archive maintenance artifacts
+typed archive append-delta maintenance artifacts
 typed query index archive artifact
 low-gap trial artifacts
 target workload artifacts
@@ -42,6 +45,12 @@ typed-archive-load-summary-<label>.csv
 typed-archive-load-summary-<label>.txt
 typed-archive-append-rebuild-summary-<label>.csv
 typed-archive-append-rebuild-summary-<label>.txt
+typed-archive-compaction-summary-<label>.csv
+typed-archive-compaction-summary-<label>.txt
+typed-archive-maintenance-summary-<label>.csv
+typed-archive-maintenance-summary-<label>.txt
+typed-archive-append-delta-maintenance-summary-<label>.csv
+typed-archive-append-delta-maintenance-summary-<label>.txt
 typed-query-index-archive-<label>.fse
 low-selectivity-gap-<label>.csv
 low-gap-regression-notes-<label>.txt
@@ -207,6 +216,59 @@ typed-archive-append-rebuild-summary-<label>.txt
 ```
 
 The notes file records the row count, agreement failure count, total matched records after append, distinct record counts, and archive byte-growth values.
+
+## Typed archive append-delta maintenance validation
+
+The typed archive append-delta maintenance summary must include:
+
+```text
+dataset
+max_depth
+workload_name
+maintenance_action
+maintenance_reason
+maintenance_status_requires_archive_write
+base_record_count
+pending_append_record_count
+tombstone_count
+resulting_record_count
+index_bytes_before_maintenance
+index_bytes_after_maintenance
+index_byte_delta
+append_bytes_before_maintenance
+append_bytes_after_maintenance
+append_byte_delta
+tombstone_bytes_before_maintenance
+tombstone_bytes_after_maintenance
+tombstone_byte_delta
+logical_archive_bytes_before_maintenance
+logical_archive_bytes_after_maintenance
+logical_archive_byte_delta
+matched_records_after_maintenance
+maintenance_elapsed
+agreement
+```
+
+Every row must have:
+
+```text
+agreement = pass
+```
+
+The `maintenance_status_requires_archive_write` field must be either:
+
+```text
+true
+false
+```
+
+This check verifies that append-delta maintenance timing evidence includes the read-only maintenance decision used before archive files are rewritten.
+
+The typed archive append-delta maintenance notes artifact must exist and be non-empty:
+
+```text
+typed-archive-append-delta-maintenance-summary-<label>.txt
+```
 
 ## Typed query index archive validation
 
