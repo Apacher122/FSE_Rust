@@ -9,11 +9,11 @@ use std::time::Duration;
 
 use crate::benchmark::math::duration_div;
 use crate::benchmark::reports::timing::{
-    RepeatedTimingConfig, RepeatedTimingReport, duration_ratio, measure_elapsed, measure_repeated,
+    RepeatedComparisonTimingReport, RepeatedTimingConfig, RepeatedTimingReport, duration_ratio,
+    measure_elapsed, measure_repeated, measure_repeated_comparison_interleaved,
 };
 use crate::build::FSEBuilder;
-use crate::data::FSERecordBatch;
-use crate::data::RowId;
+use crate::data::{FSERecordBatch, FSERecordBatchError, RowId};
 use crate::encoding::FSERecordEncoder;
 use crate::persistence::{
     FSEArchiveMaintenanceAction, FSEArchiveMaintenancePolicy, FSEArchiveMaintenanceReason,
@@ -32,7 +32,10 @@ use crate::persistence::{
     typed_query_index_archive_with_append_delta_and_tombstones_footprint,
     typed_query_index_archive_with_tombstones_footprint,
 };
-use crate::query::{IndexedTypedQueryError, TypedQueryIndex, TypedQueryPlan};
+use crate::query::{
+    IndexedTypedQueryError, QueryExecutionStats, TypedAppendDeltaQueryView, TypedQueryIndex,
+    TypedQueryIndexBuildError, TypedQueryPlan,
+};
 
 /// Error returned when typed archive load timing cannot be measured.
 #[derive(Clone, Debug, PartialEq)]
@@ -45,6 +48,12 @@ pub enum TypedArchiveLoadTimingError {
 
     /// Saving or loading a typed record batch append archive failed.
     AppendArchive(FSERecordBatchArchiveError),
+
+    /// Preparing an append-delta batch for comparison failed.
+    AppendDeltaBatch(FSERecordBatchError),
+
+    /// Building a rebuilt typed query index for comparison failed.
+    QueryIndexBuild(TypedQueryIndexBuildError),
 
     /// Compacting the typed query index archive failed.
     ArchiveCompaction(FSETypedQueryIndexArchiveCompactionError),
@@ -95,6 +104,8 @@ impl fmt::Display for TypedArchiveLoadTimingError {
             Self::Archive(error) => error.fmt(formatter),
             Self::Tombstones(error) => error.fmt(formatter),
             Self::AppendArchive(error) => error.fmt(formatter),
+            Self::AppendDeltaBatch(error) => error.fmt(formatter),
+            Self::QueryIndexBuild(error) => error.fmt(formatter),
             Self::ArchiveCompaction(error) => error.fmt(formatter),
             Self::TombstonedArchive(error) => error.fmt(formatter),
             Self::Maintenance(error) => error.fmt(formatter),
@@ -122,6 +133,8 @@ impl Error for TypedArchiveLoadTimingError {
             Self::Archive(error) => Some(error),
             Self::Tombstones(error) => Some(error),
             Self::AppendArchive(error) => Some(error),
+            Self::AppendDeltaBatch(error) => Some(error),
+            Self::QueryIndexBuild(error) => Some(error),
             Self::ArchiveCompaction(error) => Some(error),
             Self::TombstonedArchive(error) => Some(error),
             Self::Maintenance(error) => Some(error),
@@ -149,6 +162,18 @@ impl From<FSETypedRowTombstoneArchiveError> for TypedArchiveLoadTimingError {
 impl From<FSERecordBatchArchiveError> for TypedArchiveLoadTimingError {
     fn from(error: FSERecordBatchArchiveError) -> Self {
         Self::AppendArchive(error)
+    }
+}
+
+impl From<FSERecordBatchError> for TypedArchiveLoadTimingError {
+    fn from(error: FSERecordBatchError) -> Self {
+        Self::AppendDeltaBatch(error)
+    }
+}
+
+impl From<TypedQueryIndexBuildError> for TypedArchiveLoadTimingError {
+    fn from(error: TypedQueryIndexBuildError) -> Self {
+        Self::QueryIndexBuild(error)
     }
 }
 
@@ -239,6 +264,37 @@ pub struct TypedArchiveAppendRebuildTimingReport {
 
     /// Timing for append, rebuild, and archive write.
     pub append_rebuild_timing: RepeatedTimingReport,
+}
+
+/// Timing report for querying an append-delta view against a rebuilt index.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedArchiveAppendDeltaQueryTimingReport {
+    /// Number of records in the base typed query index.
+    pub base_record_count: usize,
+
+    /// Number of records in the appended batch.
+    pub appended_record_count: usize,
+
+    /// Number of records in the equivalent rebuilt typed query index.
+    pub rebuilt_record_count: usize,
+
+    /// Number of records matched by append-delta query execution.
+    pub append_delta_matched_records: usize,
+
+    /// Number of records matched by rebuilt-index query execution.
+    pub rebuilt_matched_records: usize,
+
+    /// Execution statistics for append-delta query execution.
+    pub append_delta_stats: QueryExecutionStats,
+
+    /// Execution statistics for rebuilt-index query execution.
+    pub rebuilt_stats: QueryExecutionStats,
+
+    /// Repeated timing for rebuilt-index and append-delta query execution.
+    pub repeated_timing: RepeatedComparisonTimingReport,
+
+    /// Average rebuilt-index elapsed time divided by average append-delta elapsed time.
+    pub rebuilt_to_append_delta_average_ratio: f64,
 }
 
 /// Timing report for compacting a tombstoned typed query index archive.
@@ -572,6 +628,69 @@ where
         archive_bytes_after_append,
         matched_records_after_append: appended_row_ids.len(),
         append_rebuild_timing,
+    })
+}
+
+/// Measures append-delta query execution against an equivalent rebuilt index.
+///
+/// # Runtime Role
+///
+/// The function validates that querying the base index plus appended batch
+/// returns the same row-id set as querying a rebuilt typed query index. It then
+/// reports repeated timing and execution statistics for both paths.
+pub fn compare_typed_archive_append_delta_query_execution_repeated(
+    query_index: &TypedQueryIndex,
+    appended: &FSERecordBatch,
+    encoder: &impl FSERecordEncoder,
+    builder: &FSEBuilder,
+    plan: &TypedQueryPlan,
+    timing_config: &RepeatedTimingConfig,
+) -> Result<TypedArchiveAppendDeltaQueryTimingReport, TypedArchiveLoadTimingError> {
+    let append_delta_view = TypedAppendDeltaQueryView::try_new(query_index, appended)?;
+    let append_delta_report = append_delta_view.query_row_ids_with_stats(plan)?;
+    let combined_batch = query_index.batch().try_append(appended)?;
+    let rebuilt_index = TypedQueryIndex::try_build(combined_batch, encoder, builder)?;
+    let rebuilt_report = rebuilt_index.query_row_ids_with_stats(plan)?;
+
+    validate_same_row_id_set(
+        "rebuilt typed query index",
+        &rebuilt_report.row_ids,
+        "append-delta typed query view",
+        &append_delta_report.row_ids,
+    )?;
+
+    let repeated_timing = measure_repeated_comparison_interleaved(
+        timing_config,
+        || {
+            let report = rebuilt_index
+                .query_row_ids_with_stats(plan)
+                .expect("rebuilt typed query should match the validated single-run comparison");
+            std::hint::black_box(report.row_ids.len());
+            std::hint::black_box(report.stats.reconstructed_records);
+        },
+        || {
+            let report = append_delta_view.query_row_ids_with_stats(plan).expect(
+                "append-delta typed query should match the validated single-run comparison",
+            );
+            std::hint::black_box(report.row_ids.len());
+            std::hint::black_box(report.stats.reconstructed_records);
+        },
+    );
+    let rebuilt_to_append_delta_average_ratio = duration_ratio(
+        repeated_timing.baseline.average_elapsed,
+        repeated_timing.fse.average_elapsed,
+    );
+
+    Ok(TypedArchiveAppendDeltaQueryTimingReport {
+        base_record_count: query_index.batch().len(),
+        appended_record_count: appended.len(),
+        rebuilt_record_count: rebuilt_index.batch().len(),
+        append_delta_matched_records: append_delta_report.row_ids.len(),
+        rebuilt_matched_records: rebuilt_report.row_ids.len(),
+        append_delta_stats: append_delta_report.stats,
+        rebuilt_stats: rebuilt_report.stats,
+        repeated_timing,
+        rebuilt_to_append_delta_average_ratio,
     })
 }
 

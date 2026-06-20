@@ -23,10 +23,11 @@ pub use typed::{
     compare_typed_query_execution_repeated,
 };
 pub use typed_archive::{
-    TypedArchiveAppendDeltaMaintenanceTimingReport, TypedArchiveAppendRebuildTimingReport,
-    TypedArchiveCompactionTimingReport, TypedArchiveLoadTimingError, TypedArchiveLoadTimingReport,
-    TypedArchiveMaintenanceTimingReport,
+    TypedArchiveAppendDeltaMaintenanceTimingReport, TypedArchiveAppendDeltaQueryTimingReport,
+    TypedArchiveAppendRebuildTimingReport, TypedArchiveCompactionTimingReport,
+    TypedArchiveLoadTimingError, TypedArchiveLoadTimingReport, TypedArchiveMaintenanceTimingReport,
     compare_typed_archive_append_delta_maintenance_execution_repeated,
+    compare_typed_archive_append_delta_query_execution_repeated,
     compare_typed_archive_append_rebuild_execution_repeated,
     compare_typed_archive_compaction_execution_repeated, compare_typed_archive_load_execution,
     compare_typed_archive_load_execution_repeated,

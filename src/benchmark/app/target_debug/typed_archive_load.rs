@@ -7,17 +7,18 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use super::super::context::BenchmarkApplicationContext;
 use super::super::renderer::BenchmarkApplicationRenderer;
 use super::TypedQueryIndexArchiveArtifactValidation;
-use super::formatting::format_speedup_ratio;
+use super::formatting::{format_percent_ratio, format_speedup_ratio};
 use super::target::{
     append_debug_duration_line, append_debug_line, append_target_workload_debug_section,
 };
 use super::typed_workload::{TypedBenchmarkContext, typed_x_range_plan};
 use crate::benchmark::reports::output::format_duration_ascii;
 use crate::benchmark::reports::{
-    TypedArchiveAppendDeltaMaintenanceTimingReport, TypedArchiveAppendRebuildTimingReport,
-    TypedArchiveCompactionTimingReport, TypedArchiveLoadTimingError, TypedArchiveLoadTimingReport,
-    TypedArchiveMaintenanceTimingReport,
+    TypedArchiveAppendDeltaMaintenanceTimingReport, TypedArchiveAppendDeltaQueryTimingReport,
+    TypedArchiveAppendRebuildTimingReport, TypedArchiveCompactionTimingReport,
+    TypedArchiveLoadTimingError, TypedArchiveLoadTimingReport, TypedArchiveMaintenanceTimingReport,
     compare_typed_archive_append_delta_maintenance_execution_repeated,
+    compare_typed_archive_append_delta_query_execution_repeated,
     compare_typed_archive_append_rebuild_execution_repeated,
     compare_typed_archive_compaction_execution_repeated,
     compare_typed_archive_load_execution_repeated,
@@ -137,6 +138,63 @@ impl BenchmarkApplicationRenderer {
                 report.archive_byte_growth,
                 report.matched_records_after_append,
                 format_duration_ascii(report.append_rebuild_timing.average_elapsed),
+            ));
+        }
+
+        output.push('\n');
+    }
+
+    pub(crate) fn append_target_workload_typed_archive_append_delta_query_debug_output(
+        &self,
+        output: &mut String,
+        context: &BenchmarkApplicationContext,
+    ) {
+        let typed_context = TypedBenchmarkContext::from_benchmark_context(context);
+
+        append_target_workload_debug_section(
+            output,
+            context,
+            "Target workload typed archive append-delta query timing",
+            |output, context, workload| {
+                let report =
+                    typed_archive_append_delta_query_report(context, &typed_context, workload);
+
+                append_target_typed_archive_append_delta_query_report(output, &report);
+            },
+        );
+    }
+
+    pub(crate) fn append_workload_typed_archive_append_delta_query_summary_debug_output(
+        &self,
+        output: &mut String,
+        context: &BenchmarkApplicationContext,
+    ) {
+        let typed_context = TypedBenchmarkContext::from_benchmark_context(context);
+
+        output.push_str("Workload typed archive append-delta query timing summary\n");
+        output.push_str("-------------------------------------------------------\n");
+        output.push_str(
+            "workload | base records | appended records | rebuilt records | append-delta matched | rebuilt matched | append-delta reconstructed | rebuilt reconstructed | append-delta candidate ratio | rebuilt candidate ratio | rebuilt/append-delta | rebuilt query | append-delta query | agreement\n",
+        );
+
+        for workload in &context.workloads {
+            let report = typed_archive_append_delta_query_report(context, &typed_context, workload);
+
+            output.push_str(&format!(
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
+                workload.name,
+                report.base_record_count,
+                report.appended_record_count,
+                report.rebuilt_record_count,
+                report.append_delta_matched_records,
+                report.rebuilt_matched_records,
+                report.append_delta_stats.reconstructed_records,
+                report.rebuilt_stats.reconstructed_records,
+                format_scalar_percent(report.append_delta_stats.candidate_ratio),
+                format_scalar_percent(report.rebuilt_stats.candidate_ratio),
+                format_speedup_ratio(report.rebuilt_to_append_delta_average_ratio),
+                format_duration_ascii(report.repeated_timing.baseline.average_elapsed),
+                format_duration_ascii(report.repeated_timing.fse.average_elapsed),
             ));
         }
 
@@ -437,6 +495,61 @@ fn append_target_typed_archive_append_rebuild_report(
         report.append_rebuild_timing.average_elapsed,
     );
     append_debug_line(output, "typed archive append rebuild agreement", "pass");
+}
+
+fn append_target_typed_archive_append_delta_query_report(
+    output: &mut String,
+    report: &TypedArchiveAppendDeltaQueryTimingReport,
+) {
+    append_debug_line(output, "base records", report.base_record_count);
+    append_debug_line(output, "appended records", report.appended_record_count);
+    append_debug_line(output, "rebuilt records", report.rebuilt_record_count);
+    append_debug_line(
+        output,
+        "append-delta matched records",
+        report.append_delta_matched_records,
+    );
+    append_debug_line(
+        output,
+        "rebuilt matched records",
+        report.rebuilt_matched_records,
+    );
+    append_debug_line(
+        output,
+        "append-delta reconstructed records",
+        report.append_delta_stats.reconstructed_records,
+    );
+    append_debug_line(
+        output,
+        "rebuilt reconstructed records",
+        report.rebuilt_stats.reconstructed_records,
+    );
+    append_debug_line(
+        output,
+        "append-delta candidate ratio",
+        format_scalar_percent(report.append_delta_stats.candidate_ratio),
+    );
+    append_debug_line(
+        output,
+        "rebuilt candidate ratio",
+        format_scalar_percent(report.rebuilt_stats.candidate_ratio),
+    );
+    append_debug_duration_line(
+        output,
+        "rebuilt query average elapsed",
+        report.repeated_timing.baseline.average_elapsed,
+    );
+    append_debug_duration_line(
+        output,
+        "append-delta query average elapsed",
+        report.repeated_timing.fse.average_elapsed,
+    );
+    append_debug_line(
+        output,
+        "rebuilt to append-delta ratio",
+        format_speedup_ratio(report.rebuilt_to_append_delta_average_ratio),
+    );
+    append_debug_line(output, "typed archive append-delta query agreement", "pass");
 }
 
 fn append_target_typed_archive_compaction_report(
@@ -743,6 +856,27 @@ fn typed_archive_append_rebuild_report(
     report.expect("typed archive append rebuild timing should execute")
 }
 
+fn typed_archive_append_delta_query_report(
+    context: &BenchmarkApplicationContext,
+    typed_context: &TypedBenchmarkContext,
+    workload: &QueryWorkloadCase,
+) -> TypedArchiveAppendDeltaQueryTimingReport {
+    let plan = typed_x_range_plan(typed_context, workload);
+    let appended = typed_context.append_batch_from_benchmark_context(context);
+    let encoder = typed_context.encoder();
+    let builder = FSEBuilder::new(context.suite_config.build_config());
+    let report = compare_typed_archive_append_delta_query_execution_repeated(
+        typed_context.query_index(),
+        &appended,
+        &encoder,
+        &builder,
+        &plan,
+        &context.timing_config,
+    );
+
+    report.expect("typed archive append-delta query timing should execute")
+}
+
 fn typed_archive_compaction_report(
     context: &BenchmarkApplicationContext,
     typed_context: &TypedBenchmarkContext,
@@ -935,6 +1069,10 @@ fn format_archive_maintenance_reason(reason: FSEArchiveMaintenanceReason) -> &'s
             "append_and_compaction_thresholds_reached"
         }
     }
+}
+
+fn format_scalar_percent(value: crate::math::Scalar) -> String {
+    format_percent_ratio(value as f64)
 }
 
 fn validate_same_row_id_set(

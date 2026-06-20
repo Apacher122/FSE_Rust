@@ -2,6 +2,7 @@ use std::fs;
 
 use crate::benchmark::reports::{
     RepeatedTimingConfig, compare_typed_archive_append_delta_maintenance_execution_repeated,
+    compare_typed_archive_append_delta_query_execution_repeated,
     compare_typed_archive_append_rebuild_execution_repeated,
     compare_typed_archive_compaction_execution_repeated,
     compare_typed_archive_load_execution_repeated,
@@ -101,6 +102,47 @@ fn typed_archive_append_rebuild_timing_reports_rebuilt_archive() {
     assert!(path.exists());
 
     fs::remove_file(path).expect("test archive file should be removable");
+}
+
+#[test]
+fn typed_archive_append_delta_query_timing_reports_unrebuilt_delta_execution() {
+    let fixture = typed_fixture();
+    let appended = appended_entity_batch(&fixture.schema);
+    let encoder = entity_encoder(&fixture.schema);
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+    let predicate = FSEPredicate::range(
+        FSEPredicateField::name("score"),
+        FSEValue::Float(10.0),
+        FSEValue::Float(12.0),
+    );
+    let plan = TypedQueryPlan::numeric(&predicate, &fixture.schema, &fixture.mapping)
+        .expect("numeric predicate should produce a plan");
+    let timing_config = RepeatedTimingConfig::new(3);
+
+    let report = compare_typed_archive_append_delta_query_execution_repeated(
+        &fixture.query_index,
+        &appended,
+        &encoder,
+        &builder,
+        &plan,
+        &timing_config,
+    )
+    .expect("append-delta query timing should execute");
+
+    assert_eq!(report.base_record_count, 4);
+    assert_eq!(report.appended_record_count, 2);
+    assert_eq!(report.rebuilt_record_count, 6);
+    assert_eq!(report.append_delta_matched_records, 4);
+    assert_eq!(report.rebuilt_matched_records, 4);
+    assert_eq!(report.append_delta_stats.total_records, 6);
+    assert_eq!(report.rebuilt_stats.total_records, 6);
+    assert_eq!(report.append_delta_stats.matched_records, 4);
+    assert_eq!(report.rebuilt_stats.matched_records, 4);
+    assert!(report.append_delta_stats.reconstructed_records >= report.appended_record_count);
+    assert!(report.rebuilt_stats.reconstructed_records >= report.rebuilt_matched_records);
+    assert_eq!(report.repeated_timing.baseline.iterations, 3);
+    assert_eq!(report.repeated_timing.fse.iterations, 3);
+    assert!(report.rebuilt_to_append_delta_average_ratio >= 0.0);
 }
 
 #[test]

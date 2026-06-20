@@ -283,16 +283,20 @@ fn benchmark_application_renderer_uses_detailed_output_for_debug_report() {
     assert!(output.contains("Target workload typed indexed comparison"));
     assert!(output.contains("Target workload typed archive load timing"));
     assert!(output.contains("Target workload typed archive append rebuild timing"));
+    assert!(output.contains("Target workload typed archive append-delta query timing"));
     assert!(output.contains("Target workload typed archive compaction timing"));
     assert!(output.contains("Target workload typed archive maintenance timing"));
     assert!(output.contains("Target workload typed archive append-delta maintenance timing"));
     assert!(output.contains("logical archive bytes before compaction"));
+    assert!(output.contains("append-delta reconstructed records"));
+    assert!(output.contains("rebuilt query average elapsed"));
     assert!(output.contains("logical archive bytes before maintenance"));
     assert!(output.contains("append archive bytes before maintenance"));
     assert!(output.contains("maintenance status requires archive write"));
     assert!(output.contains("Workload typed indexed comparison summary"));
     assert!(output.contains("Workload typed archive load timing summary"));
     assert!(output.contains("Workload typed archive append rebuild timing summary"));
+    assert!(output.contains("Workload typed archive append-delta query timing summary"));
     assert!(output.contains("Workload typed archive compaction timing summary"));
     assert!(output.contains("Workload typed archive maintenance timing summary"));
     assert!(output.contains("Workload typed archive append-delta maintenance timing summary"));
@@ -420,6 +424,11 @@ fn benchmark_application_runs_debug_report_configuration() {
     assert!(
         output
             .terminal_output
+            .contains("Target workload typed archive append-delta query timing")
+    );
+    assert!(
+        output
+            .terminal_output
             .contains("Target workload typed archive compaction timing")
     );
     assert!(
@@ -450,6 +459,12 @@ fn benchmark_application_runs_debug_report_configuration() {
     assert!(
         output
             .terminal_output
+            .contains("append-delta reconstructed records")
+    );
+    assert!(output.terminal_output.contains("rebuilt/append-delta"));
+    assert!(
+        output
+            .terminal_output
             .contains("Workload typed indexed comparison summary")
     );
     assert!(
@@ -461,6 +476,11 @@ fn benchmark_application_runs_debug_report_configuration() {
         output
             .terminal_output
             .contains("Workload typed archive append rebuild timing summary")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("Workload typed archive append-delta query timing summary")
     );
     assert!(
         output
