@@ -19,7 +19,8 @@ use crate::persistence::{
     save_typed_query_index_archive_file, save_typed_row_tombstone_archive_file,
 };
 use crate::query::{
-    FSEPredicate, FSEPredicateField, TypedQueryIndex, TypedQueryPlanBuilder, TypedRowTombstoneSet,
+    FSEPredicate, FSEPredicateField, TypedQueryIndex, TypedQueryOutputContract,
+    TypedQueryPlanBuilder, TypedRowTombstoneSet,
 };
 
 #[test]
@@ -43,6 +44,10 @@ fn typed_query_index_archive_with_tombstones_loads_and_filters_results() {
     let row_report = loaded.query_rows_with_stats(&plan).unwrap();
     let count_report = loaded.count_matches_with_stats(&plan).unwrap();
     let existence_report = loaded.has_match_with_stats(&plan).unwrap();
+    let planned_row_id_report = loaded.query_row_ids_with_planning(&plan).unwrap();
+    let planned_row_report = loaded.query_rows_with_planning(&plan).unwrap();
+    let planned_count_report = loaded.count_matches_with_planning(&plan).unwrap();
+    let planned_existence_report = loaded.has_match_with_planning(&plan).unwrap();
     let row_id_stats = loaded
         .visit_row_ids(&plan, |row_id| {
             visited_row_ids.push(row_id);
@@ -51,6 +56,18 @@ fn typed_query_index_archive_with_tombstones_loads_and_filters_results() {
     let row_stats = loaded
         .visit_rows(&plan, |row_id, record| {
             visited_records.push((row_id, record.clone()));
+        })
+        .unwrap();
+    let mut planned_visited_row_ids = Vec::new();
+    let planned_row_id_visit_report = loaded
+        .visit_row_ids_with_planning(&plan, |row_id| {
+            planned_visited_row_ids.push(row_id);
+        })
+        .unwrap();
+    let mut planned_visited_records = Vec::new();
+    let planned_row_visit_report = loaded
+        .visit_rows_with_planning(&plan, |row_id, record| {
+            planned_visited_records.push((row_id, record.clone()));
         })
         .unwrap();
 
@@ -64,6 +81,11 @@ fn typed_query_index_archive_with_tombstones_loads_and_filters_results() {
     assert_eq!(loaded.query_row_ids(&plan).unwrap(), vec![RowId::new(103)]);
     assert_eq!(row_id_report.row_ids, vec![RowId::new(103)]);
     assert_eq!(row_id_report.stats.matched_records, 1);
+    assert_eq!(planned_row_id_report.row_ids, vec![RowId::new(103)]);
+    assert_eq!(
+        planned_row_id_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIds
+    );
     assert_eq!(
         loaded.query_rows(&plan).unwrap()[0].row_id(),
         RowId::new(103)
@@ -71,17 +93,46 @@ fn typed_query_index_archive_with_tombstones_loads_and_filters_results() {
     assert_eq!(row_report.rows.len(), 1);
     assert_eq!(row_report.rows[0].row_id(), RowId::new(103));
     assert_eq!(row_report.stats.matched_records, 1);
+    assert_eq!(planned_row_report.rows.len(), 1);
+    assert_eq!(planned_row_report.rows[0].row_id(), RowId::new(103));
+    assert_eq!(
+        planned_row_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Rows
+    );
     assert_eq!(loaded.count_matches(&plan).unwrap(), 1);
     assert_eq!(count_report.matched_records, 1);
     assert_eq!(count_report.stats.matched_records, 1);
+    assert_eq!(planned_count_report.matched_records, 1);
+    assert_eq!(
+        planned_count_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Count
+    );
     assert!(loaded.has_match(&plan).unwrap());
     assert!(existence_report.has_match);
     assert_eq!(existence_report.stats.matched_records, 1);
+    assert!(planned_existence_report.has_match);
+    assert_eq!(
+        planned_existence_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Existence
+    );
     assert_eq!(visited_row_ids, vec![RowId::new(103)]);
     assert_eq!(row_id_stats.matched_records, 1);
+    assert_eq!(planned_visited_row_ids, vec![RowId::new(103)]);
+    assert_eq!(planned_row_id_visit_report.visited_records, 1);
+    assert_eq!(
+        planned_row_id_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIdVisitor
+    );
     assert_eq!(visited_records.len(), 1);
     assert_eq!(visited_records[0].0, RowId::new(103));
     assert_eq!(row_stats.matched_records, 1);
+    assert_eq!(planned_visited_records.len(), 1);
+    assert_eq!(planned_visited_records[0].0, RowId::new(103));
+    assert_eq!(planned_row_visit_report.visited_records, 1);
+    assert_eq!(
+        planned_row_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowVisitor
+    );
 
     let _ = fs::remove_file(index_path);
     let _ = fs::remove_file(tombstone_path);

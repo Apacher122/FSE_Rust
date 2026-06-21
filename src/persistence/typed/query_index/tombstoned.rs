@@ -6,7 +6,9 @@ use std::path::Path;
 
 use crate::data::{FSERecord, RowId};
 use crate::query::{
-    IndexedTypedQueryError, IndexedTypedQueryReport, IndexedTypedQueryRowReport, QueryCountReport,
+    IndexedTypedQueryError, IndexedTypedQueryReport, IndexedTypedQueryRowReport,
+    PlannedTypedQueryCountReport, PlannedTypedQueryExistenceReport, PlannedTypedQueryRowIdReport,
+    PlannedTypedQueryRowReport, PlannedTypedQueryVisitReport, QueryCountReport,
     QueryExecutionStats, QueryExistenceReport, TypedQueryIndex, TypedQueryPlan,
     TypedQueryResultRow, TypedRowTombstoneSet,
 };
@@ -114,6 +116,15 @@ impl FSETombstonedTypedQueryIndex {
             .query_row_ids_with_stats_excluding_tombstones(plan, &self.tombstones)
     }
 
+    /// Evaluates row-id output using typed query planning diagnostics.
+    pub fn query_row_ids_with_planning(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<PlannedTypedQueryRowIdReport, IndexedTypedQueryError> {
+        self.query_index
+            .query_row_ids_with_planning_excluding_tombstones(plan, &self.tombstones)
+    }
+
     /// Evaluates a typed query plan and returns matching typed rows.
     pub fn query_rows(
         &self,
@@ -132,6 +143,15 @@ impl FSETombstonedTypedQueryIndex {
             .query_rows_with_stats_excluding_tombstones(plan, &self.tombstones)
     }
 
+    /// Evaluates typed row output using typed query planning diagnostics.
+    pub fn query_rows_with_planning(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<PlannedTypedQueryRowReport, IndexedTypedQueryError> {
+        self.query_index
+            .query_rows_with_planning_excluding_tombstones(plan, &self.tombstones)
+    }
+
     /// Counts records that satisfy a typed query plan.
     pub fn count_matches(&self, plan: &TypedQueryPlan) -> Result<usize, IndexedTypedQueryError> {
         self.query_index
@@ -145,6 +165,15 @@ impl FSETombstonedTypedQueryIndex {
     ) -> Result<QueryCountReport, IndexedTypedQueryError> {
         self.query_index
             .count_matches_with_stats_excluding_tombstones(plan, &self.tombstones)
+    }
+
+    /// Counts records using typed query planning diagnostics.
+    pub fn count_matches_with_planning(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<PlannedTypedQueryCountReport, IndexedTypedQueryError> {
+        self.query_index
+            .count_matches_with_planning_excluding_tombstones(plan, &self.tombstones)
     }
 
     /// Returns true when a typed query plan matches at least one record.
@@ -162,6 +191,15 @@ impl FSETombstonedTypedQueryIndex {
             .has_match_with_stats_excluding_tombstones(plan, &self.tombstones)
     }
 
+    /// Returns typed existence using typed query planning diagnostics.
+    pub fn has_match_with_planning(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<PlannedTypedQueryExistenceReport, IndexedTypedQueryError> {
+        self.query_index
+            .has_match_with_planning_excluding_tombstones(plan, &self.tombstones)
+    }
+
     /// Visits matching row identifiers for a typed query plan.
     pub fn visit_row_ids<F>(
         &self,
@@ -175,6 +213,19 @@ impl FSETombstonedTypedQueryIndex {
             .visit_row_ids_excluding_tombstones(plan, &self.tombstones, visitor)
     }
 
+    /// Visits row identifiers using typed query planning diagnostics.
+    pub fn visit_row_ids_with_planning<F>(
+        &self,
+        plan: &TypedQueryPlan,
+        visitor: F,
+    ) -> Result<PlannedTypedQueryVisitReport, IndexedTypedQueryError>
+    where
+        F: FnMut(RowId),
+    {
+        self.query_index
+            .visit_row_ids_with_planning_excluding_tombstones(plan, &self.tombstones, visitor)
+    }
+
     /// Visits matching typed records for a typed query plan.
     pub fn visit_rows<F>(
         &self,
@@ -186,6 +237,19 @@ impl FSETombstonedTypedQueryIndex {
     {
         self.query_index
             .visit_rows_excluding_tombstones(plan, &self.tombstones, visitor)
+    }
+
+    /// Visits typed records using typed query planning diagnostics.
+    pub fn visit_rows_with_planning<F>(
+        &self,
+        plan: &TypedQueryPlan,
+        visitor: F,
+    ) -> Result<PlannedTypedQueryVisitReport, IndexedTypedQueryError>
+    where
+        F: FnMut(RowId, &FSERecord),
+    {
+        self.query_index
+            .visit_rows_with_planning_excluding_tombstones(plan, &self.tombstones, visitor)
     }
 }
 
