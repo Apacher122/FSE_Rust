@@ -17,9 +17,10 @@ use super::index::TypedQueryIndex;
 use super::plan::TypedQueryPlan;
 use super::planned_execution::{
     PlannedTypedQueryCountReport, PlannedTypedQueryExistenceReport, PlannedTypedQueryRowIdReport,
-    PlannedTypedQueryRowReport, planned_append_delta_query_count_matches,
-    planned_append_delta_query_has_match, planned_append_delta_query_row_ids,
-    planned_append_delta_query_rows,
+    PlannedTypedQueryRowReport, PlannedTypedQueryVisitReport,
+    planned_append_delta_query_count_matches, planned_append_delta_query_has_match,
+    planned_append_delta_query_row_ids, planned_append_delta_query_rows,
+    planned_append_delta_query_visit_row_ids, planned_append_delta_query_visit_rows,
 };
 use super::tombstone::TypedRowTombstoneSet;
 
@@ -419,6 +420,18 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
         Ok(())
     }
 
+    /// Visits row identifiers using typed query planning diagnostics.
+    pub fn visit_row_ids_with_planning<F>(
+        &self,
+        plan: &TypedQueryPlan,
+        visitor: F,
+    ) -> Result<PlannedTypedQueryVisitReport, IndexedTypedQueryError>
+    where
+        F: FnMut(RowId),
+    {
+        planned_append_delta_query_visit_row_ids(self, plan, visitor)
+    }
+
     /// Visits matching row identifiers for a typed query plan while excluding
     /// tombstoned row identifiers.
     pub fn visit_row_ids_excluding_tombstones<F>(
@@ -462,6 +475,18 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
         }
 
         Ok(())
+    }
+
+    /// Visits typed rows using typed query planning diagnostics.
+    pub fn visit_rows_with_planning<F>(
+        &self,
+        plan: &TypedQueryPlan,
+        visitor: F,
+    ) -> Result<PlannedTypedQueryVisitReport, IndexedTypedQueryError>
+    where
+        F: FnMut(RowId, &FSERecord),
+    {
+        planned_append_delta_query_visit_rows(self, plan, visitor)
     }
 
     /// Visits matching typed records for a typed query plan while excluding

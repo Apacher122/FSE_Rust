@@ -12,8 +12,10 @@ use crate::query::{
     TypedQueryIndex, TypedQueryOutputContract, TypedQueryPlan, TypedQueryPlanBuilder,
     TypedQueryPlanningReason, TypedQueryResultRow, planned_append_delta_query_count_matches,
     planned_append_delta_query_has_match, planned_append_delta_query_row_ids,
-    planned_append_delta_query_rows, planned_typed_query_count_matches,
+    planned_append_delta_query_rows, planned_append_delta_query_visit_row_ids,
+    planned_append_delta_query_visit_rows, planned_typed_query_count_matches,
     planned_typed_query_has_match, planned_typed_query_row_ids, planned_typed_query_rows,
+    planned_typed_query_visit_row_ids, planned_typed_query_visit_rows,
 };
 
 #[test]
@@ -125,6 +127,82 @@ fn planned_typed_query_rows_uses_fse_for_selective_plan() {
     assert_eq!(
         report.diagnostics.output_contract,
         TypedQueryOutputContract::Rows
+    );
+    assert_eq!(
+        report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::FseTraversal
+    );
+    assert_eq!(
+        report.diagnostics.reason,
+        TypedQueryPlanningReason::SelectiveGeometry
+    );
+}
+
+#[test]
+fn planned_typed_query_visit_row_ids_uses_fse_for_selective_plan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let plan = score_and_class_plan(&schema, &mapping);
+    let mut row_ids = Vec::new();
+
+    let report = query_index
+        .visit_row_ids_with_planning(&plan, |row_id| row_ids.push(row_id))
+        .expect("planned typed row-id visitor should execute");
+    let mut function_row_ids = Vec::new();
+    let function_report = planned_typed_query_visit_row_ids(&query_index, &plan, |row_id| {
+        function_row_ids.push(row_id);
+    })
+    .expect("planned typed row-id visitor should execute");
+
+    assert_eq!(row_ids, vec![RowId::new(100), RowId::new(103)]);
+    assert_eq!(function_row_ids, row_ids);
+    assert_eq!(function_report, report);
+    assert_eq!(report.visited_records, 2);
+    assert_eq!(
+        report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIdVisitor
+    );
+    assert_eq!(
+        report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::FseTraversal
+    );
+    assert_eq!(
+        report.diagnostics.reason,
+        TypedQueryPlanningReason::SelectiveGeometry
+    );
+}
+
+#[test]
+fn planned_typed_query_visit_rows_uses_fse_for_selective_plan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let plan = score_and_class_plan(&schema, &mapping);
+    let mut row_ids = Vec::new();
+
+    let report = query_index
+        .visit_rows_with_planning(&plan, |row_id, _record| row_ids.push(row_id))
+        .expect("planned typed row visitor should execute");
+    let mut function_row_ids = Vec::new();
+    let function_report = planned_typed_query_visit_rows(&query_index, &plan, |row_id, _record| {
+        function_row_ids.push(row_id);
+    })
+    .expect("planned typed row visitor should execute");
+
+    assert_eq!(row_ids, vec![RowId::new(100), RowId::new(103)]);
+    assert_eq!(function_row_ids, row_ids);
+    assert_eq!(function_report, report);
+    assert_eq!(report.visited_records, 2);
+    assert_eq!(
+        report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowVisitor
     );
     assert_eq!(
         report.diagnostics.strategy,
@@ -264,6 +342,94 @@ fn planned_append_delta_query_rows_uses_hybrid_plan() {
     assert_eq!(
         report.diagnostics.output_contract,
         TypedQueryOutputContract::Rows
+    );
+    assert_eq!(
+        report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::Hybrid
+    );
+    assert_eq!(
+        report.diagnostics.reason,
+        TypedQueryPlanningReason::AppendDeltaScan
+    );
+}
+
+#[test]
+fn planned_append_delta_query_visit_row_ids_uses_hybrid_plan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let view = TypedAppendDeltaQueryView::try_new(&query_index, &appended)
+        .expect("valid append batch should produce a query view");
+    let plan = score_and_class_plan(&schema, &mapping);
+    let mut row_ids = Vec::new();
+
+    let report = view
+        .visit_row_ids_with_planning(&plan, |row_id| row_ids.push(row_id))
+        .expect("planned append-delta row-id visitor should execute");
+    let mut function_row_ids = Vec::new();
+    let function_report = planned_append_delta_query_visit_row_ids(&view, &plan, |row_id| {
+        function_row_ids.push(row_id);
+    })
+    .expect("planned append-delta row-id visitor should execute");
+
+    assert_eq!(
+        row_ids,
+        vec![RowId::new(100), RowId::new(103), RowId::new(104)]
+    );
+    assert_eq!(function_row_ids, row_ids);
+    assert_eq!(function_report, report);
+    assert_eq!(report.visited_records, 3);
+    assert_eq!(
+        report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIdVisitor
+    );
+    assert_eq!(
+        report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::Hybrid
+    );
+    assert_eq!(
+        report.diagnostics.reason,
+        TypedQueryPlanningReason::AppendDeltaScan
+    );
+}
+
+#[test]
+fn planned_append_delta_query_visit_rows_uses_hybrid_plan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let view = TypedAppendDeltaQueryView::try_new(&query_index, &appended)
+        .expect("valid append batch should produce a query view");
+    let plan = score_and_class_plan(&schema, &mapping);
+    let mut row_ids = Vec::new();
+
+    let report = view
+        .visit_rows_with_planning(&plan, |row_id, _record| row_ids.push(row_id))
+        .expect("planned append-delta row visitor should execute");
+    let mut function_row_ids = Vec::new();
+    let function_report = planned_append_delta_query_visit_rows(&view, &plan, |row_id, _record| {
+        function_row_ids.push(row_id);
+    })
+    .expect("planned append-delta row visitor should execute");
+
+    assert_eq!(
+        row_ids,
+        vec![RowId::new(100), RowId::new(103), RowId::new(104)]
+    );
+    assert_eq!(function_row_ids, row_ids);
+    assert_eq!(function_report, report);
+    assert_eq!(report.visited_records, 3);
+    assert_eq!(
+        report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowVisitor
     );
     assert_eq!(
         report.diagnostics.strategy,

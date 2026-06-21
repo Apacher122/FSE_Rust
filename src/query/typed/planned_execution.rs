@@ -1,6 +1,6 @@
 //! Typed query execution through planning decisions.
 
-use crate::data::RowId;
+use crate::data::{FSERecord, RowId};
 
 use super::append_delta::TypedAppendDeltaQueryView;
 use super::execution::{
@@ -29,6 +29,16 @@ pub struct PlannedTypedQueryRowIdReport {
 pub struct PlannedTypedQueryRowReport {
     /// Matching typed rows.
     pub rows: Vec<TypedQueryResultRow>,
+
+    /// Planning diagnostics used to choose the execution path.
+    pub diagnostics: TypedQueryPlanningDiagnostics,
+}
+
+/// Visitor query result paired with planning diagnostics.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlannedTypedQueryVisitReport {
+    /// Number of matches delivered to the visitor.
+    pub visited_records: usize,
 
     /// Planning diagnostics used to choose the execution path.
     pub diagnostics: TypedQueryPlanningDiagnostics,
@@ -77,6 +87,45 @@ pub fn planned_typed_query_rows(
     let rows = execute_index_row_strategy(index, plan, diagnostics.strategy)?;
 
     Ok(PlannedTypedQueryRowReport { rows, diagnostics })
+}
+
+/// Visits row identifiers using the typed query planner.
+pub fn planned_typed_query_visit_row_ids<F>(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    visitor: F,
+) -> Result<PlannedTypedQueryVisitReport, IndexedTypedQueryError>
+where
+    F: FnMut(RowId),
+{
+    let diagnostics =
+        plan_typed_query_execution(index, plan, TypedQueryOutputContract::RowIdVisitor);
+    let visited_records =
+        execute_index_row_id_visitor_strategy(index, plan, diagnostics.strategy, visitor)?;
+
+    Ok(PlannedTypedQueryVisitReport {
+        visited_records,
+        diagnostics,
+    })
+}
+
+/// Visits typed rows using the typed query planner.
+pub fn planned_typed_query_visit_rows<F>(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    visitor: F,
+) -> Result<PlannedTypedQueryVisitReport, IndexedTypedQueryError>
+where
+    F: FnMut(RowId, &FSERecord),
+{
+    let diagnostics = plan_typed_query_execution(index, plan, TypedQueryOutputContract::RowVisitor);
+    let visited_records =
+        execute_index_row_visitor_strategy(index, plan, diagnostics.strategy, visitor)?;
+
+    Ok(PlannedTypedQueryVisitReport {
+        visited_records,
+        diagnostics,
+    })
 }
 
 /// Evaluates count output using the typed query planner.
@@ -134,6 +183,46 @@ pub fn planned_append_delta_query_rows(
     Ok(PlannedTypedQueryRowReport { rows, diagnostics })
 }
 
+/// Visits append-delta row identifiers using the typed query planner.
+pub fn planned_append_delta_query_visit_row_ids<F>(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    visitor: F,
+) -> Result<PlannedTypedQueryVisitReport, IndexedTypedQueryError>
+where
+    F: FnMut(RowId),
+{
+    let diagnostics =
+        plan_typed_append_delta_query_execution(view, plan, TypedQueryOutputContract::RowIdVisitor);
+    let visited_records =
+        execute_append_delta_row_id_visitor_strategy(view, plan, diagnostics.strategy, visitor)?;
+
+    Ok(PlannedTypedQueryVisitReport {
+        visited_records,
+        diagnostics,
+    })
+}
+
+/// Visits append-delta typed rows using the typed query planner.
+pub fn planned_append_delta_query_visit_rows<F>(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    visitor: F,
+) -> Result<PlannedTypedQueryVisitReport, IndexedTypedQueryError>
+where
+    F: FnMut(RowId, &FSERecord),
+{
+    let diagnostics =
+        plan_typed_append_delta_query_execution(view, plan, TypedQueryOutputContract::RowVisitor);
+    let visited_records =
+        execute_append_delta_row_visitor_strategy(view, plan, diagnostics.strategy, visitor)?;
+
+    Ok(PlannedTypedQueryVisitReport {
+        visited_records,
+        diagnostics,
+    })
+}
+
 /// Evaluates append-delta count output using the typed query planner.
 pub fn planned_append_delta_query_count_matches(
     view: &TypedAppendDeltaQueryView<'_>,
@@ -178,6 +267,36 @@ fn execute_index_strategy(
     }
 }
 
+fn execute_index_row_id_visitor_strategy<F>(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    strategy: TypedQueryExecutionStrategy,
+    mut visitor: F,
+) -> Result<usize, IndexedTypedQueryError>
+where
+    F: FnMut(RowId),
+{
+    let mut visited_records = 0;
+
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => {}
+        TypedQueryExecutionStrategy::FlatScan => {
+            for row_id in evaluate_typed_query_plan(index.batch(), plan) {
+                visited_records += 1;
+                visitor(row_id);
+            }
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            index.visit_row_ids(plan, |row_id| {
+                visited_records += 1;
+                visitor(row_id);
+            })?;
+        }
+    }
+
+    Ok(visited_records)
+}
+
 fn execute_index_row_strategy(
     index: &TypedQueryIndex,
     plan: &TypedQueryPlan,
@@ -192,6 +311,36 @@ fn execute_index_row_strategy(
             index.query_rows(plan)
         }
     }
+}
+
+fn execute_index_row_visitor_strategy<F>(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    strategy: TypedQueryExecutionStrategy,
+    mut visitor: F,
+) -> Result<usize, IndexedTypedQueryError>
+where
+    F: FnMut(RowId, &FSERecord),
+{
+    let mut visited_records = 0;
+
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => {}
+        TypedQueryExecutionStrategy::FlatScan => {
+            for row in evaluate_typed_query_plan_rows(index.batch(), plan) {
+                visited_records += 1;
+                visitor(row.row_id(), row.record());
+            }
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            index.visit_rows(plan, |row_id, record| {
+                visited_records += 1;
+                visitor(row_id, record);
+            })?;
+        }
+    }
+
+    Ok(visited_records)
 }
 
 fn execute_index_count_strategy(
@@ -240,6 +389,41 @@ fn execute_append_delta_strategy(
     }
 }
 
+fn execute_append_delta_row_id_visitor_strategy<F>(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    strategy: TypedQueryExecutionStrategy,
+    mut visitor: F,
+) -> Result<usize, IndexedTypedQueryError>
+where
+    F: FnMut(RowId),
+{
+    let mut visited_records = 0;
+
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => {}
+        TypedQueryExecutionStrategy::FlatScan => {
+            for row_id in evaluate_typed_query_plan(view.base().batch(), plan) {
+                visited_records += 1;
+                visitor(row_id);
+            }
+
+            for row_id in evaluate_typed_query_plan(view.appended(), plan) {
+                visited_records += 1;
+                visitor(row_id);
+            }
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            view.visit_row_ids(plan, |row_id| {
+                visited_records += 1;
+                visitor(row_id);
+            })?;
+        }
+    }
+
+    Ok(visited_records)
+}
+
 fn execute_append_delta_row_strategy(
     view: &TypedAppendDeltaQueryView<'_>,
     plan: &TypedQueryPlan,
@@ -256,6 +440,41 @@ fn execute_append_delta_row_strategy(
             view.query_rows(plan)
         }
     }
+}
+
+fn execute_append_delta_row_visitor_strategy<F>(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    strategy: TypedQueryExecutionStrategy,
+    mut visitor: F,
+) -> Result<usize, IndexedTypedQueryError>
+where
+    F: FnMut(RowId, &FSERecord),
+{
+    let mut visited_records = 0;
+
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => {}
+        TypedQueryExecutionStrategy::FlatScan => {
+            for row in evaluate_typed_query_plan_rows(view.base().batch(), plan) {
+                visited_records += 1;
+                visitor(row.row_id(), row.record());
+            }
+
+            for row in evaluate_typed_query_plan_rows(view.appended(), plan) {
+                visited_records += 1;
+                visitor(row.row_id(), row.record());
+            }
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            view.visit_rows(plan, |row_id, record| {
+                visited_records += 1;
+                visitor(row_id, record);
+            })?;
+        }
+    }
+
+    Ok(visited_records)
 }
 
 fn execute_append_delta_count_strategy(

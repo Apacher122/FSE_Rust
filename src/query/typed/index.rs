@@ -27,8 +27,9 @@ use super::execution::{
 use super::plan::TypedQueryPlan;
 use super::planned_execution::{
     PlannedTypedQueryCountReport, PlannedTypedQueryExistenceReport, PlannedTypedQueryRowIdReport,
-    PlannedTypedQueryRowReport, planned_typed_query_count_matches, planned_typed_query_has_match,
-    planned_typed_query_row_ids, planned_typed_query_rows,
+    PlannedTypedQueryRowReport, PlannedTypedQueryVisitReport, planned_typed_query_count_matches,
+    planned_typed_query_has_match, planned_typed_query_row_ids, planned_typed_query_rows,
+    planned_typed_query_visit_row_ids, planned_typed_query_visit_rows,
 };
 use super::tombstone::TypedRowTombstoneSet;
 
@@ -386,6 +387,18 @@ impl TypedQueryIndex {
         visit_indexed_typed_query_row_ids(&self.index, &self.batch, plan, visitor)
     }
 
+    /// Visits row identifiers using typed query planning diagnostics.
+    pub fn visit_row_ids_with_planning<F>(
+        &self,
+        plan: &TypedQueryPlan,
+        visitor: F,
+    ) -> Result<PlannedTypedQueryVisitReport, IndexedTypedQueryError>
+    where
+        F: FnMut(RowId),
+    {
+        planned_typed_query_visit_row_ids(self, plan, visitor)
+    }
+
     /// Visits matching row identifiers for a typed query plan while excluding
     /// tombstoned row identifiers.
     pub fn visit_row_ids_excluding_tombstones<F>(
@@ -416,6 +429,18 @@ impl TypedQueryIndex {
         F: FnMut(RowId, &FSERecord),
     {
         visit_indexed_typed_query_rows(&self.index, &self.batch, plan, visitor)
+    }
+
+    /// Visits typed rows using typed query planning diagnostics.
+    pub fn visit_rows_with_planning<F>(
+        &self,
+        plan: &TypedQueryPlan,
+        visitor: F,
+    ) -> Result<PlannedTypedQueryVisitReport, IndexedTypedQueryError>
+    where
+        F: FnMut(RowId, &FSERecord),
+    {
+        planned_typed_query_visit_rows(self, plan, visitor)
     }
 
     /// Visits matching typed records for a typed query plan while excluding
