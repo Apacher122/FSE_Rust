@@ -52,7 +52,7 @@ use crate::persistence::{
 };
 use crate::query::{
     FSEPredicate, FSEPredicateError, FSEPredicateField, TypedQueryIndexAppendError,
-    TypedQueryPlanBuilder, TypedQueryPlanError,
+    TypedQueryOutputContract, TypedQueryPlanBuilder, TypedQueryPlanError,
 };
 
 #[test]
@@ -262,7 +262,7 @@ fn csv_archive_query_context_queries_predicates_from_fse_file() {
 }
 
 #[test]
-fn csv_archive_query_context_reports_execution_stats_from_fse_file() {
+fn csv_archive_query_context_reports_execution_stats_and_planning_from_fse_file() {
     let builder = builder();
     let csv_path = temp_csv_path("query-context-stats");
     let archive_path = temp_archive_path("query-context-stats", ".fse");
@@ -294,6 +294,33 @@ fn csv_archive_query_context_reports_execution_stats_from_fse_file() {
     let existence_report = context
         .has_match_with_stats(score_and_class_predicates())
         .unwrap();
+    let planned_row_report = context
+        .query_row_ids_with_planning(score_and_class_predicates())
+        .unwrap();
+    let planned_row_result_report = context
+        .query_rows_with_planning(score_and_class_predicates())
+        .unwrap();
+    let planned_count_report = context
+        .count_matches_with_planning(score_and_class_predicates())
+        .unwrap();
+    let planned_existence_report = context
+        .has_match_with_planning(score_and_class_predicates())
+        .unwrap();
+    let mut visited_row_ids = Vec::new();
+    let planned_row_id_visit_report = context
+        .visit_row_ids_with_planning(score_and_class_predicates(), |row_id| {
+            visited_row_ids.push(row_id);
+        })
+        .unwrap();
+    let mut visited_rows = Vec::new();
+    let planned_row_visit_report = context
+        .visit_rows_with_planning(score_and_class_predicates(), |row_id, record| {
+            visited_rows.push((
+                row_id,
+                record.value_named(&context.schema, "class").cloned(),
+            ));
+        })
+        .unwrap();
 
     assert_eq!(row_report.row_ids, vec![RowId::new(100), RowId::new(103)]);
     assert_eq!(row_report.stats.matched_records, 2);
@@ -311,6 +338,59 @@ fn csv_archive_query_context_reports_execution_stats_from_fse_file() {
     assert!(existence_report.has_match);
     assert!(existence_report.inspected_records >= 1);
     assert_eq!(existence_report.stats.matched_records, 1);
+    assert_eq!(planned_row_report.row_ids, row_report.row_ids);
+    assert_eq!(
+        planned_row_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIds
+    );
+    assert_eq!(
+        planned_row_result_report
+            .rows
+            .iter()
+            .map(|row| row.row_id())
+            .collect::<Vec<_>>(),
+        row_report.row_ids
+    );
+    assert_eq!(
+        planned_row_result_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Rows
+    );
+    assert_eq!(planned_count_report.matched_records, 2);
+    assert_eq!(
+        planned_count_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Count
+    );
+    assert!(planned_existence_report.has_match);
+    assert_eq!(
+        planned_existence_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Existence
+    );
+    assert_eq!(visited_row_ids, row_report.row_ids);
+    assert_eq!(planned_row_id_visit_report.visited_records, 2);
+    assert_eq!(
+        planned_row_id_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIdVisitor
+    );
+    assert_eq!(
+        visited_rows,
+        vec![
+            (
+                RowId::new(100),
+                Some(FSEValue::Category("alpha".to_string()))
+            ),
+            (
+                RowId::new(103),
+                Some(FSEValue::Category("alpha".to_string()))
+            ),
+        ]
+    );
+    assert_eq!(planned_row_visit_report.visited_records, 2);
+    assert_eq!(
+        planned_row_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowVisitor
+    );
+    assert_eq!(planned_row_report.diagnostics.total_records, 4);
+    assert!(!planned_row_report.diagnostics.requires_append_delta_scan);
 
     let _ = fs::remove_file(csv_path);
     let _ = fs::remove_file(archive_path);
@@ -361,6 +441,35 @@ fn csv_append_delta_archive_query_context_queries_base_and_append_archives() {
     let existence_report = context
         .has_match_with_stats(score_and_class_predicates())
         .unwrap();
+    let planned_row_report = context
+        .query_row_ids_with_planning(score_and_class_predicates())
+        .unwrap();
+    let planned_row_result_report = context
+        .query_rows_with_planning(score_and_class_predicates())
+        .unwrap();
+    let planned_count_report = context
+        .count_matches_with_planning(score_and_class_predicates())
+        .unwrap();
+    let planned_existence_report = context
+        .has_match_with_planning(score_and_class_predicates())
+        .unwrap();
+    let mut visited_row_ids = Vec::new();
+    let planned_row_id_visit_report = context
+        .visit_row_ids_with_planning(score_and_class_predicates(), |row_id| {
+            visited_row_ids.push(row_id);
+        })
+        .unwrap();
+    let mut visited_rows = Vec::new();
+    let planned_row_visit_report = context
+        .visit_rows_with_planning(score_and_class_predicates(), |row_id, record| {
+            visited_rows.push((
+                row_id,
+                record
+                    .value_named(&context.context.schema, "class")
+                    .cloned(),
+            ));
+        })
+        .unwrap();
 
     assert_eq!(
         row_ids,
@@ -393,6 +502,63 @@ fn csv_append_delta_archive_query_context_queries_base_and_append_archives() {
     assert!(context.has_match(score_and_class_predicates()).unwrap());
     assert!(existence_report.has_match);
     assert_eq!(existence_report.stats.total_records, 6);
+    assert_eq!(planned_row_report.row_ids, row_ids);
+    assert_eq!(
+        planned_row_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIds
+    );
+    assert_eq!(
+        planned_row_result_report
+            .rows
+            .iter()
+            .map(|row| row.row_id())
+            .collect::<Vec<_>>(),
+        row_ids
+    );
+    assert_eq!(
+        planned_row_result_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Rows
+    );
+    assert_eq!(planned_count_report.matched_records, 3);
+    assert_eq!(
+        planned_count_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Count
+    );
+    assert!(planned_existence_report.has_match);
+    assert_eq!(
+        planned_existence_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Existence
+    );
+    assert_eq!(visited_row_ids, row_ids);
+    assert_eq!(planned_row_id_visit_report.visited_records, 3);
+    assert_eq!(
+        planned_row_id_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIdVisitor
+    );
+    assert_eq!(
+        visited_rows,
+        vec![
+            (
+                RowId::new(100),
+                Some(FSEValue::Category("alpha".to_string()))
+            ),
+            (
+                RowId::new(103),
+                Some(FSEValue::Category("alpha".to_string()))
+            ),
+            (
+                RowId::new(104),
+                Some(FSEValue::Category("alpha".to_string()))
+            ),
+        ]
+    );
+    assert_eq!(planned_row_visit_report.visited_records, 3);
+    assert_eq!(
+        planned_row_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowVisitor
+    );
+    assert_eq!(planned_row_report.diagnostics.total_records, 6);
+    assert!(planned_row_report.diagnostics.requires_append_delta_scan);
     assert!(
         !context
             .has_match(vec![FSEPredicate::range(
@@ -789,6 +955,35 @@ fn csv_tombstoned_append_delta_archive_query_context_excludes_tombstones() {
     let existence_report = context
         .has_match_with_stats(score_and_class_predicates())
         .unwrap();
+    let planned_row_report = context
+        .query_row_ids_with_planning(score_and_class_predicates())
+        .unwrap();
+    let planned_row_result_report = context
+        .query_rows_with_planning(score_and_class_predicates())
+        .unwrap();
+    let planned_count_report = context
+        .count_matches_with_planning(score_and_class_predicates())
+        .unwrap();
+    let planned_existence_report = context
+        .has_match_with_planning(score_and_class_predicates())
+        .unwrap();
+    let mut visited_row_ids = Vec::new();
+    let planned_row_id_visit_report = context
+        .visit_row_ids_with_planning(score_and_class_predicates(), |row_id| {
+            visited_row_ids.push(row_id);
+        })
+        .unwrap();
+    let mut visited_rows = Vec::new();
+    let planned_row_visit_report = context
+        .visit_rows_with_planning(score_and_class_predicates(), |row_id, record| {
+            visited_rows.push((
+                row_id,
+                record
+                    .value_named(&context.context.context.schema, "class")
+                    .cloned(),
+            ));
+        })
+        .unwrap();
 
     assert_eq!(
         context.tombstones.row_ids(),
@@ -820,6 +1015,53 @@ fn csv_tombstoned_append_delta_archive_query_context_excludes_tombstones() {
     assert!(context.has_match(score_and_class_predicates()).unwrap());
     assert!(existence_report.has_match);
     assert_eq!(existence_report.stats.total_records, 6);
+    assert_eq!(planned_row_report.row_ids, row_ids);
+    assert_eq!(
+        planned_row_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIds
+    );
+    assert_eq!(
+        planned_row_result_report
+            .rows
+            .iter()
+            .map(|row| row.row_id())
+            .collect::<Vec<_>>(),
+        row_ids
+    );
+    assert_eq!(
+        planned_row_result_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Rows
+    );
+    assert_eq!(planned_count_report.matched_records, 1);
+    assert_eq!(
+        planned_count_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Count
+    );
+    assert!(planned_existence_report.has_match);
+    assert_eq!(
+        planned_existence_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Existence
+    );
+    assert_eq!(visited_row_ids, row_ids);
+    assert_eq!(planned_row_id_visit_report.visited_records, 1);
+    assert_eq!(
+        planned_row_id_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIdVisitor
+    );
+    assert_eq!(
+        visited_rows,
+        vec![(
+            RowId::new(100),
+            Some(FSEValue::Category("alpha".to_string()))
+        )]
+    );
+    assert_eq!(planned_row_visit_report.visited_records, 1);
+    assert_eq!(
+        planned_row_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowVisitor
+    );
+    assert_eq!(planned_row_report.diagnostics.total_records, 6);
+    assert!(planned_row_report.diagnostics.requires_append_delta_scan);
     assert!(!context.has_match(score_18_and_class_predicates()).unwrap());
     assert!(
         !context
@@ -961,7 +1203,7 @@ fn csv_tombstoned_archive_query_context_excludes_tombstoned_rows_from_fse_file()
 }
 
 #[test]
-fn csv_tombstoned_archive_query_context_reports_execution_stats_from_fse_file() {
+fn csv_tombstoned_archive_query_context_reports_execution_stats_and_planning_from_fse_file() {
     let builder = builder();
     let csv_path = temp_csv_path("tombstoned-query-context-stats");
     let archive_path = temp_archive_path("tombstoned-query-context-stats", ".fse");
@@ -997,6 +1239,35 @@ fn csv_tombstoned_archive_query_context_reports_execution_stats_from_fse_file() 
     let existence_report = tombstoned
         .has_match_with_stats(score_18_and_class_predicates())
         .unwrap();
+    let planned_row_report = tombstoned
+        .query_row_ids_with_planning(score_and_class_predicates())
+        .unwrap();
+    let planned_row_result_report = tombstoned
+        .query_rows_with_planning(score_and_class_predicates())
+        .unwrap();
+    let planned_count_report = tombstoned
+        .count_matches_with_planning(score_and_class_predicates())
+        .unwrap();
+    let planned_existence_report = tombstoned
+        .has_match_with_planning(score_18_and_class_predicates())
+        .unwrap();
+    let mut visited_row_ids = Vec::new();
+    let planned_row_id_visit_report = tombstoned
+        .visit_row_ids_with_planning(score_and_class_predicates(), |row_id| {
+            visited_row_ids.push(row_id);
+        })
+        .unwrap();
+    let mut visited_rows = Vec::new();
+    let planned_row_visit_report = tombstoned
+        .visit_rows_with_planning(score_and_class_predicates(), |row_id, record| {
+            visited_rows.push((
+                row_id,
+                record
+                    .value_named(&tombstoned.context.schema, "class")
+                    .cloned(),
+            ));
+        })
+        .unwrap();
 
     assert_eq!(row_report.row_ids, vec![RowId::new(100)]);
     assert_eq!(row_report.stats.matched_records, 1);
@@ -1013,6 +1284,53 @@ fn csv_tombstoned_archive_query_context_reports_execution_stats_from_fse_file() 
     assert_eq!(count_report.stats.matched_records, 1);
     assert!(!existence_report.has_match);
     assert_eq!(existence_report.stats.matched_records, 0);
+    assert_eq!(planned_row_report.row_ids, row_report.row_ids);
+    assert_eq!(
+        planned_row_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIds
+    );
+    assert_eq!(
+        planned_row_result_report
+            .rows
+            .iter()
+            .map(|row| row.row_id())
+            .collect::<Vec<_>>(),
+        row_report.row_ids
+    );
+    assert_eq!(
+        planned_row_result_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Rows
+    );
+    assert_eq!(planned_count_report.matched_records, 1);
+    assert_eq!(
+        planned_count_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Count
+    );
+    assert!(!planned_existence_report.has_match);
+    assert_eq!(
+        planned_existence_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Existence
+    );
+    assert_eq!(visited_row_ids, row_report.row_ids);
+    assert_eq!(planned_row_id_visit_report.visited_records, 1);
+    assert_eq!(
+        planned_row_id_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIdVisitor
+    );
+    assert_eq!(
+        visited_rows,
+        vec![(
+            RowId::new(100),
+            Some(FSEValue::Category("alpha".to_string()))
+        )]
+    );
+    assert_eq!(planned_row_visit_report.visited_records, 1);
+    assert_eq!(
+        planned_row_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowVisitor
+    );
+    assert_eq!(planned_row_report.diagnostics.total_records, 4);
+    assert!(!planned_row_report.diagnostics.requires_append_delta_scan);
 
     let _ = fs::remove_file(csv_path);
     let _ = fs::remove_file(archive_path);

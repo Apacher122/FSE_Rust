@@ -6,8 +6,8 @@ use std::path::Path;
 
 use crate::build::FSEBuilder;
 use crate::data::{
-    FSECsvFileImportError, FSECsvImportOptions, FSECsvSchemaInferenceOptions, FSERecordBatch,
-    FSERecordBatchError, FSESchema, FSESchemaDimensionMapping, RowId,
+    FSECsvFileImportError, FSECsvImportOptions, FSECsvSchemaInferenceOptions, FSERecord,
+    FSERecordBatch, FSERecordBatchError, FSESchema, FSESchemaDimensionMapping, RowId,
     infer_schema_from_csv_file_with_options, record_batch_from_csv_file, row_ids_from_csv_file,
 };
 use crate::encoding::{
@@ -34,9 +34,10 @@ use crate::persistence::{
 };
 use crate::query::{
     FSEPredicate, IndexedTypedQueryError, IndexedTypedQueryReport, IndexedTypedQueryRowReport,
-    QueryCountReport, QueryExistenceReport, TypedAppendDeltaQueryView, TypedQueryIndex,
-    TypedQueryPlan, TypedQueryPlanBuilder, TypedQueryPlanError, TypedQueryResultRow,
-    TypedRowTombstoneSet,
+    PlannedTypedQueryCountReport, PlannedTypedQueryExistenceReport, PlannedTypedQueryRowIdReport,
+    PlannedTypedQueryRowReport, PlannedTypedQueryVisitReport, QueryCountReport,
+    QueryExistenceReport, TypedAppendDeltaQueryView, TypedQueryIndex, TypedQueryPlan,
+    TypedQueryPlanBuilder, TypedQueryPlanError, TypedQueryResultRow, TypedRowTombstoneSet,
 };
 
 /// Error returned when CSV archive import fails.
@@ -686,6 +687,19 @@ impl FSECsvArchiveQueryContext {
         Ok(self.query_index.query_row_ids_with_stats(&plan)?)
     }
 
+    /// Queries matching row identifiers using typed query planning diagnostics.
+    pub fn query_row_ids_with_planning<I>(
+        &self,
+        predicates: I,
+    ) -> Result<PlannedTypedQueryRowIdReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.query_index.query_row_ids_with_planning(&plan)?)
+    }
+
     /// Queries matching typed rows from predicates.
     pub fn query_rows<I>(
         &self,
@@ -712,6 +726,19 @@ impl FSECsvArchiveQueryContext {
         Ok(self.query_index.query_rows_with_stats(&plan)?)
     }
 
+    /// Queries matching typed rows using typed query planning diagnostics.
+    pub fn query_rows_with_planning<I>(
+        &self,
+        predicates: I,
+    ) -> Result<PlannedTypedQueryRowReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.query_index.query_rows_with_planning(&plan)?)
+    }
+
     /// Counts records matching predicates.
     pub fn count_matches<I>(&self, predicates: I) -> Result<usize, FSECsvArchiveQueryError>
     where
@@ -735,6 +762,19 @@ impl FSECsvArchiveQueryContext {
         Ok(self.query_index.count_matches_with_stats(&plan)?)
     }
 
+    /// Counts records using typed query planning diagnostics.
+    pub fn count_matches_with_planning<I>(
+        &self,
+        predicates: I,
+    ) -> Result<PlannedTypedQueryCountReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.query_index.count_matches_with_planning(&plan)?)
+    }
+
     /// Returns true when predicates match at least one record.
     pub fn has_match<I>(&self, predicates: I) -> Result<bool, FSECsvArchiveQueryError>
     where
@@ -756,6 +796,51 @@ impl FSECsvArchiveQueryContext {
         let plan = self.try_plan(predicates)?;
 
         Ok(self.query_index.has_match_with_stats(&plan)?)
+    }
+
+    /// Returns existence query output using typed query planning diagnostics.
+    pub fn has_match_with_planning<I>(
+        &self,
+        predicates: I,
+    ) -> Result<PlannedTypedQueryExistenceReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.query_index.has_match_with_planning(&plan)?)
+    }
+
+    /// Visits matching row identifiers using typed query planning diagnostics.
+    pub fn visit_row_ids_with_planning<I, F>(
+        &self,
+        predicates: I,
+        visitor: F,
+    ) -> Result<PlannedTypedQueryVisitReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+        F: FnMut(RowId),
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .query_index
+            .visit_row_ids_with_planning(&plan, visitor)?)
+    }
+
+    /// Visits matching typed rows using typed query planning diagnostics.
+    pub fn visit_rows_with_planning<I, F>(
+        &self,
+        predicates: I,
+        visitor: F,
+    ) -> Result<PlannedTypedQueryVisitReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+        F: FnMut(RowId, &FSERecord),
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.query_index.visit_rows_with_planning(&plan, visitor)?)
     }
 }
 
@@ -835,6 +920,23 @@ impl FSECsvTombstonedAppendDeltaArchiveQueryContext {
             .query_row_ids_with_stats_excluding_tombstones(&plan, &self.tombstones)?)
     }
 
+    /// Queries matching row identifiers using typed query planning diagnostics
+    /// and excludes tombstones.
+    pub fn query_row_ids_with_planning<I>(
+        &self,
+        predicates: I,
+    ) -> Result<PlannedTypedQueryRowIdReport, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .append_delta_view()?
+            .query_row_ids_with_planning_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
     /// Queries matching typed rows and excludes tombstones.
     pub fn query_rows<I>(
         &self,
@@ -865,6 +967,23 @@ impl FSECsvTombstonedAppendDeltaArchiveQueryContext {
             .context
             .append_delta_view()?
             .query_rows_with_stats_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
+    /// Queries matching typed rows using typed query planning diagnostics and
+    /// excludes tombstones.
+    pub fn query_rows_with_planning<I>(
+        &self,
+        predicates: I,
+    ) -> Result<PlannedTypedQueryRowReport, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .append_delta_view()?
+            .query_rows_with_planning_excluding_tombstones(&plan, &self.tombstones)?)
     }
 
     /// Counts records matching predicates while excluding tombstones.
@@ -899,6 +1018,23 @@ impl FSECsvTombstonedAppendDeltaArchiveQueryContext {
             .count_matches_with_stats_excluding_tombstones(&plan, &self.tombstones)?)
     }
 
+    /// Counts records using typed query planning diagnostics and excludes
+    /// tombstones.
+    pub fn count_matches_with_planning<I>(
+        &self,
+        predicates: I,
+    ) -> Result<PlannedTypedQueryCountReport, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .append_delta_view()?
+            .count_matches_with_planning_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
     /// Returns true when predicates match at least one non-tombstoned record.
     pub fn has_match<I>(&self, predicates: I) -> Result<bool, FSECsvAppendDeltaArchiveQueryError>
     where
@@ -926,6 +1062,61 @@ impl FSECsvTombstonedAppendDeltaArchiveQueryContext {
             .context
             .append_delta_view()?
             .has_match_with_stats_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
+    /// Returns existence query output using typed query planning diagnostics
+    /// and excludes tombstones.
+    pub fn has_match_with_planning<I>(
+        &self,
+        predicates: I,
+    ) -> Result<PlannedTypedQueryExistenceReport, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .append_delta_view()?
+            .has_match_with_planning_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
+    /// Visits matching row identifiers using typed query planning diagnostics
+    /// and excludes tombstones.
+    pub fn visit_row_ids_with_planning<I, F>(
+        &self,
+        predicates: I,
+        visitor: F,
+    ) -> Result<PlannedTypedQueryVisitReport, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+        F: FnMut(RowId),
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .append_delta_view()?
+            .visit_row_ids_with_planning_excluding_tombstones(&plan, &self.tombstones, visitor)?)
+    }
+
+    /// Visits matching typed rows using typed query planning diagnostics and
+    /// excludes tombstones.
+    pub fn visit_rows_with_planning<I, F>(
+        &self,
+        predicates: I,
+        visitor: F,
+    ) -> Result<PlannedTypedQueryVisitReport, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+        F: FnMut(RowId, &FSERecord),
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .append_delta_view()?
+            .visit_rows_with_planning_excluding_tombstones(&plan, &self.tombstones, visitor)?)
     }
 }
 
@@ -975,6 +1166,22 @@ impl FSECsvAppendDeltaArchiveQueryContext {
         Ok(self.append_delta_view()?.query_row_ids_with_stats(&plan)?)
     }
 
+    /// Queries matching row identifiers using typed query planning diagnostics
+    /// across base and appended records.
+    pub fn query_row_ids_with_planning<I>(
+        &self,
+        predicates: I,
+    ) -> Result<PlannedTypedQueryRowIdReport, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .append_delta_view()?
+            .query_row_ids_with_planning(&plan)?)
+    }
+
     /// Queries matching typed rows from predicates across base and appended records.
     pub fn query_rows<I>(
         &self,
@@ -1000,6 +1207,20 @@ impl FSECsvAppendDeltaArchiveQueryContext {
         let plan = self.try_plan(predicates)?;
 
         Ok(self.append_delta_view()?.query_rows_with_stats(&plan)?)
+    }
+
+    /// Queries matching typed rows using typed query planning diagnostics across
+    /// base and appended records.
+    pub fn query_rows_with_planning<I>(
+        &self,
+        predicates: I,
+    ) -> Result<PlannedTypedQueryRowReport, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.append_delta_view()?.query_rows_with_planning(&plan)?)
     }
 
     /// Counts records matching predicates across base and appended records.
@@ -1029,6 +1250,22 @@ impl FSECsvAppendDeltaArchiveQueryContext {
         Ok(self.append_delta_view()?.count_matches_with_stats(&plan)?)
     }
 
+    /// Counts records using typed query planning diagnostics across base and
+    /// appended records.
+    pub fn count_matches_with_planning<I>(
+        &self,
+        predicates: I,
+    ) -> Result<PlannedTypedQueryCountReport, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .append_delta_view()?
+            .count_matches_with_planning(&plan)?)
+    }
+
     /// Returns true when predicates match at least one base or appended record.
     pub fn has_match<I>(&self, predicates: I) -> Result<bool, FSECsvAppendDeltaArchiveQueryError>
     where
@@ -1051,6 +1288,56 @@ impl FSECsvAppendDeltaArchiveQueryContext {
         let plan = self.try_plan(predicates)?;
 
         Ok(self.append_delta_view()?.has_match_with_stats(&plan)?)
+    }
+
+    /// Returns existence query output using typed query planning diagnostics
+    /// across base and appended records.
+    pub fn has_match_with_planning<I>(
+        &self,
+        predicates: I,
+    ) -> Result<PlannedTypedQueryExistenceReport, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self.append_delta_view()?.has_match_with_planning(&plan)?)
+    }
+
+    /// Visits matching row identifiers using typed query planning diagnostics
+    /// across base and appended records.
+    pub fn visit_row_ids_with_planning<I, F>(
+        &self,
+        predicates: I,
+        visitor: F,
+    ) -> Result<PlannedTypedQueryVisitReport, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+        F: FnMut(RowId),
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .append_delta_view()?
+            .visit_row_ids_with_planning(&plan, visitor)?)
+    }
+
+    /// Visits matching typed rows using typed query planning diagnostics across
+    /// base and appended records.
+    pub fn visit_rows_with_planning<I, F>(
+        &self,
+        predicates: I,
+        visitor: F,
+    ) -> Result<PlannedTypedQueryVisitReport, FSECsvAppendDeltaArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+        F: FnMut(RowId, &FSERecord),
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .append_delta_view()?
+            .visit_rows_with_planning(&plan, visitor)?)
     }
 }
 
@@ -1097,6 +1384,23 @@ impl FSECsvTombstonedArchiveQueryContext {
             .query_row_ids_with_stats_excluding_tombstones(&plan, &self.tombstones)?)
     }
 
+    /// Queries matching row identifiers using typed query planning diagnostics
+    /// and excludes tombstones.
+    pub fn query_row_ids_with_planning<I>(
+        &self,
+        predicates: I,
+    ) -> Result<PlannedTypedQueryRowIdReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .query_index
+            .query_row_ids_with_planning_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
     /// Queries matching typed rows from predicates and excludes tombstones.
     pub fn query_rows<I>(
         &self,
@@ -1129,6 +1433,23 @@ impl FSECsvTombstonedArchiveQueryContext {
             .query_rows_with_stats_excluding_tombstones(&plan, &self.tombstones)?)
     }
 
+    /// Queries matching typed rows using typed query planning diagnostics and
+    /// excludes tombstones.
+    pub fn query_rows_with_planning<I>(
+        &self,
+        predicates: I,
+    ) -> Result<PlannedTypedQueryRowReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .query_index
+            .query_rows_with_planning_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
     /// Counts records matching predicates while excluding tombstones.
     pub fn count_matches<I>(&self, predicates: I) -> Result<usize, FSECsvArchiveQueryError>
     where
@@ -1158,6 +1479,23 @@ impl FSECsvTombstonedArchiveQueryContext {
             .count_matches_with_stats_excluding_tombstones(&plan, &self.tombstones)?)
     }
 
+    /// Counts records using typed query planning diagnostics and excludes
+    /// tombstones.
+    pub fn count_matches_with_planning<I>(
+        &self,
+        predicates: I,
+    ) -> Result<PlannedTypedQueryCountReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .query_index
+            .count_matches_with_planning_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
     /// Returns true when predicates match at least one non-tombstoned record.
     pub fn has_match<I>(&self, predicates: I) -> Result<bool, FSECsvArchiveQueryError>
     where
@@ -1185,6 +1523,61 @@ impl FSECsvTombstonedArchiveQueryContext {
             .context
             .query_index
             .has_match_with_stats_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
+    /// Returns existence query output using typed query planning diagnostics
+    /// and excludes tombstones.
+    pub fn has_match_with_planning<I>(
+        &self,
+        predicates: I,
+    ) -> Result<PlannedTypedQueryExistenceReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .query_index
+            .has_match_with_planning_excluding_tombstones(&plan, &self.tombstones)?)
+    }
+
+    /// Visits matching row identifiers using typed query planning diagnostics
+    /// and excludes tombstones.
+    pub fn visit_row_ids_with_planning<I, F>(
+        &self,
+        predicates: I,
+        visitor: F,
+    ) -> Result<PlannedTypedQueryVisitReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+        F: FnMut(RowId),
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .query_index
+            .visit_row_ids_with_planning_excluding_tombstones(&plan, &self.tombstones, visitor)?)
+    }
+
+    /// Visits matching typed rows using typed query planning diagnostics and
+    /// excludes tombstones.
+    pub fn visit_rows_with_planning<I, F>(
+        &self,
+        predicates: I,
+        visitor: F,
+    ) -> Result<PlannedTypedQueryVisitReport, FSECsvArchiveQueryError>
+    where
+        I: IntoIterator<Item = FSEPredicate>,
+        F: FnMut(RowId, &FSERecord),
+    {
+        let plan = self.try_plan(predicates)?;
+
+        Ok(self
+            .context
+            .query_index
+            .visit_rows_with_planning_excluding_tombstones(&plan, &self.tombstones, visitor)?)
     }
 }
 
