@@ -1,32 +1,9 @@
 //! Query tests.
 
-mod conjunctive_typed_plan_tests;
 mod correctness_tests;
-mod count_tests;
-mod execution_batch_tests;
-mod execution_contract_tests;
-mod execution_covered_leaf_tests;
-mod execution_determinism_tests;
-mod execution_into_tests;
-mod execution_options_tests;
-mod execution_parallel_workload_tests;
-mod execution_root_coverage_tests;
-mod exists_tests;
-mod predicate_compiler_tests;
-mod predicate_evaluator_tests;
-mod predicate_tests;
+mod execution;
+mod predicate;
 mod query_region_tests;
 mod query_tests;
-mod reference_tests;
 mod traversal_classification_tests;
-mod typed_append_delta_tests;
-mod typed_execution_tests;
-mod typed_index_parity_tests;
-mod typed_index_tests;
-mod typed_indexed_execution_tests;
-mod typed_plan_builder_tests;
-mod typed_plan_tests;
-mod typed_planned_execution_tests;
-mod typed_planning_tests;
-mod typed_tombstone_execution_tests;
-mod visitor_tests;
+mod typed;
