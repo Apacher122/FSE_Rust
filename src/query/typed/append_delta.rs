@@ -15,6 +15,7 @@ use super::execution::{
 };
 use super::index::TypedQueryIndex;
 use super::plan::TypedQueryPlan;
+use super::planned_execution::{PlannedTypedQueryRowIdReport, planned_append_delta_query_row_ids};
 use super::tombstone::TypedRowTombstoneSet;
 
 /// Borrowed query view over an indexed base batch and an appended record batch.
@@ -79,6 +80,14 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
         row_ids.extend(appended_row_ids);
 
         Ok(IndexedTypedQueryReport { row_ids, stats })
+    }
+
+    /// Evaluates row-id output using typed query planning diagnostics.
+    pub fn query_row_ids_with_planning(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<PlannedTypedQueryRowIdReport, IndexedTypedQueryError> {
+        planned_append_delta_query_row_ids(self, plan)
     }
 
     /// Evaluates a typed query plan and excludes tombstoned row identifiers.

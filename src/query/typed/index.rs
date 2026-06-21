@@ -25,6 +25,7 @@ use super::execution::{
     visit_indexed_typed_query_rows, visit_indexed_typed_query_rows_excluding_tombstones,
 };
 use super::plan::TypedQueryPlan;
+use super::planned_execution::{PlannedTypedQueryRowIdReport, planned_typed_query_row_ids};
 use super::tombstone::TypedRowTombstoneSet;
 
 /// Error returned when typed indexed query construction fails.
@@ -174,6 +175,14 @@ impl TypedQueryIndex {
         plan: &TypedQueryPlan,
     ) -> Result<IndexedTypedQueryReport, IndexedTypedQueryError> {
         evaluate_indexed_typed_query_plan_with_stats(&self.index, &self.batch, plan)
+    }
+
+    /// Evaluates row-id output using typed query planning diagnostics.
+    pub fn query_row_ids_with_planning(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<PlannedTypedQueryRowIdReport, IndexedTypedQueryError> {
+        planned_typed_query_row_ids(self, plan)
     }
 
     /// Evaluates a typed query plan and excludes tombstoned row identifiers.

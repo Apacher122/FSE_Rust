@@ -7,6 +7,7 @@ pub mod evaluator;
 pub mod execution;
 pub mod index;
 pub mod plan;
+pub mod planned_execution;
 pub mod planning;
 pub mod predicate;
 pub mod tombstone;
@@ -39,6 +40,9 @@ pub use execution::{
 };
 pub use index::{TypedQueryIndex, TypedQueryIndexAppendError, TypedQueryIndexBuildError};
 pub use plan::{TypedQueryPlan, TypedQueryPlanError};
+pub use planned_execution::{
+    PlannedTypedQueryRowIdReport, planned_append_delta_query_row_ids, planned_typed_query_row_ids,
+};
 pub use planning::{
     TypedQueryExecutionStrategy, TypedQueryOutputContract, TypedQueryPlanningDiagnostics,
     TypedQueryPlanningReason, plan_typed_append_delta_query_execution, plan_typed_query_execution,
