@@ -2316,6 +2316,24 @@ fn csv_archive_update_lifecycle_preserves_logical_results_after_maintenance() {
         .fields()
         .to_vec();
     let before_row_ids = before.query_row_ids(score_and_class_predicates()).unwrap();
+    let before_planned_row_report = before
+        .query_row_ids_with_planning(score_and_class_predicates())
+        .unwrap();
+    let before_planned_row_result_report = before
+        .query_rows_with_planning(score_and_class_predicates())
+        .unwrap();
+    let before_planned_count_report = before
+        .count_matches_with_planning(score_and_class_predicates())
+        .unwrap();
+    let before_planned_existence_report = before
+        .has_match_with_planning(score_and_class_predicates())
+        .unwrap();
+    let mut before_visited_row_ids = Vec::new();
+    let before_planned_visit_report = before
+        .visit_row_ids_with_planning(score_and_class_predicates(), |row_id| {
+            before_visited_row_ids.push(row_id);
+        })
+        .unwrap();
 
     let result = maintain_typed_query_index_archive_from_append_delta_archive(
         &archive_path,
@@ -2327,11 +2345,119 @@ fn csv_archive_update_lifecycle_preserves_logical_results_after_maintenance() {
     .unwrap();
     let after = load_csv_typed_query_index_archive_context(&archive_path).unwrap();
     let after_row_ids = after.query_row_ids(score_and_class_predicates()).unwrap();
+    let after_planned_row_report = after
+        .query_row_ids_with_planning(score_and_class_predicates())
+        .unwrap();
+    let after_planned_row_result_report = after
+        .query_rows_with_planning(score_and_class_predicates())
+        .unwrap();
+    let after_planned_count_report = after
+        .count_matches_with_planning(score_and_class_predicates())
+        .unwrap();
+    let after_planned_existence_report = after
+        .has_match_with_planning(score_and_class_predicates())
+        .unwrap();
+    let mut after_visited_row_ids = Vec::new();
+    let after_planned_visit_report = after
+        .visit_row_ids_with_planning(score_and_class_predicates(), |row_id| {
+            after_visited_row_ids.push(row_id);
+        })
+        .unwrap();
     let cleared_append = load_typed_record_batch_archive_file(&append_path).unwrap();
     let cleared_tombstones = load_typed_row_tombstone_archive_file(&tombstone_path).unwrap();
 
     assert_eq!(before_row_ids, vec![RowId::new(103), RowId::new(104)]);
     assert_eq!(after_row_ids, before_row_ids);
+    assert_eq!(before_planned_row_report.row_ids, before_row_ids);
+    assert_eq!(
+        before_planned_row_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIds
+    );
+    assert_eq!(
+        before_planned_row_result_report
+            .rows
+            .iter()
+            .map(|row| row.row_id())
+            .collect::<Vec<_>>(),
+        before_row_ids
+    );
+    assert_eq!(
+        before_planned_row_result_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Rows
+    );
+    assert_eq!(
+        before_planned_count_report.matched_records,
+        before_row_ids.len()
+    );
+    assert_eq!(
+        before_planned_count_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Count
+    );
+    assert!(before_planned_existence_report.has_match);
+    assert_eq!(
+        before_planned_existence_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Existence
+    );
+    assert_eq!(before_visited_row_ids, before_row_ids);
+    assert_eq!(
+        before_planned_visit_report.visited_records,
+        before_row_ids.len()
+    );
+    assert_eq!(
+        before_planned_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIdVisitor
+    );
+    assert_eq!(before_planned_row_report.diagnostics.total_records, 6);
+    assert!(
+        before_planned_row_report
+            .diagnostics
+            .requires_append_delta_scan
+    );
+    assert_eq!(after_planned_row_report.row_ids, before_row_ids);
+    assert_eq!(
+        after_planned_row_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIds
+    );
+    assert_eq!(
+        after_planned_row_result_report
+            .rows
+            .iter()
+            .map(|row| row.row_id())
+            .collect::<Vec<_>>(),
+        before_row_ids
+    );
+    assert_eq!(
+        after_planned_row_result_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Rows
+    );
+    assert_eq!(
+        after_planned_count_report.matched_records,
+        before_row_ids.len()
+    );
+    assert_eq!(
+        after_planned_count_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Count
+    );
+    assert!(after_planned_existence_report.has_match);
+    assert_eq!(
+        after_planned_existence_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Existence
+    );
+    assert_eq!(after_visited_row_ids, before_row_ids);
+    assert_eq!(
+        after_planned_visit_report.visited_records,
+        before_row_ids.len()
+    );
+    assert_eq!(
+        after_planned_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIdVisitor
+    );
+    assert_eq!(after_planned_row_report.diagnostics.total_records, 5);
+    assert!(
+        !after_planned_row_report
+            .diagnostics
+            .requires_append_delta_scan
+    );
     assert_eq!(result.decision.action, FSEArchiveMaintenanceAction::Rebuild);
     assert_eq!(
         result.decision.reason,
