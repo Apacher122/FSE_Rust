@@ -4,8 +4,8 @@ use crate::data::RowId;
 
 use super::append_delta::TypedAppendDeltaQueryView;
 use super::execution::{
-    IndexedTypedQueryError, count_typed_query_matches, evaluate_typed_query_plan,
-    typed_query_has_match,
+    IndexedTypedQueryError, TypedQueryResultRow, count_typed_query_matches,
+    evaluate_typed_query_plan, evaluate_typed_query_plan_rows, typed_query_has_match,
 };
 use super::index::TypedQueryIndex;
 use super::plan::TypedQueryPlan;
@@ -19,6 +19,16 @@ use super::planning::{
 pub struct PlannedTypedQueryRowIdReport {
     /// Matching logical row identifiers.
     pub row_ids: Vec<RowId>,
+
+    /// Planning diagnostics used to choose the execution path.
+    pub diagnostics: TypedQueryPlanningDiagnostics,
+}
+
+/// Typed row query result paired with planning diagnostics.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlannedTypedQueryRowReport {
+    /// Matching typed rows.
+    pub rows: Vec<TypedQueryResultRow>,
 
     /// Planning diagnostics used to choose the execution path.
     pub diagnostics: TypedQueryPlanningDiagnostics,
@@ -56,6 +66,17 @@ pub fn planned_typed_query_row_ids(
         row_ids,
         diagnostics,
     })
+}
+
+/// Evaluates typed row output using the typed query planner.
+pub fn planned_typed_query_rows(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+) -> Result<PlannedTypedQueryRowReport, IndexedTypedQueryError> {
+    let diagnostics = plan_typed_query_execution(index, plan, TypedQueryOutputContract::Rows);
+    let rows = execute_index_row_strategy(index, plan, diagnostics.strategy)?;
+
+    Ok(PlannedTypedQueryRowReport { rows, diagnostics })
 }
 
 /// Evaluates count output using the typed query planner.
@@ -99,6 +120,18 @@ pub fn planned_append_delta_query_row_ids(
         row_ids,
         diagnostics,
     })
+}
+
+/// Evaluates append-delta typed row output using the typed query planner.
+pub fn planned_append_delta_query_rows(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+) -> Result<PlannedTypedQueryRowReport, IndexedTypedQueryError> {
+    let diagnostics =
+        plan_typed_append_delta_query_execution(view, plan, TypedQueryOutputContract::Rows);
+    let rows = execute_append_delta_row_strategy(view, plan, diagnostics.strategy)?;
+
+    Ok(PlannedTypedQueryRowReport { rows, diagnostics })
 }
 
 /// Evaluates append-delta count output using the typed query planner.
@@ -145,6 +178,22 @@ fn execute_index_strategy(
     }
 }
 
+fn execute_index_row_strategy(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    strategy: TypedQueryExecutionStrategy,
+) -> Result<Vec<TypedQueryResultRow>, IndexedTypedQueryError> {
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => Ok(Vec::new()),
+        TypedQueryExecutionStrategy::FlatScan => {
+            Ok(evaluate_typed_query_plan_rows(index.batch(), plan))
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            index.query_rows(plan)
+        }
+    }
+}
+
 fn execute_index_count_strategy(
     index: &TypedQueryIndex,
     plan: &TypedQueryPlan,
@@ -187,6 +236,24 @@ fn execute_append_delta_strategy(
         }
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
             view.query_row_ids(plan)
+        }
+    }
+}
+
+fn execute_append_delta_row_strategy(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    strategy: TypedQueryExecutionStrategy,
+) -> Result<Vec<TypedQueryResultRow>, IndexedTypedQueryError> {
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => Ok(Vec::new()),
+        TypedQueryExecutionStrategy::FlatScan => {
+            let mut rows = evaluate_typed_query_plan_rows(view.base().batch(), plan);
+            rows.extend(evaluate_typed_query_plan_rows(view.appended(), plan));
+            Ok(rows)
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            view.query_rows(plan)
         }
     }
 }

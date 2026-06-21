@@ -42,9 +42,10 @@ pub use index::{TypedQueryIndex, TypedQueryIndexAppendError, TypedQueryIndexBuil
 pub use plan::{TypedQueryPlan, TypedQueryPlanError};
 pub use planned_execution::{
     PlannedTypedQueryCountReport, PlannedTypedQueryExistenceReport, PlannedTypedQueryRowIdReport,
-    planned_append_delta_query_count_matches, planned_append_delta_query_has_match,
-    planned_append_delta_query_row_ids, planned_typed_query_count_matches,
-    planned_typed_query_has_match, planned_typed_query_row_ids,
+    PlannedTypedQueryRowReport, planned_append_delta_query_count_matches,
+    planned_append_delta_query_has_match, planned_append_delta_query_row_ids,
+    planned_append_delta_query_rows, planned_typed_query_count_matches,
+    planned_typed_query_has_match, planned_typed_query_row_ids, planned_typed_query_rows,
 };
 pub use planning::{
     TypedQueryExecutionStrategy, TypedQueryOutputContract, TypedQueryPlanningDiagnostics,

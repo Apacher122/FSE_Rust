@@ -10,9 +10,10 @@ use crate::encoding::{
 use crate::query::{
     FSEPredicate, FSEPredicateField, TypedAppendDeltaQueryView, TypedQueryExecutionStrategy,
     TypedQueryIndex, TypedQueryOutputContract, TypedQueryPlan, TypedQueryPlanBuilder,
-    TypedQueryPlanningReason, planned_append_delta_query_count_matches,
+    TypedQueryPlanningReason, TypedQueryResultRow, planned_append_delta_query_count_matches,
     planned_append_delta_query_has_match, planned_append_delta_query_row_ids,
-    planned_typed_query_count_matches, planned_typed_query_has_match, planned_typed_query_row_ids,
+    planned_append_delta_query_rows, planned_typed_query_count_matches,
+    planned_typed_query_has_match, planned_typed_query_row_ids, planned_typed_query_rows,
 };
 
 #[test]
@@ -97,6 +98,41 @@ fn planned_typed_query_row_ids_returns_noop_for_unsatisfiable_plan() {
     assert_eq!(
         report.diagnostics.reason,
         TypedQueryPlanningReason::UnsatisfiablePlan
+    );
+}
+
+#[test]
+fn planned_typed_query_rows_uses_fse_for_selective_plan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let plan = score_and_class_plan(&schema, &mapping);
+
+    let report = query_index
+        .query_rows_with_planning(&plan)
+        .expect("planned typed rows should execute");
+    let function_report =
+        planned_typed_query_rows(&query_index, &plan).expect("planned typed rows should execute");
+
+    assert_eq!(
+        result_row_ids(&report.rows),
+        vec![RowId::new(100), RowId::new(103)]
+    );
+    assert_eq!(function_report, report);
+    assert_eq!(
+        report.diagnostics.output_contract,
+        TypedQueryOutputContract::Rows
+    );
+    assert_eq!(
+        report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::FseTraversal
+    );
+    assert_eq!(
+        report.diagnostics.reason,
+        TypedQueryPlanningReason::SelectiveGeometry
     );
 }
 
@@ -191,6 +227,44 @@ fn planned_append_delta_query_row_ids_uses_hybrid_plan() {
         vec![RowId::new(100), RowId::new(103), RowId::new(104)]
     );
     assert_eq!(function_report, report);
+    assert_eq!(
+        report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::Hybrid
+    );
+    assert_eq!(
+        report.diagnostics.reason,
+        TypedQueryPlanningReason::AppendDeltaScan
+    );
+}
+
+#[test]
+fn planned_append_delta_query_rows_uses_hybrid_plan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let view = TypedAppendDeltaQueryView::try_new(&query_index, &appended)
+        .expect("valid append batch should produce a query view");
+    let plan = score_and_class_plan(&schema, &mapping);
+
+    let report = view
+        .query_rows_with_planning(&plan)
+        .expect("planned append-delta rows should execute");
+    let function_report = planned_append_delta_query_rows(&view, &plan)
+        .expect("planned append-delta rows should execute");
+
+    assert_eq!(
+        result_row_ids(&report.rows),
+        vec![RowId::new(100), RowId::new(103), RowId::new(104)]
+    );
+    assert_eq!(function_report, report);
+    assert_eq!(
+        report.diagnostics.output_contract,
+        TypedQueryOutputContract::Rows
+    );
     assert_eq!(
         report.diagnostics.strategy,
         TypedQueryExecutionStrategy::Hybrid
@@ -385,6 +459,10 @@ fn entity_record(
 
 fn class_encoder() -> CategoricalDictionaryEncoder {
     CategoricalDictionaryEncoder::new(vec!["alpha".to_string(), "beta".to_string()])
+}
+
+fn result_row_ids(rows: &[TypedQueryResultRow]) -> Vec<RowId> {
+    rows.iter().map(|row| row.row_id()).collect()
 }
 
 fn builder() -> FSEBuilder {

@@ -17,8 +17,9 @@ use super::index::TypedQueryIndex;
 use super::plan::TypedQueryPlan;
 use super::planned_execution::{
     PlannedTypedQueryCountReport, PlannedTypedQueryExistenceReport, PlannedTypedQueryRowIdReport,
-    planned_append_delta_query_count_matches, planned_append_delta_query_has_match,
-    planned_append_delta_query_row_ids,
+    PlannedTypedQueryRowReport, planned_append_delta_query_count_matches,
+    planned_append_delta_query_has_match, planned_append_delta_query_row_ids,
+    planned_append_delta_query_rows,
 };
 use super::tombstone::TypedRowTombstoneSet;
 
@@ -165,6 +166,14 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
         rows.extend(appended_rows);
 
         Ok(IndexedTypedQueryRowReport { rows, stats })
+    }
+
+    /// Evaluates typed row output using typed query planning diagnostics.
+    pub fn query_rows_with_planning(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<PlannedTypedQueryRowReport, IndexedTypedQueryError> {
+        planned_append_delta_query_rows(self, plan)
     }
 
     /// Evaluates a typed query plan, returns rows, and excludes tombstoned row

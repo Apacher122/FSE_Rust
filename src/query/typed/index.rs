@@ -27,7 +27,8 @@ use super::execution::{
 use super::plan::TypedQueryPlan;
 use super::planned_execution::{
     PlannedTypedQueryCountReport, PlannedTypedQueryExistenceReport, PlannedTypedQueryRowIdReport,
-    planned_typed_query_count_matches, planned_typed_query_has_match, planned_typed_query_row_ids,
+    PlannedTypedQueryRowReport, planned_typed_query_count_matches, planned_typed_query_has_match,
+    planned_typed_query_row_ids, planned_typed_query_rows,
 };
 use super::tombstone::TypedRowTombstoneSet;
 
@@ -231,6 +232,14 @@ impl TypedQueryIndex {
         plan: &TypedQueryPlan,
     ) -> Result<IndexedTypedQueryRowReport, IndexedTypedQueryError> {
         evaluate_indexed_typed_query_plan_rows_with_stats(&self.index, &self.batch, plan)
+    }
+
+    /// Evaluates typed row output using typed query planning diagnostics.
+    pub fn query_rows_with_planning(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<PlannedTypedQueryRowReport, IndexedTypedQueryError> {
+        planned_typed_query_rows(self, plan)
     }
 
     /// Evaluates a typed query plan, returns typed rows, and excludes
