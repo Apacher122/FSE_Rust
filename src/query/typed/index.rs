@@ -25,7 +25,10 @@ use super::execution::{
     visit_indexed_typed_query_rows, visit_indexed_typed_query_rows_excluding_tombstones,
 };
 use super::plan::TypedQueryPlan;
-use super::planned_execution::{PlannedTypedQueryRowIdReport, planned_typed_query_row_ids};
+use super::planned_execution::{
+    PlannedTypedQueryCountReport, PlannedTypedQueryExistenceReport, PlannedTypedQueryRowIdReport,
+    planned_typed_query_count_matches, planned_typed_query_has_match, planned_typed_query_row_ids,
+};
 use super::tombstone::TypedRowTombstoneSet;
 
 /// Error returned when typed indexed query construction fails.
@@ -273,6 +276,14 @@ impl TypedQueryIndex {
         count_indexed_typed_query_matches_with_stats(&self.index, &self.batch, plan)
     }
 
+    /// Counts records using typed query planning diagnostics.
+    pub fn count_matches_with_planning(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<PlannedTypedQueryCountReport, IndexedTypedQueryError> {
+        planned_typed_query_count_matches(self, plan)
+    }
+
     /// Counts records that satisfy a typed query plan while excluding
     /// tombstoned row identifiers.
     pub fn count_matches_excluding_tombstones(
@@ -314,6 +325,14 @@ impl TypedQueryIndex {
         plan: &TypedQueryPlan,
     ) -> Result<QueryExistenceReport, IndexedTypedQueryError> {
         indexed_typed_query_has_match_with_stats(&self.index, &self.batch, plan)
+    }
+
+    /// Returns typed existence using typed query planning diagnostics.
+    pub fn has_match_with_planning(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<PlannedTypedQueryExistenceReport, IndexedTypedQueryError> {
+        planned_typed_query_has_match(self, plan)
     }
 
     /// Returns true when a typed query plan matches at least one

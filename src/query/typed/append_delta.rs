@@ -15,7 +15,11 @@ use super::execution::{
 };
 use super::index::TypedQueryIndex;
 use super::plan::TypedQueryPlan;
-use super::planned_execution::{PlannedTypedQueryRowIdReport, planned_append_delta_query_row_ids};
+use super::planned_execution::{
+    PlannedTypedQueryCountReport, PlannedTypedQueryExistenceReport, PlannedTypedQueryRowIdReport,
+    planned_append_delta_query_count_matches, planned_append_delta_query_has_match,
+    planned_append_delta_query_row_ids,
+};
 use super::tombstone::TypedRowTombstoneSet;
 
 /// Borrowed query view over an indexed base batch and an appended record batch.
@@ -232,6 +236,14 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
         })
     }
 
+    /// Counts records using typed query planning diagnostics.
+    pub fn count_matches_with_planning(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<PlannedTypedQueryCountReport, IndexedTypedQueryError> {
+        planned_append_delta_query_count_matches(self, plan)
+    }
+
     /// Counts records that satisfy a typed query plan while excluding
     /// tombstoned row identifiers.
     pub fn count_matches_excluding_tombstones(
@@ -311,6 +323,14 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
             inspected_records: base_inspected_records + appended_report.inspected_records,
             stats,
         })
+    }
+
+    /// Returns typed existence using typed query planning diagnostics.
+    pub fn has_match_with_planning(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<PlannedTypedQueryExistenceReport, IndexedTypedQueryError> {
+        planned_append_delta_query_has_match(self, plan)
     }
 
     /// Returns true when a typed query plan matches at least one

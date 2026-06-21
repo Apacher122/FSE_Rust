@@ -9,8 +9,10 @@ use crate::encoding::{
 };
 use crate::query::{
     FSEPredicate, FSEPredicateField, TypedAppendDeltaQueryView, TypedQueryExecutionStrategy,
-    TypedQueryIndex, TypedQueryPlan, TypedQueryPlanBuilder, TypedQueryPlanningReason,
-    planned_append_delta_query_row_ids, planned_typed_query_row_ids,
+    TypedQueryIndex, TypedQueryOutputContract, TypedQueryPlan, TypedQueryPlanBuilder,
+    TypedQueryPlanningReason, planned_append_delta_query_count_matches,
+    planned_append_delta_query_has_match, planned_append_delta_query_row_ids,
+    planned_typed_query_count_matches, planned_typed_query_has_match, planned_typed_query_row_ids,
 };
 
 #[test]
@@ -99,6 +101,73 @@ fn planned_typed_query_row_ids_returns_noop_for_unsatisfiable_plan() {
 }
 
 #[test]
+fn planned_typed_query_count_matches_uses_flat_scan_for_broad_plan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let plan = score_range_plan(&schema, &mapping, 0.0, 100.0);
+
+    let report = query_index
+        .count_matches_with_planning(&plan)
+        .expect("planned typed count should execute");
+    let function_report = planned_typed_query_count_matches(&query_index, &plan)
+        .expect("planned typed count should execute");
+
+    assert_eq!(report.matched_records, 4);
+    assert_eq!(function_report, report);
+    assert_eq!(
+        report.diagnostics.output_contract,
+        TypedQueryOutputContract::Count
+    );
+    assert_eq!(
+        report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::FlatScan
+    );
+    assert_eq!(
+        report.diagnostics.reason,
+        TypedQueryPlanningReason::BroadGeometry
+    );
+}
+
+#[test]
+fn planned_typed_query_has_match_returns_noop_for_unsatisfiable_plan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let low_plan = score_range_plan(&schema, &mapping, 0.0, 1.0);
+    let high_plan = score_range_plan(&schema, &mapping, 10.0, 11.0);
+    let plan = TypedQueryPlan::conjunctive(vec![low_plan, high_plan])
+        .expect("valid plans should produce a conjunction");
+
+    let report = query_index
+        .has_match_with_planning(&plan)
+        .expect("planned typed existence should execute");
+    let function_report = planned_typed_query_has_match(&query_index, &plan)
+        .expect("planned typed existence should execute");
+
+    assert!(!report.has_match);
+    assert_eq!(function_report, report);
+    assert_eq!(
+        report.diagnostics.output_contract,
+        TypedQueryOutputContract::Existence
+    );
+    assert_eq!(
+        report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::NoOp
+    );
+    assert_eq!(
+        report.diagnostics.reason,
+        TypedQueryPlanningReason::UnsatisfiablePlan
+    );
+}
+
+#[test]
 fn planned_append_delta_query_row_ids_uses_hybrid_plan() {
     let schema = entity_schema();
     let mapping = entity_mapping(&schema);
@@ -122,6 +191,76 @@ fn planned_append_delta_query_row_ids_uses_hybrid_plan() {
         vec![RowId::new(100), RowId::new(103), RowId::new(104)]
     );
     assert_eq!(function_report, report);
+    assert_eq!(
+        report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::Hybrid
+    );
+    assert_eq!(
+        report.diagnostics.reason,
+        TypedQueryPlanningReason::AppendDeltaScan
+    );
+}
+
+#[test]
+fn planned_append_delta_query_count_matches_uses_hybrid_plan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let view = TypedAppendDeltaQueryView::try_new(&query_index, &appended)
+        .expect("valid append batch should produce a query view");
+    let plan = score_and_class_plan(&schema, &mapping);
+
+    let report = view
+        .count_matches_with_planning(&plan)
+        .expect("planned append-delta count should execute");
+    let function_report = planned_append_delta_query_count_matches(&view, &plan)
+        .expect("planned append-delta count should execute");
+
+    assert_eq!(report.matched_records, 3);
+    assert_eq!(function_report, report);
+    assert_eq!(
+        report.diagnostics.output_contract,
+        TypedQueryOutputContract::Count
+    );
+    assert_eq!(
+        report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::Hybrid
+    );
+    assert_eq!(
+        report.diagnostics.reason,
+        TypedQueryPlanningReason::AppendDeltaScan
+    );
+}
+
+#[test]
+fn planned_append_delta_query_has_match_uses_hybrid_plan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let view = TypedAppendDeltaQueryView::try_new(&query_index, &appended)
+        .expect("valid append batch should produce a query view");
+    let plan = score_and_class_plan(&schema, &mapping);
+
+    let report = view
+        .has_match_with_planning(&plan)
+        .expect("planned append-delta existence should execute");
+    let function_report = planned_append_delta_query_has_match(&view, &plan)
+        .expect("planned append-delta existence should execute");
+
+    assert!(report.has_match);
+    assert_eq!(function_report, report);
+    assert_eq!(
+        report.diagnostics.output_contract,
+        TypedQueryOutputContract::Existence
+    );
     assert_eq!(
         report.diagnostics.strategy,
         TypedQueryExecutionStrategy::Hybrid
