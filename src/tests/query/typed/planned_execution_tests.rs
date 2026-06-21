@@ -10,12 +10,14 @@ use crate::encoding::{
 use crate::query::{
     FSEPredicate, FSEPredicateField, TypedAppendDeltaQueryView, TypedQueryExecutionStrategy,
     TypedQueryIndex, TypedQueryOutputContract, TypedQueryPlan, TypedQueryPlanBuilder,
-    TypedQueryPlanningReason, TypedQueryResultRow, planned_append_delta_query_count_matches,
-    planned_append_delta_query_has_match, planned_append_delta_query_row_ids,
+    TypedQueryPlanningReason, TypedQueryResultRow, TypedRowTombstoneSet,
+    planned_append_delta_query_count_matches, planned_append_delta_query_has_match,
+    planned_append_delta_query_row_ids, planned_append_delta_query_row_ids_excluding_tombstones,
     planned_append_delta_query_rows, planned_append_delta_query_visit_row_ids,
     planned_append_delta_query_visit_rows, planned_typed_query_count_matches,
-    planned_typed_query_has_match, planned_typed_query_row_ids, planned_typed_query_rows,
-    planned_typed_query_visit_row_ids, planned_typed_query_visit_rows,
+    planned_typed_query_has_match, planned_typed_query_has_match_excluding_tombstones,
+    planned_typed_query_row_ids, planned_typed_query_rows, planned_typed_query_visit_row_ids,
+    planned_typed_query_visit_rows,
 };
 
 #[test]
@@ -211,6 +213,86 @@ fn planned_typed_query_visit_rows_uses_fse_for_selective_plan() {
     assert_eq!(
         report.diagnostics.reason,
         TypedQueryPlanningReason::SelectiveGeometry
+    );
+}
+
+#[test]
+fn planned_typed_query_excludes_tombstones_from_planned_contracts() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let plan = score_and_class_plan(&schema, &mapping);
+    let tombstones = TypedRowTombstoneSet::from_row_ids(vec![RowId::new(100)]);
+    let mut visited_row_ids = Vec::new();
+    let mut visited_rows = Vec::new();
+
+    let row_id_report = query_index
+        .query_row_ids_with_planning_excluding_tombstones(&plan, &tombstones)
+        .expect("planned tombstone row-id query should execute");
+    let row_report = query_index
+        .query_rows_with_planning_excluding_tombstones(&plan, &tombstones)
+        .expect("planned tombstone row query should execute");
+    let count_report = query_index
+        .count_matches_with_planning_excluding_tombstones(&plan, &tombstones)
+        .expect("planned tombstone count query should execute");
+    let existence_report =
+        planned_typed_query_has_match_excluding_tombstones(&query_index, &plan, &tombstones)
+            .expect("planned tombstone existence query should execute");
+    let row_id_visit_report = query_index
+        .visit_row_ids_with_planning_excluding_tombstones(&plan, &tombstones, |row_id| {
+            visited_row_ids.push(row_id);
+        })
+        .expect("planned tombstone row-id visitor should execute");
+    let row_visit_report = query_index
+        .visit_rows_with_planning_excluding_tombstones(&plan, &tombstones, |row_id, _record| {
+            visited_rows.push(row_id);
+        })
+        .expect("planned tombstone row visitor should execute");
+
+    assert_eq!(row_id_report.row_ids, vec![RowId::new(103)]);
+    assert_eq!(result_row_ids(&row_report.rows), vec![RowId::new(103)]);
+    assert_eq!(count_report.matched_records, 1);
+    assert!(existence_report.has_match);
+    assert_eq!(visited_row_ids, vec![RowId::new(103)]);
+    assert_eq!(visited_rows, vec![RowId::new(103)]);
+    assert_eq!(row_id_visit_report.visited_records, 1);
+    assert_eq!(row_visit_report.visited_records, 1);
+    assert_eq!(
+        row_id_report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::FseTraversal
+    );
+    assert_eq!(
+        row_id_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIds
+    );
+}
+
+#[test]
+fn planned_typed_query_existence_returns_false_when_all_matches_are_tombstoned() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let plan = score_and_class_plan(&schema, &mapping);
+    let tombstones = TypedRowTombstoneSet::from_row_ids(vec![RowId::new(100), RowId::new(103)]);
+
+    let report = query_index
+        .has_match_with_planning_excluding_tombstones(&plan, &tombstones)
+        .expect("planned tombstone existence query should execute");
+
+    assert!(!report.has_match);
+    assert_eq!(
+        report.diagnostics.output_contract,
+        TypedQueryOutputContract::Existence
+    );
+    assert_eq!(
+        report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::FseTraversal
     );
 }
 
@@ -437,6 +519,69 @@ fn planned_append_delta_query_visit_rows_uses_hybrid_plan() {
     );
     assert_eq!(
         report.diagnostics.reason,
+        TypedQueryPlanningReason::AppendDeltaScan
+    );
+}
+
+#[test]
+fn planned_append_delta_query_excludes_tombstones_from_planned_contracts() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let view = TypedAppendDeltaQueryView::try_new(&query_index, &appended)
+        .expect("valid append batch should produce a query view");
+    let plan = score_and_class_plan(&schema, &mapping);
+    let tombstones = TypedRowTombstoneSet::from_row_ids(vec![RowId::new(103)]);
+    let mut visited_row_ids = Vec::new();
+    let mut visited_rows = Vec::new();
+
+    let row_id_report =
+        planned_append_delta_query_row_ids_excluding_tombstones(&view, &plan, &tombstones)
+            .expect("planned append-delta tombstone row-id query should execute");
+    let row_report = view
+        .query_rows_with_planning_excluding_tombstones(&plan, &tombstones)
+        .expect("planned append-delta tombstone row query should execute");
+    let count_report = view
+        .count_matches_with_planning_excluding_tombstones(&plan, &tombstones)
+        .expect("planned append-delta tombstone count query should execute");
+    let existence_report = view
+        .has_match_with_planning_excluding_tombstones(&plan, &tombstones)
+        .expect("planned append-delta tombstone existence query should execute");
+    let row_id_visit_report = view
+        .visit_row_ids_with_planning_excluding_tombstones(&plan, &tombstones, |row_id| {
+            visited_row_ids.push(row_id);
+        })
+        .expect("planned append-delta tombstone row-id visitor should execute");
+    let row_visit_report = view
+        .visit_rows_with_planning_excluding_tombstones(&plan, &tombstones, |row_id, _record| {
+            visited_rows.push(row_id);
+        })
+        .expect("planned append-delta tombstone row visitor should execute");
+
+    assert_eq!(
+        row_id_report.row_ids,
+        vec![RowId::new(100), RowId::new(104)]
+    );
+    assert_eq!(
+        result_row_ids(&row_report.rows),
+        vec![RowId::new(100), RowId::new(104)]
+    );
+    assert_eq!(count_report.matched_records, 2);
+    assert!(existence_report.has_match);
+    assert_eq!(visited_row_ids, vec![RowId::new(100), RowId::new(104)]);
+    assert_eq!(visited_rows, vec![RowId::new(100), RowId::new(104)]);
+    assert_eq!(row_id_visit_report.visited_records, 2);
+    assert_eq!(row_visit_report.visited_records, 2);
+    assert_eq!(
+        row_id_report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::Hybrid
+    );
+    assert_eq!(
+        row_id_report.diagnostics.reason,
         TypedQueryPlanningReason::AppendDeltaScan
     );
 }

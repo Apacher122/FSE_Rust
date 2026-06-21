@@ -18,9 +18,15 @@ use super::plan::TypedQueryPlan;
 use super::planned_execution::{
     PlannedTypedQueryCountReport, PlannedTypedQueryExistenceReport, PlannedTypedQueryRowIdReport,
     PlannedTypedQueryRowReport, PlannedTypedQueryVisitReport,
-    planned_append_delta_query_count_matches, planned_append_delta_query_has_match,
-    planned_append_delta_query_row_ids, planned_append_delta_query_rows,
-    planned_append_delta_query_visit_row_ids, planned_append_delta_query_visit_rows,
+    planned_append_delta_query_count_matches,
+    planned_append_delta_query_count_matches_excluding_tombstones,
+    planned_append_delta_query_has_match,
+    planned_append_delta_query_has_match_excluding_tombstones, planned_append_delta_query_row_ids,
+    planned_append_delta_query_row_ids_excluding_tombstones, planned_append_delta_query_rows,
+    planned_append_delta_query_rows_excluding_tombstones, planned_append_delta_query_visit_row_ids,
+    planned_append_delta_query_visit_row_ids_excluding_tombstones,
+    planned_append_delta_query_visit_rows,
+    planned_append_delta_query_visit_rows_excluding_tombstones,
 };
 use super::tombstone::TypedRowTombstoneSet;
 
@@ -94,6 +100,16 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
         plan: &TypedQueryPlan,
     ) -> Result<PlannedTypedQueryRowIdReport, IndexedTypedQueryError> {
         planned_append_delta_query_row_ids(self, plan)
+    }
+
+    /// Evaluates row-id output with tombstone filtering using typed query
+    /// planning diagnostics.
+    pub fn query_row_ids_with_planning_excluding_tombstones(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+    ) -> Result<PlannedTypedQueryRowIdReport, IndexedTypedQueryError> {
+        planned_append_delta_query_row_ids_excluding_tombstones(self, plan, tombstones)
     }
 
     /// Evaluates a typed query plan and excludes tombstoned row identifiers.
@@ -177,6 +193,16 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
         planned_append_delta_query_rows(self, plan)
     }
 
+    /// Evaluates typed row output with tombstone filtering using typed query
+    /// planning diagnostics.
+    pub fn query_rows_with_planning_excluding_tombstones(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+    ) -> Result<PlannedTypedQueryRowReport, IndexedTypedQueryError> {
+        planned_append_delta_query_rows_excluding_tombstones(self, plan, tombstones)
+    }
+
     /// Evaluates a typed query plan, returns rows, and excludes tombstoned row
     /// identifiers.
     pub fn query_rows_excluding_tombstones(
@@ -252,6 +278,16 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
         plan: &TypedQueryPlan,
     ) -> Result<PlannedTypedQueryCountReport, IndexedTypedQueryError> {
         planned_append_delta_query_count_matches(self, plan)
+    }
+
+    /// Counts records with tombstone filtering using typed query planning
+    /// diagnostics.
+    pub fn count_matches_with_planning_excluding_tombstones(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+    ) -> Result<PlannedTypedQueryCountReport, IndexedTypedQueryError> {
+        planned_append_delta_query_count_matches_excluding_tombstones(self, plan, tombstones)
     }
 
     /// Counts records that satisfy a typed query plan while excluding
@@ -343,6 +379,16 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
         planned_append_delta_query_has_match(self, plan)
     }
 
+    /// Returns typed existence with tombstone filtering using typed query
+    /// planning diagnostics.
+    pub fn has_match_with_planning_excluding_tombstones(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+    ) -> Result<PlannedTypedQueryExistenceReport, IndexedTypedQueryError> {
+        planned_append_delta_query_has_match_excluding_tombstones(self, plan, tombstones)
+    }
+
     /// Returns true when a typed query plan matches at least one
     /// non-tombstoned record.
     pub fn has_match_excluding_tombstones(
@@ -432,6 +478,22 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
         planned_append_delta_query_visit_row_ids(self, plan, visitor)
     }
 
+    /// Visits row identifiers with tombstone filtering using typed query
+    /// planning diagnostics.
+    pub fn visit_row_ids_with_planning_excluding_tombstones<F>(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+        visitor: F,
+    ) -> Result<PlannedTypedQueryVisitReport, IndexedTypedQueryError>
+    where
+        F: FnMut(RowId),
+    {
+        planned_append_delta_query_visit_row_ids_excluding_tombstones(
+            self, plan, tombstones, visitor,
+        )
+    }
+
     /// Visits matching row identifiers for a typed query plan while excluding
     /// tombstoned row identifiers.
     pub fn visit_row_ids_excluding_tombstones<F>(
@@ -487,6 +549,20 @@ impl<'a> TypedAppendDeltaQueryView<'a> {
         F: FnMut(RowId, &FSERecord),
     {
         planned_append_delta_query_visit_rows(self, plan, visitor)
+    }
+
+    /// Visits typed rows with tombstone filtering using typed query planning
+    /// diagnostics.
+    pub fn visit_rows_with_planning_excluding_tombstones<F>(
+        &self,
+        plan: &TypedQueryPlan,
+        tombstones: &TypedRowTombstoneSet,
+        visitor: F,
+    ) -> Result<PlannedTypedQueryVisitReport, IndexedTypedQueryError>
+    where
+        F: FnMut(RowId, &FSERecord),
+    {
+        planned_append_delta_query_visit_rows_excluding_tombstones(self, plan, tombstones, visitor)
     }
 
     /// Visits matching typed records for a typed query plan while excluding

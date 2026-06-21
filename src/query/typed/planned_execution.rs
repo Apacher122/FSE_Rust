@@ -1,6 +1,6 @@
 //! Typed query execution through planning decisions.
 
-use crate::data::{FSERecord, RowId};
+use crate::data::{FSERecord, FSERecordBatch, RowId};
 
 use super::append_delta::TypedAppendDeltaQueryView;
 use super::execution::{
@@ -13,6 +13,7 @@ use super::planning::{
     TypedQueryExecutionStrategy, TypedQueryOutputContract, TypedQueryPlanningDiagnostics,
     plan_typed_append_delta_query_execution, plan_typed_query_execution,
 };
+use super::tombstone::TypedRowTombstoneSet;
 
 /// Row-id query result paired with planning diagnostics.
 #[derive(Clone, Debug, PartialEq)]
@@ -78,6 +79,22 @@ pub fn planned_typed_query_row_ids(
     })
 }
 
+/// Evaluates row-id output with tombstone filtering using the typed query planner.
+pub fn planned_typed_query_row_ids_excluding_tombstones(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Result<PlannedTypedQueryRowIdReport, IndexedTypedQueryError> {
+    let diagnostics = plan_typed_query_execution(index, plan, TypedQueryOutputContract::RowIds);
+    let row_ids =
+        execute_index_strategy_excluding_tombstones(index, plan, tombstones, diagnostics.strategy)?;
+
+    Ok(PlannedTypedQueryRowIdReport {
+        row_ids,
+        diagnostics,
+    })
+}
+
 /// Evaluates typed row output using the typed query planner.
 pub fn planned_typed_query_rows(
     index: &TypedQueryIndex,
@@ -85,6 +102,23 @@ pub fn planned_typed_query_rows(
 ) -> Result<PlannedTypedQueryRowReport, IndexedTypedQueryError> {
     let diagnostics = plan_typed_query_execution(index, plan, TypedQueryOutputContract::Rows);
     let rows = execute_index_row_strategy(index, plan, diagnostics.strategy)?;
+
+    Ok(PlannedTypedQueryRowReport { rows, diagnostics })
+}
+
+/// Evaluates typed row output with tombstone filtering using the typed query planner.
+pub fn planned_typed_query_rows_excluding_tombstones(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Result<PlannedTypedQueryRowReport, IndexedTypedQueryError> {
+    let diagnostics = plan_typed_query_execution(index, plan, TypedQueryOutputContract::Rows);
+    let rows = execute_index_row_strategy_excluding_tombstones(
+        index,
+        plan,
+        tombstones,
+        diagnostics.strategy,
+    )?;
 
     Ok(PlannedTypedQueryRowReport { rows, diagnostics })
 }
@@ -102,6 +136,32 @@ where
         plan_typed_query_execution(index, plan, TypedQueryOutputContract::RowIdVisitor);
     let visited_records =
         execute_index_row_id_visitor_strategy(index, plan, diagnostics.strategy, visitor)?;
+
+    Ok(PlannedTypedQueryVisitReport {
+        visited_records,
+        diagnostics,
+    })
+}
+
+/// Visits row identifiers with tombstone filtering using the typed query planner.
+pub fn planned_typed_query_visit_row_ids_excluding_tombstones<F>(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    visitor: F,
+) -> Result<PlannedTypedQueryVisitReport, IndexedTypedQueryError>
+where
+    F: FnMut(RowId),
+{
+    let diagnostics =
+        plan_typed_query_execution(index, plan, TypedQueryOutputContract::RowIdVisitor);
+    let visited_records = execute_index_row_id_visitor_strategy_excluding_tombstones(
+        index,
+        plan,
+        tombstones,
+        diagnostics.strategy,
+        visitor,
+    )?;
 
     Ok(PlannedTypedQueryVisitReport {
         visited_records,
@@ -128,6 +188,31 @@ where
     })
 }
 
+/// Visits typed rows with tombstone filtering using the typed query planner.
+pub fn planned_typed_query_visit_rows_excluding_tombstones<F>(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    visitor: F,
+) -> Result<PlannedTypedQueryVisitReport, IndexedTypedQueryError>
+where
+    F: FnMut(RowId, &FSERecord),
+{
+    let diagnostics = plan_typed_query_execution(index, plan, TypedQueryOutputContract::RowVisitor);
+    let visited_records = execute_index_row_visitor_strategy_excluding_tombstones(
+        index,
+        plan,
+        tombstones,
+        diagnostics.strategy,
+        visitor,
+    )?;
+
+    Ok(PlannedTypedQueryVisitReport {
+        visited_records,
+        diagnostics,
+    })
+}
+
 /// Evaluates count output using the typed query planner.
 pub fn planned_typed_query_count_matches(
     index: &TypedQueryIndex,
@@ -142,6 +227,26 @@ pub fn planned_typed_query_count_matches(
     })
 }
 
+/// Evaluates count output with tombstone filtering using the typed query planner.
+pub fn planned_typed_query_count_matches_excluding_tombstones(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Result<PlannedTypedQueryCountReport, IndexedTypedQueryError> {
+    let diagnostics = plan_typed_query_execution(index, plan, TypedQueryOutputContract::Count);
+    let matched_records = execute_index_count_strategy_excluding_tombstones(
+        index,
+        plan,
+        tombstones,
+        diagnostics.strategy,
+    )?;
+
+    Ok(PlannedTypedQueryCountReport {
+        matched_records,
+        diagnostics,
+    })
+}
+
 /// Evaluates existence output using the typed query planner.
 pub fn planned_typed_query_has_match(
     index: &TypedQueryIndex,
@@ -149,6 +254,26 @@ pub fn planned_typed_query_has_match(
 ) -> Result<PlannedTypedQueryExistenceReport, IndexedTypedQueryError> {
     let diagnostics = plan_typed_query_execution(index, plan, TypedQueryOutputContract::Existence);
     let has_match = execute_index_existence_strategy(index, plan, diagnostics.strategy)?;
+
+    Ok(PlannedTypedQueryExistenceReport {
+        has_match,
+        diagnostics,
+    })
+}
+
+/// Evaluates existence output with tombstone filtering using the typed query planner.
+pub fn planned_typed_query_has_match_excluding_tombstones(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Result<PlannedTypedQueryExistenceReport, IndexedTypedQueryError> {
+    let diagnostics = plan_typed_query_execution(index, plan, TypedQueryOutputContract::Existence);
+    let has_match = execute_index_existence_strategy_excluding_tombstones(
+        index,
+        plan,
+        tombstones,
+        diagnostics.strategy,
+    )?;
 
     Ok(PlannedTypedQueryExistenceReport {
         has_match,
@@ -171,6 +296,27 @@ pub fn planned_append_delta_query_row_ids(
     })
 }
 
+/// Evaluates append-delta row-id output with tombstone filtering using the planner.
+pub fn planned_append_delta_query_row_ids_excluding_tombstones(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Result<PlannedTypedQueryRowIdReport, IndexedTypedQueryError> {
+    let diagnostics =
+        plan_typed_append_delta_query_execution(view, plan, TypedQueryOutputContract::RowIds);
+    let row_ids = execute_append_delta_strategy_excluding_tombstones(
+        view,
+        plan,
+        tombstones,
+        diagnostics.strategy,
+    )?;
+
+    Ok(PlannedTypedQueryRowIdReport {
+        row_ids,
+        diagnostics,
+    })
+}
+
 /// Evaluates append-delta typed row output using the typed query planner.
 pub fn planned_append_delta_query_rows(
     view: &TypedAppendDeltaQueryView<'_>,
@@ -179,6 +325,24 @@ pub fn planned_append_delta_query_rows(
     let diagnostics =
         plan_typed_append_delta_query_execution(view, plan, TypedQueryOutputContract::Rows);
     let rows = execute_append_delta_row_strategy(view, plan, diagnostics.strategy)?;
+
+    Ok(PlannedTypedQueryRowReport { rows, diagnostics })
+}
+
+/// Evaluates append-delta typed row output with tombstone filtering using the planner.
+pub fn planned_append_delta_query_rows_excluding_tombstones(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Result<PlannedTypedQueryRowReport, IndexedTypedQueryError> {
+    let diagnostics =
+        plan_typed_append_delta_query_execution(view, plan, TypedQueryOutputContract::Rows);
+    let rows = execute_append_delta_row_strategy_excluding_tombstones(
+        view,
+        plan,
+        tombstones,
+        diagnostics.strategy,
+    )?;
 
     Ok(PlannedTypedQueryRowReport { rows, diagnostics })
 }
@@ -196,6 +360,32 @@ where
         plan_typed_append_delta_query_execution(view, plan, TypedQueryOutputContract::RowIdVisitor);
     let visited_records =
         execute_append_delta_row_id_visitor_strategy(view, plan, diagnostics.strategy, visitor)?;
+
+    Ok(PlannedTypedQueryVisitReport {
+        visited_records,
+        diagnostics,
+    })
+}
+
+/// Visits append-delta row identifiers with tombstone filtering using the planner.
+pub fn planned_append_delta_query_visit_row_ids_excluding_tombstones<F>(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    visitor: F,
+) -> Result<PlannedTypedQueryVisitReport, IndexedTypedQueryError>
+where
+    F: FnMut(RowId),
+{
+    let diagnostics =
+        plan_typed_append_delta_query_execution(view, plan, TypedQueryOutputContract::RowIdVisitor);
+    let visited_records = execute_append_delta_row_id_visitor_strategy_excluding_tombstones(
+        view,
+        plan,
+        tombstones,
+        diagnostics.strategy,
+        visitor,
+    )?;
 
     Ok(PlannedTypedQueryVisitReport {
         visited_records,
@@ -223,6 +413,32 @@ where
     })
 }
 
+/// Visits append-delta typed rows with tombstone filtering using the planner.
+pub fn planned_append_delta_query_visit_rows_excluding_tombstones<F>(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    visitor: F,
+) -> Result<PlannedTypedQueryVisitReport, IndexedTypedQueryError>
+where
+    F: FnMut(RowId, &FSERecord),
+{
+    let diagnostics =
+        plan_typed_append_delta_query_execution(view, plan, TypedQueryOutputContract::RowVisitor);
+    let visited_records = execute_append_delta_row_visitor_strategy_excluding_tombstones(
+        view,
+        plan,
+        tombstones,
+        diagnostics.strategy,
+        visitor,
+    )?;
+
+    Ok(PlannedTypedQueryVisitReport {
+        visited_records,
+        diagnostics,
+    })
+}
+
 /// Evaluates append-delta count output using the typed query planner.
 pub fn planned_append_delta_query_count_matches(
     view: &TypedAppendDeltaQueryView<'_>,
@@ -231,6 +447,27 @@ pub fn planned_append_delta_query_count_matches(
     let diagnostics =
         plan_typed_append_delta_query_execution(view, plan, TypedQueryOutputContract::Count);
     let matched_records = execute_append_delta_count_strategy(view, plan, diagnostics.strategy)?;
+
+    Ok(PlannedTypedQueryCountReport {
+        matched_records,
+        diagnostics,
+    })
+}
+
+/// Evaluates append-delta count output with tombstone filtering using the planner.
+pub fn planned_append_delta_query_count_matches_excluding_tombstones(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Result<PlannedTypedQueryCountReport, IndexedTypedQueryError> {
+    let diagnostics =
+        plan_typed_append_delta_query_execution(view, plan, TypedQueryOutputContract::Count);
+    let matched_records = execute_append_delta_count_strategy_excluding_tombstones(
+        view,
+        plan,
+        tombstones,
+        diagnostics.strategy,
+    )?;
 
     Ok(PlannedTypedQueryCountReport {
         matched_records,
@@ -253,6 +490,27 @@ pub fn planned_append_delta_query_has_match(
     })
 }
 
+/// Evaluates append-delta existence output with tombstone filtering using the planner.
+pub fn planned_append_delta_query_has_match_excluding_tombstones(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Result<PlannedTypedQueryExistenceReport, IndexedTypedQueryError> {
+    let diagnostics =
+        plan_typed_append_delta_query_execution(view, plan, TypedQueryOutputContract::Existence);
+    let has_match = execute_append_delta_existence_strategy_excluding_tombstones(
+        view,
+        plan,
+        tombstones,
+        diagnostics.strategy,
+    )?;
+
+    Ok(PlannedTypedQueryExistenceReport {
+        has_match,
+        diagnostics,
+    })
+}
+
 fn execute_index_strategy(
     index: &TypedQueryIndex,
     plan: &TypedQueryPlan,
@@ -263,6 +521,23 @@ fn execute_index_strategy(
         TypedQueryExecutionStrategy::FlatScan => Ok(evaluate_typed_query_plan(index.batch(), plan)),
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
             index.query_row_ids(plan)
+        }
+    }
+}
+
+fn execute_index_strategy_excluding_tombstones(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    strategy: TypedQueryExecutionStrategy,
+) -> Result<Vec<RowId>, IndexedTypedQueryError> {
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => Ok(Vec::new()),
+        TypedQueryExecutionStrategy::FlatScan => {
+            Ok(visible_row_ids_from_batch(index.batch(), plan, tombstones))
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            index.query_row_ids_excluding_tombstones(plan, tombstones)
         }
     }
 }
@@ -297,6 +572,37 @@ where
     Ok(visited_records)
 }
 
+fn execute_index_row_id_visitor_strategy_excluding_tombstones<F>(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    strategy: TypedQueryExecutionStrategy,
+    mut visitor: F,
+) -> Result<usize, IndexedTypedQueryError>
+where
+    F: FnMut(RowId),
+{
+    let mut visited_records = 0;
+
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => {}
+        TypedQueryExecutionStrategy::FlatScan => {
+            for row_id in visible_row_ids_from_batch(index.batch(), plan, tombstones) {
+                visited_records += 1;
+                visitor(row_id);
+            }
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            index.visit_row_ids_excluding_tombstones(plan, tombstones, |row_id| {
+                visited_records += 1;
+                visitor(row_id);
+            })?;
+        }
+    }
+
+    Ok(visited_records)
+}
+
 fn execute_index_row_strategy(
     index: &TypedQueryIndex,
     plan: &TypedQueryPlan,
@@ -309,6 +615,23 @@ fn execute_index_row_strategy(
         }
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
             index.query_rows(plan)
+        }
+    }
+}
+
+fn execute_index_row_strategy_excluding_tombstones(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    strategy: TypedQueryExecutionStrategy,
+) -> Result<Vec<TypedQueryResultRow>, IndexedTypedQueryError> {
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => Ok(Vec::new()),
+        TypedQueryExecutionStrategy::FlatScan => {
+            Ok(visible_rows_from_batch(index.batch(), plan, tombstones))
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            index.query_rows_excluding_tombstones(plan, tombstones)
         }
     }
 }
@@ -343,6 +666,37 @@ where
     Ok(visited_records)
 }
 
+fn execute_index_row_visitor_strategy_excluding_tombstones<F>(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    strategy: TypedQueryExecutionStrategy,
+    mut visitor: F,
+) -> Result<usize, IndexedTypedQueryError>
+where
+    F: FnMut(RowId, &FSERecord),
+{
+    let mut visited_records = 0;
+
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => {}
+        TypedQueryExecutionStrategy::FlatScan => {
+            for row in visible_rows_from_batch(index.batch(), plan, tombstones) {
+                visited_records += 1;
+                visitor(row.row_id(), row.record());
+            }
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            index.visit_rows_excluding_tombstones(plan, tombstones, |row_id, record| {
+                visited_records += 1;
+                visitor(row_id, record);
+            })?;
+        }
+    }
+
+    Ok(visited_records)
+}
+
 fn execute_index_count_strategy(
     index: &TypedQueryIndex,
     plan: &TypedQueryPlan,
@@ -353,6 +707,23 @@ fn execute_index_count_strategy(
         TypedQueryExecutionStrategy::FlatScan => Ok(count_typed_query_matches(index.batch(), plan)),
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
             index.count_matches(plan)
+        }
+    }
+}
+
+fn execute_index_count_strategy_excluding_tombstones(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    strategy: TypedQueryExecutionStrategy,
+) -> Result<usize, IndexedTypedQueryError> {
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => Ok(0),
+        TypedQueryExecutionStrategy::FlatScan => {
+            Ok(visible_row_ids_from_batch(index.batch(), plan, tombstones).len())
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            index.count_matches_excluding_tombstones(plan, tombstones)
         }
     }
 }
@@ -371,6 +742,25 @@ fn execute_index_existence_strategy(
     }
 }
 
+fn execute_index_existence_strategy_excluding_tombstones(
+    index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    strategy: TypedQueryExecutionStrategy,
+) -> Result<bool, IndexedTypedQueryError> {
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => Ok(false),
+        TypedQueryExecutionStrategy::FlatScan => {
+            Ok(visible_row_ids_from_batch(index.batch(), plan, tombstones)
+                .first()
+                .is_some())
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            index.has_match_excluding_tombstones(plan, tombstones)
+        }
+    }
+}
+
 fn execute_append_delta_strategy(
     view: &TypedAppendDeltaQueryView<'_>,
     plan: &TypedQueryPlan,
@@ -385,6 +775,29 @@ fn execute_append_delta_strategy(
         }
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
             view.query_row_ids(plan)
+        }
+    }
+}
+
+fn execute_append_delta_strategy_excluding_tombstones(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    strategy: TypedQueryExecutionStrategy,
+) -> Result<Vec<RowId>, IndexedTypedQueryError> {
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => Ok(Vec::new()),
+        TypedQueryExecutionStrategy::FlatScan => {
+            let mut row_ids = visible_row_ids_from_batch(view.base().batch(), plan, tombstones);
+            row_ids.extend(visible_row_ids_from_batch(
+                view.appended(),
+                plan,
+                tombstones,
+            ));
+            Ok(row_ids)
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            view.query_row_ids_excluding_tombstones(plan, tombstones)
         }
     }
 }
@@ -424,6 +837,42 @@ where
     Ok(visited_records)
 }
 
+fn execute_append_delta_row_id_visitor_strategy_excluding_tombstones<F>(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    strategy: TypedQueryExecutionStrategy,
+    mut visitor: F,
+) -> Result<usize, IndexedTypedQueryError>
+where
+    F: FnMut(RowId),
+{
+    let mut visited_records = 0;
+
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => {}
+        TypedQueryExecutionStrategy::FlatScan => {
+            for row_id in visible_row_ids_from_batch(view.base().batch(), plan, tombstones) {
+                visited_records += 1;
+                visitor(row_id);
+            }
+
+            for row_id in visible_row_ids_from_batch(view.appended(), plan, tombstones) {
+                visited_records += 1;
+                visitor(row_id);
+            }
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            view.visit_row_ids_excluding_tombstones(plan, tombstones, |row_id| {
+                visited_records += 1;
+                visitor(row_id);
+            })?;
+        }
+    }
+
+    Ok(visited_records)
+}
+
 fn execute_append_delta_row_strategy(
     view: &TypedAppendDeltaQueryView<'_>,
     plan: &TypedQueryPlan,
@@ -438,6 +887,25 @@ fn execute_append_delta_row_strategy(
         }
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
             view.query_rows(plan)
+        }
+    }
+}
+
+fn execute_append_delta_row_strategy_excluding_tombstones(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    strategy: TypedQueryExecutionStrategy,
+) -> Result<Vec<TypedQueryResultRow>, IndexedTypedQueryError> {
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => Ok(Vec::new()),
+        TypedQueryExecutionStrategy::FlatScan => {
+            let mut rows = visible_rows_from_batch(view.base().batch(), plan, tombstones);
+            rows.extend(visible_rows_from_batch(view.appended(), plan, tombstones));
+            Ok(rows)
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            view.query_rows_excluding_tombstones(plan, tombstones)
         }
     }
 }
@@ -477,6 +945,42 @@ where
     Ok(visited_records)
 }
 
+fn execute_append_delta_row_visitor_strategy_excluding_tombstones<F>(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    strategy: TypedQueryExecutionStrategy,
+    mut visitor: F,
+) -> Result<usize, IndexedTypedQueryError>
+where
+    F: FnMut(RowId, &FSERecord),
+{
+    let mut visited_records = 0;
+
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => {}
+        TypedQueryExecutionStrategy::FlatScan => {
+            for row in visible_rows_from_batch(view.base().batch(), plan, tombstones) {
+                visited_records += 1;
+                visitor(row.row_id(), row.record());
+            }
+
+            for row in visible_rows_from_batch(view.appended(), plan, tombstones) {
+                visited_records += 1;
+                visitor(row.row_id(), row.record());
+            }
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            view.visit_rows_excluding_tombstones(plan, tombstones, |row_id, record| {
+                visited_records += 1;
+                visitor(row_id, record);
+            })?;
+        }
+    }
+
+    Ok(visited_records)
+}
+
 fn execute_append_delta_count_strategy(
     view: &TypedAppendDeltaQueryView<'_>,
     plan: &TypedQueryPlan,
@@ -490,6 +994,26 @@ fn execute_append_delta_count_strategy(
         }
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
             view.count_matches(plan)
+        }
+    }
+}
+
+fn execute_append_delta_count_strategy_excluding_tombstones(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    strategy: TypedQueryExecutionStrategy,
+) -> Result<usize, IndexedTypedQueryError> {
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => Ok(0),
+        TypedQueryExecutionStrategy::FlatScan => {
+            Ok(
+                visible_row_ids_from_batch(view.base().batch(), plan, tombstones).len()
+                    + visible_row_ids_from_batch(view.appended(), plan, tombstones).len(),
+            )
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            view.count_matches_excluding_tombstones(plan, tombstones)
         }
     }
 }
@@ -509,4 +1033,50 @@ fn execute_append_delta_existence_strategy(
             view.has_match(plan)
         }
     }
+}
+
+fn execute_append_delta_existence_strategy_excluding_tombstones(
+    view: &TypedAppendDeltaQueryView<'_>,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    strategy: TypedQueryExecutionStrategy,
+) -> Result<bool, IndexedTypedQueryError> {
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => Ok(false),
+        TypedQueryExecutionStrategy::FlatScan => {
+            let base_has_match = visible_row_ids_from_batch(view.base().batch(), plan, tombstones)
+                .first()
+                .is_some();
+            let appended_has_match = visible_row_ids_from_batch(view.appended(), plan, tombstones)
+                .first()
+                .is_some();
+
+            Ok(base_has_match || appended_has_match)
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            view.has_match_excluding_tombstones(plan, tombstones)
+        }
+    }
+}
+
+fn visible_row_ids_from_batch(
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Vec<RowId> {
+    evaluate_typed_query_plan(batch, plan)
+        .into_iter()
+        .filter(|row_id| !tombstones.contains(*row_id))
+        .collect()
+}
+
+fn visible_rows_from_batch(
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> Vec<TypedQueryResultRow> {
+    evaluate_typed_query_plan_rows(batch, plan)
+        .into_iter()
+        .filter(|row| !tombstones.contains(row.row_id()))
+        .collect()
 }
