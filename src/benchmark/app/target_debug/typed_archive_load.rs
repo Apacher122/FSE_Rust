@@ -289,17 +289,18 @@ impl BenchmarkApplicationRenderer {
         output.push_str("Workload typed archive maintenance timing summary\n");
         output.push_str("------------------------------------------------\n");
         output.push_str(
-            "workload | action | reason | base records | pending append | tombstones | resulting records | index before bytes | index after bytes | index byte delta | tombstone before bytes | tombstone after bytes | tombstone byte delta | logical before bytes | logical after bytes | logical byte delta | matched after maintenance | maintenance | agreement\n",
+            "workload | action | reason | status write required | base records | pending append | tombstones | resulting records | index before bytes | index after bytes | index byte delta | tombstone before bytes | tombstone after bytes | tombstone byte delta | logical before bytes | logical after bytes | logical byte delta | matched after maintenance | maintenance | agreement\n",
         );
 
         for workload in &context.workloads {
             let report = typed_archive_maintenance_report(context, &typed_context, workload);
 
             output.push_str(&format!(
-                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
                 workload.name,
                 format_archive_maintenance_action(report.selected_action),
                 format_archive_maintenance_reason(report.selected_reason),
+                report.maintenance_status_requires_archive_write,
                 report.base_record_count,
                 report.pending_append_record_count,
                 report.tombstone_count,
@@ -631,6 +632,11 @@ fn append_target_typed_archive_maintenance_report(
         output,
         "selected maintenance reason",
         format_archive_maintenance_reason(report.selected_reason),
+    );
+    append_debug_line(
+        output,
+        "maintenance status requires archive write",
+        report.maintenance_status_requires_archive_write,
     );
     append_debug_line(output, "base records", report.base_record_count);
     append_debug_line(

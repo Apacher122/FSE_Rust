@@ -23,6 +23,7 @@ use crate::persistence::{
     FSETypedQueryIndexArchiveFootprintError, FSETypedQueryIndexArchiveMaintenanceError,
     FSETypedRowTombstoneArchiveError, append_typed_query_index_archive_file,
     compact_typed_query_index_archive_file,
+    inspect_typed_query_index_archive_file_maintenance_status,
     inspect_typed_query_index_archive_file_maintenance_status_with_append_batch_archive,
     load_typed_query_index_archive_file, load_typed_query_index_archive_with_tombstones,
     maintain_typed_query_index_archive_file,
@@ -366,6 +367,9 @@ pub struct TypedArchiveMaintenanceTimingReport {
 
     /// Tombstone-to-base-record ratio used by the policy, in basis points.
     pub tombstone_ratio_basis_points: u64,
+
+    /// Whether the inspected maintenance status requires archive writes.
+    pub maintenance_status_requires_archive_write: bool,
 
     /// Number of records in the query archive after maintenance.
     pub resulting_record_count: usize,
@@ -825,10 +829,13 @@ where
     save_typed_query_index_archive_file(query_archive_path, query_index)?;
     save_typed_row_tombstone_archive_file(tombstone_archive_path, tombstone_row_ids)?;
 
-    let footprint_before_maintenance = typed_query_index_archive_with_tombstones_footprint(
+    let maintenance_status = inspect_typed_query_index_archive_file_maintenance_status(
         query_archive_path,
         tombstone_archive_path,
+        appended,
+        policy,
     )?;
+    let footprint_before_maintenance = maintenance_status.footprint;
     let query_archive_bytes_before_maintenance =
         footprint_before_maintenance.query_index_archive_bytes;
     let tombstone_archive_bytes_before_maintenance =
@@ -884,15 +891,16 @@ where
     )?;
 
     Ok(TypedArchiveMaintenanceTimingReport {
-        base_record_count: maintenance_result.decision.input.base_record_count as usize,
-        pending_append_record_count: maintenance_result
+        base_record_count: maintenance_status.decision.input.base_record_count as usize,
+        pending_append_record_count: maintenance_status
             .decision
             .input
             .pending_append_record_count as usize,
-        tombstone_count: maintenance_result.decision.input.tombstone_count as usize,
-        selected_action: maintenance_result.decision.action,
-        selected_reason: maintenance_result.decision.reason,
-        tombstone_ratio_basis_points: maintenance_result.decision.tombstone_ratio_basis_points,
+        tombstone_count: maintenance_status.decision.input.tombstone_count as usize,
+        selected_action: maintenance_status.decision.action,
+        selected_reason: maintenance_status.decision.reason,
+        tombstone_ratio_basis_points: maintenance_status.decision.tombstone_ratio_basis_points,
+        maintenance_status_requires_archive_write: maintenance_status.requires_archive_write(),
         resulting_record_count: maintenance_result.query_index.batch().len(),
         query_archive_byte_delta: byte_delta(
             query_archive_bytes_before_maintenance,

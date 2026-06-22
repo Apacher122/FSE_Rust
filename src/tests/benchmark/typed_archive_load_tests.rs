@@ -270,6 +270,7 @@ fn typed_archive_maintenance_timing_reports_policy_driven_rebuild() {
         FSEArchiveMaintenanceReason::AppendAndCompactionThresholdsReached
     );
     assert_eq!(report.tombstone_ratio_basis_points, 2_500);
+    assert!(report.maintenance_status_requires_archive_write);
     assert_eq!(report.resulting_record_count, 5);
     assert!(report.query_archive_bytes_before_maintenance > 0);
     assert!(report.query_archive_bytes_after_maintenance > 0);
