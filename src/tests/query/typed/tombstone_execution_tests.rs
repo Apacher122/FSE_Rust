@@ -9,7 +9,8 @@ use crate::encoding::{
 };
 use crate::query::{
     FSEPredicate, FSEPredicateField, IndexedTypedQueryError, TypedQueryIndex,
-    TypedQueryPlanBuilder, TypedRowTombstoneSet,
+    TypedQueryOutputContract, TypedQueryPlanBuilder, TypedRowTombstoneSet,
+    TypedTombstonedQueryIndexView,
 };
 
 #[test]
@@ -21,6 +22,99 @@ fn typed_row_tombstone_set_deduplicates_and_sorts_row_ids() {
     assert_eq!(tombstones.len(), 2);
     assert!(tombstones.contains(RowId::new(100)));
     assert!(!tombstones.contains(RowId::new(101)));
+}
+
+#[test]
+fn typed_tombstoned_query_index_view_routes_result_contracts() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let query_index = typed_query_index(&schema);
+    let plan = score_and_class_plan(&schema, &mapping);
+    let tombstones = TypedRowTombstoneSet::from_row_ids(vec![RowId::new(100)]);
+    let view = TypedTombstonedQueryIndexView::new(&query_index, &tombstones);
+    let row_id_report = view.query_row_ids_with_stats(&plan).unwrap();
+    let planned_row_id_report = view.query_row_ids_with_planning(&plan).unwrap();
+    let row_report = view.query_rows_with_stats(&plan).unwrap();
+    let planned_row_report = view.query_rows_with_planning(&plan).unwrap();
+    let count_report = view.count_matches_with_stats(&plan).unwrap();
+    let planned_count_report = view.count_matches_with_planning(&plan).unwrap();
+    let existence_report = view.has_match_with_stats(&plan).unwrap();
+    let planned_existence_report = view.has_match_with_planning(&plan).unwrap();
+    let mut visited_row_ids = Vec::new();
+    let row_id_visit_stats = view
+        .visit_row_ids(&plan, |row_id| {
+            visited_row_ids.push(row_id);
+        })
+        .unwrap();
+    let mut planned_visited_row_ids = Vec::new();
+    let planned_row_id_visit_report = view
+        .visit_row_ids_with_planning(&plan, |row_id| {
+            planned_visited_row_ids.push(row_id);
+        })
+        .unwrap();
+    let mut visited_rows = Vec::new();
+    let row_visit_stats = view
+        .visit_rows(&plan, |row_id, record| {
+            visited_rows.push((row_id, record.clone()));
+        })
+        .unwrap();
+    let mut planned_visited_rows = Vec::new();
+    let planned_row_visit_report = view
+        .visit_rows_with_planning(&plan, |row_id, record| {
+            planned_visited_rows.push((row_id, record.clone()));
+        })
+        .unwrap();
+
+    assert_eq!(view.index(), &query_index);
+    assert_eq!(view.tombstones(), &tombstones);
+    assert_eq!(view.query_row_ids(&plan).unwrap(), vec![RowId::new(103)]);
+    assert_eq!(row_id_report.row_ids, vec![RowId::new(103)]);
+    assert_eq!(row_id_report.stats.matched_records, 1);
+    assert_eq!(planned_row_id_report.row_ids, vec![RowId::new(103)]);
+    assert_eq!(
+        planned_row_id_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIds
+    );
+    assert_eq!(view.query_rows(&plan).unwrap()[0].row_id(), RowId::new(103));
+    assert_eq!(row_report.rows.len(), 1);
+    assert_eq!(planned_row_report.rows.len(), 1);
+    assert_eq!(planned_row_report.rows[0].row_id(), RowId::new(103));
+    assert_eq!(
+        planned_row_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Rows
+    );
+    assert_eq!(view.count_matches(&plan).unwrap(), 1);
+    assert_eq!(count_report.matched_records, 1);
+    assert_eq!(planned_count_report.matched_records, 1);
+    assert_eq!(
+        planned_count_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Count
+    );
+    assert!(view.has_match(&plan).unwrap());
+    assert!(existence_report.has_match);
+    assert!(planned_existence_report.has_match);
+    assert_eq!(
+        planned_existence_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Existence
+    );
+    assert_eq!(visited_row_ids, vec![RowId::new(103)]);
+    assert_eq!(row_id_visit_stats.matched_records, 1);
+    assert_eq!(planned_visited_row_ids, vec![RowId::new(103)]);
+    assert_eq!(planned_row_id_visit_report.visited_records, 1);
+    assert_eq!(
+        planned_row_id_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIdVisitor
+    );
+    assert_eq!(visited_rows.len(), 1);
+    assert_eq!(visited_rows[0].0, RowId::new(103));
+    assert_eq!(row_visit_stats.matched_records, 1);
+    assert_eq!(planned_visited_rows.len(), 1);
+    assert_eq!(planned_visited_rows[0].0, RowId::new(103));
+    assert_eq!(planned_row_visit_report.visited_records, 1);
+    assert_eq!(
+        planned_row_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowVisitor
+    );
 }
 
 #[test]

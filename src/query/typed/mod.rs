@@ -67,4 +67,4 @@ pub use predicate::{
     FSEPredicate, FSEPredicateError, FSEPredicateField, FSEPredicateOperator,
     ValidatedFSEPredicate, ValidatedFSEPredicateOperator,
 };
-pub use tombstone::TypedRowTombstoneSet;
+pub use tombstone::{TypedRowTombstoneSet, TypedTombstonedQueryIndexView};
