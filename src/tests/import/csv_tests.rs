@@ -1227,6 +1227,7 @@ fn csv_tombstoned_archive_query_context_reports_execution_stats_and_planning_fro
     let tombstoned =
         load_csv_tombstoned_typed_query_index_archive_context(&archive_path, &tombstone_path)
             .unwrap();
+    let plan = tombstoned.try_plan(score_and_class_predicates()).unwrap();
     let row_report = tombstoned
         .query_row_ids_with_stats(score_and_class_predicates())
         .unwrap();
@@ -1268,8 +1269,19 @@ fn csv_tombstoned_archive_query_context_reports_execution_stats_and_planning_fro
             ));
         })
         .unwrap();
+    let view_row_ids = tombstoned.query_index_view().query_row_ids(&plan).unwrap();
+    let view_planned_row_report = tombstoned
+        .query_index_view()
+        .query_row_ids_with_planning(&plan)
+        .unwrap();
 
     assert_eq!(row_report.row_ids, vec![RowId::new(100)]);
+    assert_eq!(view_row_ids, row_report.row_ids);
+    assert_eq!(view_planned_row_report.row_ids, row_report.row_ids);
+    assert_eq!(
+        view_planned_row_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIds
+    );
     assert_eq!(row_report.stats.matched_records, 1);
     assert_eq!(
         row_result_report

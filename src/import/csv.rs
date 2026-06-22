@@ -38,6 +38,7 @@ use crate::query::{
     PlannedTypedQueryRowReport, PlannedTypedQueryVisitReport, QueryCountReport,
     QueryExistenceReport, TypedAppendDeltaQueryView, TypedQueryIndex, TypedQueryPlan,
     TypedQueryPlanBuilder, TypedQueryPlanError, TypedQueryResultRow, TypedRowTombstoneSet,
+    TypedTombstonedQueryIndexView,
 };
 
 /// Error returned when CSV archive import fails.
@@ -1347,6 +1348,11 @@ impl FSECsvTombstonedArchiveQueryContext {
         self.context.try_plan_builder()
     }
 
+    /// Creates a borrowed tombstoned query view over the loaded archive index.
+    pub fn query_index_view(&self) -> TypedTombstonedQueryIndexView<'_> {
+        TypedTombstonedQueryIndexView::new(&self.context.query_index, &self.tombstones)
+    }
+
     /// Builds a typed query plan from predicates using loaded archive metadata.
     pub fn try_plan<I>(&self, predicates: I) -> Result<TypedQueryPlan, TypedQueryPlanError>
     where
@@ -1362,10 +1368,7 @@ impl FSECsvTombstonedArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self
-            .context
-            .query_index
-            .query_row_ids_excluding_tombstones(&plan, &self.tombstones)?)
+        Ok(self.query_index_view().query_row_ids(&plan)?)
     }
 
     /// Queries matching row identifiers with execution statistics and excludes tombstones.
@@ -1378,10 +1381,7 @@ impl FSECsvTombstonedArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self
-            .context
-            .query_index
-            .query_row_ids_with_stats_excluding_tombstones(&plan, &self.tombstones)?)
+        Ok(self.query_index_view().query_row_ids_with_stats(&plan)?)
     }
 
     /// Queries matching row identifiers using typed query planning diagnostics
@@ -1395,10 +1395,7 @@ impl FSECsvTombstonedArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self
-            .context
-            .query_index
-            .query_row_ids_with_planning_excluding_tombstones(&plan, &self.tombstones)?)
+        Ok(self.query_index_view().query_row_ids_with_planning(&plan)?)
     }
 
     /// Queries matching typed rows from predicates and excludes tombstones.
@@ -1411,10 +1408,7 @@ impl FSECsvTombstonedArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self
-            .context
-            .query_index
-            .query_rows_excluding_tombstones(&plan, &self.tombstones)?)
+        Ok(self.query_index_view().query_rows(&plan)?)
     }
 
     /// Queries matching typed rows with execution statistics and excludes tombstones.
@@ -1427,10 +1421,7 @@ impl FSECsvTombstonedArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self
-            .context
-            .query_index
-            .query_rows_with_stats_excluding_tombstones(&plan, &self.tombstones)?)
+        Ok(self.query_index_view().query_rows_with_stats(&plan)?)
     }
 
     /// Queries matching typed rows using typed query planning diagnostics and
@@ -1444,10 +1435,7 @@ impl FSECsvTombstonedArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self
-            .context
-            .query_index
-            .query_rows_with_planning_excluding_tombstones(&plan, &self.tombstones)?)
+        Ok(self.query_index_view().query_rows_with_planning(&plan)?)
     }
 
     /// Counts records matching predicates while excluding tombstones.
@@ -1457,10 +1445,7 @@ impl FSECsvTombstonedArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self
-            .context
-            .query_index
-            .count_matches_excluding_tombstones(&plan, &self.tombstones)?)
+        Ok(self.query_index_view().count_matches(&plan)?)
     }
 
     /// Counts records matching predicates with execution statistics while excluding tombstones.
@@ -1473,10 +1458,7 @@ impl FSECsvTombstonedArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self
-            .context
-            .query_index
-            .count_matches_with_stats_excluding_tombstones(&plan, &self.tombstones)?)
+        Ok(self.query_index_view().count_matches_with_stats(&plan)?)
     }
 
     /// Counts records using typed query planning diagnostics and excludes
@@ -1490,10 +1472,7 @@ impl FSECsvTombstonedArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self
-            .context
-            .query_index
-            .count_matches_with_planning_excluding_tombstones(&plan, &self.tombstones)?)
+        Ok(self.query_index_view().count_matches_with_planning(&plan)?)
     }
 
     /// Returns true when predicates match at least one non-tombstoned record.
@@ -1503,10 +1482,7 @@ impl FSECsvTombstonedArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self
-            .context
-            .query_index
-            .has_match_excluding_tombstones(&plan, &self.tombstones)?)
+        Ok(self.query_index_view().has_match(&plan)?)
     }
 
     /// Returns existence query output with execution statistics while excluding tombstones.
@@ -1519,10 +1495,7 @@ impl FSECsvTombstonedArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self
-            .context
-            .query_index
-            .has_match_with_stats_excluding_tombstones(&plan, &self.tombstones)?)
+        Ok(self.query_index_view().has_match_with_stats(&plan)?)
     }
 
     /// Returns existence query output using typed query planning diagnostics
@@ -1536,10 +1509,7 @@ impl FSECsvTombstonedArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self
-            .context
-            .query_index
-            .has_match_with_planning_excluding_tombstones(&plan, &self.tombstones)?)
+        Ok(self.query_index_view().has_match_with_planning(&plan)?)
     }
 
     /// Visits matching row identifiers using typed query planning diagnostics
@@ -1556,9 +1526,8 @@ impl FSECsvTombstonedArchiveQueryContext {
         let plan = self.try_plan(predicates)?;
 
         Ok(self
-            .context
-            .query_index
-            .visit_row_ids_with_planning_excluding_tombstones(&plan, &self.tombstones, visitor)?)
+            .query_index_view()
+            .visit_row_ids_with_planning(&plan, visitor)?)
     }
 
     /// Visits matching typed rows using typed query planning diagnostics and
@@ -1575,9 +1544,8 @@ impl FSECsvTombstonedArchiveQueryContext {
         let plan = self.try_plan(predicates)?;
 
         Ok(self
-            .context
-            .query_index
-            .visit_rows_with_planning_excluding_tombstones(&plan, &self.tombstones, visitor)?)
+            .query_index_view()
+            .visit_rows_with_planning(&plan, visitor)?)
     }
 }
 
