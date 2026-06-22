@@ -2083,6 +2083,14 @@ fn csv_archive_import_maintenance_consumes_append_delta_archive() {
     let loaded = load_typed_query_index_archive_file_with_encoder_metadata(&archive_path).unwrap();
     let cleared_append = load_typed_record_batch_archive_file(&append_path).unwrap();
     let loaded_tombstones = load_typed_row_tombstone_archive_file(&tombstone_path).unwrap();
+    let status_after_maintenance =
+        inspect_typed_query_index_archive_status_from_append_delta_archive(
+            &archive_path,
+            &append_path,
+            &tombstone_path,
+            &policy,
+        )
+        .unwrap();
     let plan = TypedQueryPlanBuilder::new(&expected_schema, &mapping)
         .try_with_record_encoder_metadata(&loaded.record_encoder_metadata)
         .unwrap()
@@ -2119,6 +2127,24 @@ fn csv_archive_import_maintenance_consumes_append_delta_archive() {
         matches,
         vec![RowId::new(100), RowId::new(103), RowId::new(104)]
     );
+    assert_eq!(
+        status_after_maintenance.decision.action,
+        FSEArchiveMaintenanceAction::NoMaintenance
+    );
+    assert_eq!(
+        status_after_maintenance.decision.reason,
+        FSEArchiveMaintenanceReason::NoPendingMaintenance
+    );
+    assert_eq!(status_after_maintenance.decision.input.base_record_count, 6);
+    assert_eq!(
+        status_after_maintenance
+            .decision
+            .input
+            .pending_append_record_count,
+        0
+    );
+    assert_eq!(status_after_maintenance.decision.input.tombstone_count, 0);
+    assert!(!status_after_maintenance.requires_archive_write());
     assert!(cleared_append.is_empty());
     assert_eq!(cleared_append.schema(), &expected_schema);
     assert_eq!(loaded_tombstones, Vec::new());
@@ -2411,6 +2437,14 @@ fn csv_archive_update_lifecycle_preserves_logical_results_after_maintenance() {
         .unwrap();
     let cleared_append = load_typed_record_batch_archive_file(&append_path).unwrap();
     let cleared_tombstones = load_typed_row_tombstone_archive_file(&tombstone_path).unwrap();
+    let status_after_maintenance =
+        inspect_typed_query_index_archive_status_from_append_delta_archive(
+            &archive_path,
+            &append_path,
+            &tombstone_path,
+            &policy,
+        )
+        .unwrap();
 
     assert_eq!(before_row_ids, vec![RowId::new(103), RowId::new(104)]);
     assert_eq!(after_row_ids, before_row_ids);
@@ -2534,6 +2568,24 @@ fn csv_archive_update_lifecycle_preserves_logical_results_after_maintenance() {
             .diagnostics
             .requires_append_delta_scan
     );
+    assert_eq!(
+        status_after_maintenance.decision.action,
+        FSEArchiveMaintenanceAction::NoMaintenance
+    );
+    assert_eq!(
+        status_after_maintenance.decision.reason,
+        FSEArchiveMaintenanceReason::NoPendingMaintenance
+    );
+    assert_eq!(status_after_maintenance.decision.input.base_record_count, 5);
+    assert_eq!(
+        status_after_maintenance
+            .decision
+            .input
+            .pending_append_record_count,
+        0
+    );
+    assert_eq!(status_after_maintenance.decision.input.tombstone_count, 0);
+    assert!(!status_after_maintenance.requires_archive_write());
     assert_eq!(result.decision.action, FSEArchiveMaintenanceAction::Rebuild);
     assert_eq!(
         result.decision.reason,

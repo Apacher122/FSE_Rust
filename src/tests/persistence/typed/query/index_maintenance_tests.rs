@@ -235,6 +235,14 @@ fn typed_query_index_archive_file_maintenance_consumes_append_batch_archive() {
     let cleared_append = load_typed_record_batch_archive_file(&append_path).unwrap();
     let mut actual_matches = loaded.query_row_ids(&plan).unwrap();
     actual_matches.sort();
+    let status_after_maintenance =
+        inspect_typed_query_index_archive_file_maintenance_status_with_append_batch_archive(
+            &query_index_path,
+            &append_path,
+            &tombstone_path,
+            &policy,
+        )
+        .unwrap();
 
     assert_eq!(result.decision.action, FSEArchiveMaintenanceAction::Append);
     assert_eq!(
@@ -245,6 +253,24 @@ fn typed_query_index_archive_file_maintenance_consumes_append_batch_archive() {
     assert_eq!(result.compaction_result, None);
     assert_eq!(result.query_index, loaded);
     assert_eq!(actual_matches, expected_matches);
+    assert_eq!(
+        status_after_maintenance.decision.action,
+        FSEArchiveMaintenanceAction::NoMaintenance
+    );
+    assert_eq!(
+        status_after_maintenance.decision.reason,
+        FSEArchiveMaintenanceReason::NoPendingMaintenance
+    );
+    assert_eq!(status_after_maintenance.decision.input.base_record_count, 6);
+    assert_eq!(
+        status_after_maintenance
+            .decision
+            .input
+            .pending_append_record_count,
+        0
+    );
+    assert_eq!(status_after_maintenance.decision.input.tombstone_count, 0);
+    assert!(!status_after_maintenance.requires_archive_write());
     assert!(cleared_append.is_empty());
     assert_eq!(cleared_append.schema(), &schema);
     assert_eq!(
@@ -294,6 +320,14 @@ fn typed_query_index_archive_file_maintenance_compacts_append_and_tombstone_arch
     let cleared_append = load_typed_record_batch_archive_file(&append_path).unwrap();
     let mut actual_matches = loaded.query_row_ids(&plan).unwrap();
     actual_matches.sort();
+    let status_after_maintenance =
+        inspect_typed_query_index_archive_file_maintenance_status_with_append_batch_archive(
+            &query_index_path,
+            &append_path,
+            &tombstone_path,
+            &policy,
+        )
+        .unwrap();
 
     assert_eq!(result.decision.action, FSEArchiveMaintenanceAction::Rebuild);
     assert_eq!(
@@ -305,6 +339,24 @@ fn typed_query_index_archive_file_maintenance_compacts_append_and_tombstone_arch
     assert_eq!(result.query_index, loaded);
     assert_eq!(actual_matches, expected_matches);
     assert_eq!(loaded.batch().len(), 5);
+    assert_eq!(
+        status_after_maintenance.decision.action,
+        FSEArchiveMaintenanceAction::NoMaintenance
+    );
+    assert_eq!(
+        status_after_maintenance.decision.reason,
+        FSEArchiveMaintenanceReason::NoPendingMaintenance
+    );
+    assert_eq!(status_after_maintenance.decision.input.base_record_count, 5);
+    assert_eq!(
+        status_after_maintenance
+            .decision
+            .input
+            .pending_append_record_count,
+        0
+    );
+    assert_eq!(status_after_maintenance.decision.input.tombstone_count, 0);
+    assert!(!status_after_maintenance.requires_archive_write());
     assert!(cleared_append.is_empty());
     assert_eq!(
         load_typed_row_tombstone_archive_file(&tombstone_path).unwrap(),
