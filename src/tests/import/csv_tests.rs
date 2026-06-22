@@ -941,6 +941,7 @@ fn csv_tombstoned_append_delta_archive_query_context_excludes_tombstones() {
         &tombstone_path,
     )
     .unwrap();
+    let plan = context.try_plan(score_and_class_predicates()).unwrap();
     let row_ids = context.query_row_ids(score_and_class_predicates()).unwrap();
     let rows = context.query_rows(score_and_class_predicates()).unwrap();
     let row_report = context
@@ -984,12 +985,28 @@ fn csv_tombstoned_append_delta_archive_query_context_excludes_tombstones() {
             ));
         })
         .unwrap();
+    let view_row_ids = context
+        .append_delta_view()
+        .unwrap()
+        .query_row_ids(&plan)
+        .unwrap();
+    let view_planned_row_report = context
+        .append_delta_view()
+        .unwrap()
+        .query_row_ids_with_planning(&plan)
+        .unwrap();
 
     assert_eq!(
         context.tombstones.row_ids(),
         &[RowId::new(103), RowId::new(104)]
     );
     assert_eq!(row_ids, vec![RowId::new(100)]);
+    assert_eq!(view_row_ids, row_ids);
+    assert_eq!(view_planned_row_report.row_ids, row_ids);
+    assert_eq!(
+        view_planned_row_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIds
+    );
     assert_eq!(row_report.row_ids, row_ids);
     assert_eq!(
         rows.iter().map(|row| row.row_id()).collect::<Vec<_>>(),

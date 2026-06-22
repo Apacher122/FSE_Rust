@@ -12,7 +12,7 @@ pub mod planning;
 pub mod predicate;
 pub mod tombstone;
 
-pub use append_delta::TypedAppendDeltaQueryView;
+pub use append_delta::{TypedAppendDeltaQueryView, TypedTombstonedAppendDeltaQueryView};
 pub use builder::TypedQueryPlanBuilder;
 pub use compiler::{
     FSEPredicateCompileError, compile_categorical_equality_predicate_to_query_region,

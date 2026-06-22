@@ -9,7 +9,8 @@ use crate::encoding::{
 };
 use crate::query::{
     FSEPredicate, FSEPredicateField, TypedAppendDeltaQueryView, TypedQueryIndex,
-    TypedQueryPlanBuilder, TypedRowTombstoneSet,
+    TypedQueryOutputContract, TypedQueryPlanBuilder, TypedRowTombstoneSet,
+    TypedTombstonedAppendDeltaQueryView,
 };
 
 #[test]
@@ -192,6 +193,134 @@ fn typed_append_delta_view_reports_stats_with_tombstones() {
     assert_eq!(row_report.stats.matched_records, 1);
     assert_eq!(row_result_report.stats, row_report.stats);
     assert_eq!(count_report.stats, row_report.stats);
+}
+
+#[test]
+fn typed_tombstoned_append_delta_view_routes_result_contracts() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let base_batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let base_index = TypedQueryIndex::try_build(base_batch, &encoder, &builder())
+        .expect("valid base index should build");
+    let view = TypedAppendDeltaQueryView::try_new(&base_index, &appended)
+        .expect("valid append delta should build a query view");
+    let tombstones = TypedRowTombstoneSet::from_row_ids([RowId::new(103), RowId::new(104)]);
+    let tombstoned = TypedTombstonedAppendDeltaQueryView::from_view(view, &tombstones);
+    let plan = score_and_class_plan(&schema, &mapping);
+    let row_report = tombstoned
+        .query_row_ids_with_stats(&plan)
+        .expect("tombstoned append delta row-id stats should execute");
+    let planned_row_report = tombstoned
+        .query_row_ids_with_planning(&plan)
+        .expect("tombstoned append delta planned row-id query should execute");
+    let row_result_report = tombstoned
+        .query_rows_with_stats(&plan)
+        .expect("tombstoned append delta row stats should execute");
+    let planned_row_result_report = tombstoned
+        .query_rows_with_planning(&plan)
+        .expect("tombstoned append delta planned row query should execute");
+    let count_report = tombstoned
+        .count_matches_with_stats(&plan)
+        .expect("tombstoned append delta count stats should execute");
+    let planned_count_report = tombstoned
+        .count_matches_with_planning(&plan)
+        .expect("tombstoned append delta planned count should execute");
+    let existence_report = tombstoned
+        .has_match_with_stats(&plan)
+        .expect("tombstoned append delta existence stats should execute");
+    let planned_existence_report = tombstoned
+        .has_match_with_planning(&plan)
+        .expect("tombstoned append delta planned existence should execute");
+    let mut visited_row_ids = Vec::new();
+    tombstoned
+        .visit_row_ids(&plan, |row_id| {
+            visited_row_ids.push(row_id);
+        })
+        .expect("tombstoned append delta row-id visitor should execute");
+    let mut planned_visited_row_ids = Vec::new();
+    let planned_row_id_visit_report = tombstoned
+        .visit_row_ids_with_planning(&plan, |row_id| {
+            planned_visited_row_ids.push(row_id);
+        })
+        .expect("tombstoned append delta planned row-id visitor should execute");
+    let mut visited_rows = Vec::new();
+    tombstoned
+        .visit_rows(&plan, |row_id, record| {
+            visited_rows.push((row_id, record.clone()));
+        })
+        .expect("tombstoned append delta row visitor should execute");
+    let mut planned_visited_rows = Vec::new();
+    let planned_row_visit_report = tombstoned
+        .visit_rows_with_planning(&plan, |row_id, record| {
+            planned_visited_rows.push((row_id, record.clone()));
+        })
+        .expect("tombstoned append delta planned row visitor should execute");
+
+    assert_eq!(tombstoned.tombstones(), &tombstones);
+    assert_eq!(
+        tombstoned
+            .query_row_ids(&plan)
+            .expect("tombstoned append delta query should execute"),
+        vec![RowId::new(100)]
+    );
+    assert_eq!(row_report.row_ids, vec![RowId::new(100)]);
+    assert_eq!(planned_row_report.row_ids, row_report.row_ids);
+    assert_eq!(
+        planned_row_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIds
+    );
+    assert_eq!(
+        tombstoned
+            .query_rows(&plan)
+            .expect("tombstoned append delta row query should execute")[0]
+            .row_id(),
+        RowId::new(100)
+    );
+    assert_eq!(row_result_report.rows.len(), 1);
+    assert_eq!(planned_row_result_report.rows.len(), 1);
+    assert_eq!(
+        planned_row_result_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Rows
+    );
+    assert_eq!(
+        tombstoned
+            .count_matches(&plan)
+            .expect("tombstoned append delta count should execute"),
+        1
+    );
+    assert_eq!(count_report.matched_records, 1);
+    assert_eq!(planned_count_report.matched_records, 1);
+    assert_eq!(
+        planned_count_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Count
+    );
+    assert!(
+        tombstoned
+            .has_match(&plan)
+            .expect("tombstoned append delta existence should execute")
+    );
+    assert!(existence_report.has_match);
+    assert!(planned_existence_report.has_match);
+    assert_eq!(
+        planned_existence_report.diagnostics.output_contract,
+        TypedQueryOutputContract::Existence
+    );
+    assert_eq!(visited_row_ids, row_report.row_ids);
+    assert_eq!(planned_visited_row_ids, row_report.row_ids);
+    assert_eq!(planned_row_id_visit_report.visited_records, 1);
+    assert_eq!(
+        planned_row_id_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIdVisitor
+    );
+    assert_eq!(visited_rows.len(), 1);
+    assert_eq!(planned_visited_rows.len(), 1);
+    assert_eq!(planned_row_visit_report.visited_records, 1);
+    assert_eq!(
+        planned_row_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowVisitor
+    );
 }
 
 #[test]
