@@ -20,6 +20,7 @@ pub use query_index::{
     compact_tombstoned_typed_query_index, compact_typed_query_index_archive_file,
     decode_typed_query_index_archive_snapshot, encode_typed_query_index_archive_snapshot,
     inspect_typed_query_index_archive_file_maintenance,
+    inspect_typed_query_index_archive_file_maintenance_status,
     inspect_typed_query_index_archive_file_maintenance_status_with_append_batch_archive,
     inspect_typed_query_index_archive_file_maintenance_with_append_batch_archive,
     load_typed_query_index_archive_file, load_typed_query_index_archive_file_with_encoder_metadata,

@@ -24,6 +24,7 @@ use crate::persistence::{
     append_typed_record_batch_archive_file, append_typed_row_tombstone_archive_file,
     build_typed_query_index_archive_file,
     build_typed_query_index_archive_file_with_encoder_metadata,
+    inspect_typed_query_index_archive_file_maintenance_status,
     inspect_typed_query_index_archive_file_maintenance_status_with_append_batch_archive,
     inspect_typed_query_index_archive_file_maintenance_with_append_batch_archive,
     load_typed_query_index_archive_file, load_typed_query_index_archive_file_with_encoder_metadata,
@@ -2056,6 +2057,27 @@ where
             policy,
         )?,
     )
+}
+
+/// Reports maintenance status for a CSV-backed typed query index archive.
+///
+/// The returned status includes the selected maintenance decision and logical
+/// archive footprint. Archive files are not modified.
+pub fn inspect_typed_query_index_archive_status<A, T>(
+    archive_path: A,
+    tombstone_path: T,
+    policy: &FSEArchiveMaintenancePolicy,
+) -> Result<FSETypedQueryIndexArchiveMaintenanceStatus, FSECsvArchiveMaintenanceImportError>
+where
+    A: AsRef<Path>,
+    T: AsRef<Path>,
+{
+    Ok(inspect_typed_query_index_archive_file_maintenance_status(
+        archive_path,
+        tombstone_path,
+        None,
+        policy,
+    )?)
 }
 
 /// Reports maintenance status for a CSV-backed append-delta archive.

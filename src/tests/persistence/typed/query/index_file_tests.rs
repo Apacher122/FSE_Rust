@@ -24,7 +24,8 @@ use crate::persistence::{
     append_typed_query_index_archive_file, build_typed_query_index_archive_file,
     build_typed_query_index_archive_file_with_encoder_metadata,
     compact_typed_query_index_archive_file, encode_archive_payload,
-    load_typed_query_index_archive_file, load_typed_query_index_archive_file_with_encoder_metadata,
+    inspect_typed_query_index_archive_file_maintenance_status, load_typed_query_index_archive_file,
+    load_typed_query_index_archive_file_with_encoder_metadata,
     load_typed_query_index_archive_with_tombstones, load_typed_row_tombstone_archive_file,
     maintain_typed_query_index_archive_file, read_typed_query_index_archive_snapshot_file,
     save_typed_query_index_archive_file, save_typed_query_index_archive_file_with_encoder_metadata,
@@ -826,6 +827,15 @@ fn typed_query_index_archive_file_maintenance_compacts_tombstones() {
     )
     .unwrap();
     let loaded = load_typed_query_index_archive_file(&query_index_path).unwrap();
+    let expected_query_index_bytes = fs::metadata(&query_index_path).unwrap().len();
+    let expected_tombstone_bytes = fs::metadata(&tombstone_path).unwrap().len();
+    let status_after_maintenance = inspect_typed_query_index_archive_file_maintenance_status(
+        &query_index_path,
+        &tombstone_path,
+        None,
+        &policy,
+    )
+    .unwrap();
 
     assert_eq!(result.decision.action, FSEArchiveMaintenanceAction::Compact);
     assert_eq!(
@@ -843,6 +853,52 @@ fn typed_query_index_archive_file_maintenance_compacts_tombstones() {
         1
     );
     assert_eq!(result.query_index, loaded);
+    assert_eq!(
+        status_after_maintenance.decision.action,
+        FSEArchiveMaintenanceAction::NoMaintenance
+    );
+    assert_eq!(
+        status_after_maintenance.decision.reason,
+        FSEArchiveMaintenanceReason::NoPendingMaintenance
+    );
+    assert_eq!(status_after_maintenance.decision.input.base_record_count, 3);
+    assert_eq!(
+        status_after_maintenance
+            .decision
+            .input
+            .pending_append_record_count,
+        0
+    );
+    assert_eq!(status_after_maintenance.decision.input.tombstone_count, 0);
+    assert!(!status_after_maintenance.requires_archive_write());
+    assert_eq!(
+        status_after_maintenance.footprint.query_index_archive_bytes,
+        expected_query_index_bytes
+    );
+    assert_eq!(
+        status_after_maintenance
+            .footprint
+            .append_delta_archive_bytes,
+        0
+    );
+    assert_eq!(
+        status_after_maintenance.footprint.tombstone_archive_bytes,
+        expected_tombstone_bytes
+    );
+    assert_eq!(
+        status_after_maintenance.footprint.total_archive_bytes,
+        expected_query_index_bytes + expected_tombstone_bytes
+    );
+    assert!(
+        !status_after_maintenance
+            .footprint
+            .includes_append_delta_archive()
+    );
+    assert!(
+        status_after_maintenance
+            .footprint
+            .includes_tombstone_archive()
+    );
     assert_eq!(
         loaded.batch().row_ids(),
         &[RowId::new(101), RowId::new(102), RowId::new(103)]

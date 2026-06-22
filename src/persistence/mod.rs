@@ -69,6 +69,7 @@ pub use typed::{
     decode_typed_row_tombstone_archive_snapshot, encode_typed_query_index_archive_snapshot,
     encode_typed_record_batch_archive_snapshot, encode_typed_row_tombstone_archive_snapshot,
     inspect_typed_query_index_archive_file_maintenance,
+    inspect_typed_query_index_archive_file_maintenance_status,
     inspect_typed_query_index_archive_file_maintenance_status_with_append_batch_archive,
     inspect_typed_query_index_archive_file_maintenance_with_append_batch_archive,
     load_typed_query_index_archive_file, load_typed_query_index_archive_file_with_encoder_metadata,

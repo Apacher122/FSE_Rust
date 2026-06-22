@@ -31,6 +31,7 @@ use super::{
     load_typed_query_index_archive_file_with_encoder_metadata,
     save_typed_query_index_archive_file_with_encoder_metadata,
     typed_query_index_archive_with_append_delta_and_tombstones_footprint,
+    typed_query_index_archive_with_tombstones_footprint,
 };
 
 /// Error returned when typed query index archive maintenance fails.
@@ -45,6 +46,9 @@ pub enum FSETypedQueryIndexArchiveMaintenanceError {
     /// Archive maintenance policy evaluation failed.
     Policy(FSEArchiveMaintenanceError),
 
+    /// Reading logical archive footprint metadata failed.
+    Footprint(FSETypedQueryIndexArchiveFootprintError),
+
     /// Applying appended typed records failed.
     Append(FSETypedQueryIndexArchiveError),
 
@@ -58,6 +62,7 @@ impl fmt::Display for FSETypedQueryIndexArchiveMaintenanceError {
             Self::LoadIndex(error) => error.fmt(formatter),
             Self::LoadTombstones(error) => error.fmt(formatter),
             Self::Policy(error) => error.fmt(formatter),
+            Self::Footprint(error) => error.fmt(formatter),
             Self::Append(error) => error.fmt(formatter),
             Self::Compaction(error) => error.fmt(formatter),
         }
@@ -70,6 +75,7 @@ impl Error for FSETypedQueryIndexArchiveMaintenanceError {
             Self::LoadIndex(error) => Some(error),
             Self::LoadTombstones(error) => Some(error),
             Self::Policy(error) => Some(error),
+            Self::Footprint(error) => Some(error),
             Self::Append(error) => Some(error),
             Self::Compaction(error) => Some(error),
         }
@@ -295,6 +301,38 @@ where
         tombstones.len() as u64,
         policy,
     )
+}
+
+/// Reports maintenance status for a typed query index archive.
+///
+/// The returned status includes the selected maintenance decision and logical
+/// archive footprint. Archive contents are not modified.
+pub fn inspect_typed_query_index_archive_file_maintenance_status<P, Q>(
+    query_index_path: P,
+    tombstone_path: Q,
+    appended: Option<&FSERecordBatch>,
+    policy: &FSEArchiveMaintenancePolicy,
+) -> Result<FSETypedQueryIndexArchiveMaintenanceStatus, FSETypedQueryIndexArchiveMaintenanceError>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+{
+    let query_index_path = query_index_path.as_ref();
+    let tombstone_path = tombstone_path.as_ref();
+    let decision = inspect_typed_query_index_archive_file_maintenance(
+        query_index_path,
+        tombstone_path,
+        appended,
+        policy,
+    )?;
+    let footprint =
+        typed_query_index_archive_with_tombstones_footprint(query_index_path, tombstone_path)
+            .map_err(FSETypedQueryIndexArchiveMaintenanceError::Footprint)?;
+
+    Ok(FSETypedQueryIndexArchiveMaintenanceStatus {
+        decision,
+        footprint,
+    })
 }
 
 /// Inspects archive maintenance policy output using a persisted append batch.

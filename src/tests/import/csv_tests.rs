@@ -28,6 +28,7 @@ use crate::import::{
     build_typed_record_batch_archive_from_csv_file,
     build_typed_record_batch_archive_from_csv_file_with_archive_schema,
     inspect_typed_query_index_archive_from_append_delta_archive,
+    inspect_typed_query_index_archive_status,
     inspect_typed_query_index_archive_status_from_append_delta_archive,
     load_csv_append_delta_typed_query_index_archive_context,
     load_csv_tombstoned_append_delta_typed_query_index_archive_context,
@@ -2716,6 +2717,10 @@ entity_id,reason
     .unwrap();
     let loaded = load_typed_query_index_archive_file_with_encoder_metadata(&archive_path).unwrap();
     let loaded_tombstones = load_typed_row_tombstone_archive_file(&tombstone_path).unwrap();
+    let expected_query_index_bytes = fs::metadata(&archive_path).unwrap().len();
+    let expected_tombstone_bytes = fs::metadata(&tombstone_path).unwrap().len();
+    let status_after_maintenance =
+        inspect_typed_query_index_archive_status(&archive_path, &tombstone_path, &policy).unwrap();
     let plan = TypedQueryPlanBuilder::new(&expected_schema, &mapping)
         .try_with_record_encoder_metadata(&loaded.record_encoder_metadata)
         .unwrap()
@@ -2764,6 +2769,52 @@ entity_id,reason
         1
     );
     assert_eq!(result.maintenance.query_index, loaded.query_index);
+    assert_eq!(
+        status_after_maintenance.decision.action,
+        FSEArchiveMaintenanceAction::NoMaintenance
+    );
+    assert_eq!(
+        status_after_maintenance.decision.reason,
+        FSEArchiveMaintenanceReason::NoPendingMaintenance
+    );
+    assert_eq!(status_after_maintenance.decision.input.base_record_count, 3);
+    assert_eq!(
+        status_after_maintenance
+            .decision
+            .input
+            .pending_append_record_count,
+        0
+    );
+    assert_eq!(status_after_maintenance.decision.input.tombstone_count, 0);
+    assert!(!status_after_maintenance.requires_archive_write());
+    assert_eq!(
+        status_after_maintenance.footprint.query_index_archive_bytes,
+        expected_query_index_bytes
+    );
+    assert_eq!(
+        status_after_maintenance
+            .footprint
+            .append_delta_archive_bytes,
+        0
+    );
+    assert_eq!(
+        status_after_maintenance.footprint.tombstone_archive_bytes,
+        expected_tombstone_bytes
+    );
+    assert_eq!(
+        status_after_maintenance.footprint.total_archive_bytes,
+        expected_query_index_bytes + expected_tombstone_bytes
+    );
+    assert!(
+        !status_after_maintenance
+            .footprint
+            .includes_append_delta_archive()
+    );
+    assert!(
+        status_after_maintenance
+            .footprint
+            .includes_tombstone_archive()
+    );
     assert_eq!(loaded.query_index.batch().len(), 3);
     assert_eq!(loaded_tombstones, Vec::new());
     assert_eq!(
