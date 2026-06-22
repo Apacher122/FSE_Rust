@@ -61,8 +61,9 @@ pub use planned_execution::{
 };
 pub use planning::{
     TypedQueryExecutionStrategy, TypedQueryOutputContract, TypedQueryPlanningDiagnostics,
-    TypedQueryPlanningReason, TypedQueryPlanningWorkEstimate,
-    plan_typed_append_delta_query_execution, plan_typed_query_execution,
+    TypedQueryPlanningReason, TypedQueryPlanningRiskFlags, TypedQueryPlanningWorkEstimate,
+    TypedQuerySelectivityBucket, plan_typed_append_delta_query_execution,
+    plan_typed_query_execution,
 };
 pub use predicate::{
     FSEPredicate, FSEPredicateError, FSEPredicateField, FSEPredicateOperator,

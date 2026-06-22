@@ -4,13 +4,14 @@ use crate::data::{
     FSESchemaDimensionMapping, FSEValue, RowId,
 };
 use crate::encoding::{
-    CategoricalDictionaryEncoder, ComposedRecordEncoder, FloatEncoder, IntegerEncoder,
-    TimestampMillisEncoder,
+    CategoricalDictionaryEncoder, ComposedRecordEncoder, FSEFieldEncoder, FloatEncoder,
+    IntegerEncoder, TimestampMillisEncoder,
 };
 use crate::query::{
     FSEPredicate, FSEPredicateField, TypedAppendDeltaQueryView, TypedQueryExecutionStrategy,
     TypedQueryIndex, TypedQueryOutputContract, TypedQueryPlan, TypedQueryPlanBuilder,
-    TypedQueryPlanningReason, plan_typed_append_delta_query_execution, plan_typed_query_execution,
+    TypedQueryPlanningReason, TypedQuerySelectivityBucket, plan_typed_append_delta_query_execution,
+    plan_typed_query_execution,
 };
 
 #[test]
@@ -45,10 +46,16 @@ fn typed_query_planning_diagnostics_selects_fse_for_selective_plan() {
     assert_eq!(diagnostics.constrained_dimensions, 2);
     assert!(diagnostics.estimated_candidate_records > 0);
     assert!(diagnostics.estimated_candidate_ratio <= 0.35);
+    assert_eq!(
+        diagnostics.selectivity_bucket,
+        TypedQuerySelectivityBucket::Selective
+    );
     assert!(diagnostics.estimated_retained_leaf_count <= diagnostics.leaf_count);
     assert!(!diagnostics.requires_append_delta_scan);
     assert!(diagnostics.uses_geometric_traversal());
     assert!(!diagnostics.uses_flat_scan());
+    assert!(!diagnostics.is_broad_query());
+    assert!(!diagnostics.risk_flags.has_any());
     assert!(diagnostics.work_estimate.estimated_traversal_node_visits > 0);
     assert_eq!(
         diagnostics.work_estimate.estimated_reconstructed_records,
@@ -82,8 +89,18 @@ fn typed_query_planning_diagnostics_selects_flat_scan_for_broad_materialized_pla
     );
     assert_eq!(diagnostics.estimated_candidate_records, 4);
     assert_eq!(diagnostics.estimated_candidate_ratio, 1.0);
+    assert_eq!(
+        diagnostics.selectivity_bucket,
+        TypedQuerySelectivityBucket::Broad
+    );
     assert!(diagnostics.output_contract.materializes_records());
     assert!(diagnostics.uses_flat_scan());
+    assert!(diagnostics.is_broad_query());
+    assert!(diagnostics.risk_flags.has_any());
+    assert!(diagnostics.risk_flags.broad_predicate);
+    assert!(diagnostics.risk_flags.materialization_pressure);
+    assert!(!diagnostics.risk_flags.high_dimensional_low_constraint);
+    assert!(!diagnostics.risk_flags.append_delta_scan);
     assert_eq!(diagnostics.work_estimate.estimated_traversal_node_visits, 0);
     assert_eq!(diagnostics.work_estimate.estimated_reconstructed_records, 0);
     assert_eq!(
@@ -124,7 +141,12 @@ fn typed_query_planning_diagnostics_reports_noop_for_unsatisfiable_plan() {
     );
     assert_eq!(diagnostics.estimated_candidate_records, 0);
     assert_eq!(diagnostics.estimated_candidate_ratio, 0.0);
+    assert_eq!(
+        diagnostics.selectivity_bucket,
+        TypedQuerySelectivityBucket::Empty
+    );
     assert!(!diagnostics.uses_geometric_traversal());
+    assert!(!diagnostics.risk_flags.has_any());
     assert!(diagnostics.work_estimate.is_empty());
 }
 
@@ -153,8 +175,17 @@ fn typed_query_planning_diagnostics_selects_hybrid_for_append_delta_view() {
     assert_eq!(diagnostics.base_record_count, 4);
     assert_eq!(diagnostics.append_delta_record_count, 2);
     assert!(diagnostics.estimated_candidate_records >= 2);
+    assert_eq!(
+        diagnostics.selectivity_bucket,
+        TypedQuerySelectivityBucket::Moderate
+    );
     assert!(diagnostics.requires_append_delta_scan);
     assert!(diagnostics.uses_geometric_traversal());
+    assert!(diagnostics.risk_flags.has_any());
+    assert!(!diagnostics.risk_flags.broad_predicate);
+    assert!(!diagnostics.risk_flags.materialization_pressure);
+    assert!(!diagnostics.risk_flags.high_dimensional_low_constraint);
+    assert!(diagnostics.risk_flags.append_delta_scan);
     assert!(diagnostics.work_estimate.estimated_traversal_node_visits > 0);
     assert_eq!(
         diagnostics.work_estimate.estimated_flat_scan_records,
@@ -165,6 +196,38 @@ fn typed_query_planning_diagnostics_selects_hybrid_for_append_delta_view() {
             >= diagnostics.append_delta_record_count
     );
     assert_eq!(diagnostics.work_estimate.estimated_materialized_records, 0);
+}
+
+#[test]
+fn typed_query_planning_diagnostics_flags_high_dimensional_low_constraint_query() {
+    let schema = high_dimensional_schema();
+    let mapping = high_dimensional_mapping(&schema);
+    let batch = high_dimensional_batch(&schema);
+    let encoder = high_dimensional_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let plan = high_dimensional_low_constraint_plan(&schema, &mapping);
+
+    let diagnostics =
+        plan_typed_query_execution(&query_index, &plan, TypedQueryOutputContract::RowIds);
+
+    assert_eq!(diagnostics.strategy, TypedQueryExecutionStrategy::FlatScan);
+    assert_eq!(
+        diagnostics.reason,
+        TypedQueryPlanningReason::HighDimensionalLowConstraintQuery
+    );
+    assert_eq!(
+        diagnostics.selectivity_bucket,
+        TypedQuerySelectivityBucket::Broad
+    );
+    assert_eq!(diagnostics.dimensions, 8);
+    assert_eq!(diagnostics.constrained_dimensions, 1);
+    assert!(diagnostics.is_broad_query());
+    assert!(diagnostics.risk_flags.has_any());
+    assert!(diagnostics.risk_flags.broad_predicate);
+    assert!(!diagnostics.risk_flags.materialization_pressure);
+    assert!(diagnostics.risk_flags.high_dimensional_low_constraint);
+    assert!(!diagnostics.risk_flags.append_delta_scan);
 }
 
 fn score_and_class_plan(schema: &FSESchema, mapping: &FSESchemaDimensionMapping) -> TypedQueryPlan {
@@ -285,4 +348,78 @@ fn class_encoder() -> CategoricalDictionaryEncoder {
 
 fn builder() -> FSEBuilder {
     FSEBuilder::new(BuildConfig::new(2, 8))
+}
+
+fn high_dimensional_schema() -> FSESchema {
+    FSESchema::new(
+        (0..8)
+            .map(|dimension| {
+                FSEField::new(format!("metric_{dimension}"), FSEFieldType::Float, false)
+            })
+            .collect(),
+    )
+}
+
+fn high_dimensional_mapping(schema: &FSESchema) -> FSESchemaDimensionMapping {
+    FSESchemaDimensionMapping::new(
+        schema,
+        (0..8)
+            .map(|dimension| FSEDimensionMapping::new(dimension, dimension))
+            .collect(),
+    )
+}
+
+fn high_dimensional_encoder(schema: &FSESchema) -> ComposedRecordEncoder {
+    let encoders = (0..8)
+        .map(|_| Box::new(FloatEncoder) as Box<dyn FSEFieldEncoder>)
+        .collect();
+
+    ComposedRecordEncoder::new(schema, encoders)
+}
+
+fn high_dimensional_batch(schema: &FSESchema) -> FSERecordBatch {
+    FSERecordBatch::new(
+        schema.clone(),
+        vec![
+            RowId::new(200),
+            RowId::new(201),
+            RowId::new(202),
+            RowId::new(203),
+        ],
+        vec![
+            high_dimensional_record(schema, 0.0),
+            high_dimensional_record(schema, 4.0),
+            high_dimensional_record(schema, 8.0),
+            high_dimensional_record(schema, 10.0),
+        ],
+    )
+}
+
+fn high_dimensional_record(schema: &FSESchema, first_metric: f64) -> FSERecord {
+    FSERecord::new(
+        (0..8)
+            .map(|dimension| {
+                if dimension == 0 {
+                    FSEValue::Float(first_metric)
+                } else {
+                    FSEValue::Float(dimension as f64)
+                }
+            })
+            .collect(),
+        schema,
+    )
+}
+
+fn high_dimensional_low_constraint_plan(
+    schema: &FSESchema,
+    mapping: &FSESchemaDimensionMapping,
+) -> TypedQueryPlan {
+    TypedQueryPlanBuilder::new(schema, mapping)
+        .with_predicate(FSEPredicate::range(
+            FSEPredicateField::name("metric_0"),
+            FSEValue::Float(0.0),
+            FSEValue::Float(8.0),
+        ))
+        .build()
+        .expect("valid high-dimensional predicate should produce a plan")
 }

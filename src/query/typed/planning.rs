@@ -82,6 +82,68 @@ impl TypedQueryPlanningWorkEstimate {
     }
 }
 
+/// Estimated selectivity class for a typed query plan.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TypedQuerySelectivityBucket {
+    /// The query is estimated to match no records.
+    Empty,
+
+    /// The query is estimated to retain a small fraction of visible records.
+    Selective,
+
+    /// The query is estimated to retain a middle fraction of visible records.
+    Moderate,
+
+    /// The query is estimated to retain most visible records.
+    Broad,
+}
+
+impl TypedQuerySelectivityBucket {
+    /// Classifies an estimated candidate ratio.
+    pub fn from_candidate_ratio(candidate_ratio: Scalar) -> Self {
+        if candidate_ratio <= 0.0 {
+            Self::Empty
+        } else if candidate_ratio <= SELECTIVE_QUERY_CANDIDATE_RATIO {
+            Self::Selective
+        } else if candidate_ratio >= BROAD_QUERY_CANDIDATE_RATIO {
+            Self::Broad
+        } else {
+            Self::Moderate
+        }
+    }
+
+    /// Returns true for broad estimated result sets.
+    pub fn is_broad(self) -> bool {
+        matches!(self, Self::Broad)
+    }
+}
+
+/// Risk flags surfaced by typed query planning diagnostics.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TypedQueryPlanningRiskFlags {
+    /// The estimated candidate set is broad relative to visible records.
+    pub broad_predicate: bool,
+
+    /// The output contract materializes records for a broad estimated result.
+    pub materialization_pressure: bool,
+
+    /// A high-dimensional query constrains too few dimensions for stable pruning.
+    pub high_dimensional_low_constraint: bool,
+
+    /// Pending append-delta records require direct predicate evaluation.
+    pub append_delta_scan: bool,
+}
+
+impl TypedQueryPlanningRiskFlags {
+    /// Returns true when any planning risk flag is set.
+    pub fn has_any(self) -> bool {
+        self.broad_predicate
+            || self.materialization_pressure
+            || self.high_dimensional_low_constraint
+            || self.append_delta_scan
+    }
+}
+
 /// Execution strategy selected by typed query planning diagnostics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TypedQueryExecutionStrategy {
@@ -174,6 +236,9 @@ pub struct TypedQueryPlanningDiagnostics {
     /// Estimated candidate records divided by total visible records.
     pub estimated_candidate_ratio: Scalar,
 
+    /// Selectivity bucket derived from the estimated candidate ratio.
+    pub selectivity_bucket: TypedQuerySelectivityBucket,
+
     /// Estimated base-index leaves retained by geometric traversal.
     pub estimated_retained_leaf_count: usize,
 
@@ -185,6 +250,9 @@ pub struct TypedQueryPlanningDiagnostics {
 
     /// Estimated work implied by the selected execution strategy.
     pub work_estimate: TypedQueryPlanningWorkEstimate,
+
+    /// Risk flags derived from the planning estimate and output contract.
+    pub risk_flags: TypedQueryPlanningRiskFlags,
 }
 
 impl TypedQueryPlanningDiagnostics {
@@ -199,6 +267,11 @@ impl TypedQueryPlanningDiagnostics {
     /// Returns true when the selected strategy uses direct batch evaluation.
     pub fn uses_flat_scan(&self) -> bool {
         matches!(self.strategy, TypedQueryExecutionStrategy::FlatScan)
+    }
+
+    /// Returns true when the candidate estimate is broad.
+    pub fn is_broad_query(&self) -> bool {
+        self.selectivity_bucket.is_broad()
     }
 }
 
@@ -250,6 +323,8 @@ fn planning_diagnostics_from_estimate(
     let estimated_candidate_records =
         base.estimated_candidate_records + append_delta_candidate_records;
     let estimated_candidate_ratio = ratio(estimated_candidate_records, total_records);
+    let selectivity_bucket =
+        TypedQuerySelectivityBucket::from_candidate_ratio(estimated_candidate_ratio);
     let requires_append_delta_scan = append_delta_candidate_records > 0;
 
     let (strategy, reason) = select_strategy(
@@ -269,6 +344,12 @@ fn planning_diagnostics_from_estimate(
         append_delta_record_count,
         total_records,
     );
+    let risk_flags = risk_flags_from_estimate(
+        reason,
+        output_contract,
+        selectivity_bucket,
+        requires_append_delta_scan,
+    );
 
     TypedQueryPlanningDiagnostics {
         strategy,
@@ -284,10 +365,12 @@ fn planning_diagnostics_from_estimate(
         constrained_dimensions: base.constrained_dimensions,
         estimated_candidate_records,
         estimated_candidate_ratio,
+        selectivity_bucket,
         estimated_retained_leaf_count: base.estimated_retained_leaf_count,
         estimated_retained_leaf_ratio: base.estimated_retained_leaf_ratio,
         requires_append_delta_scan,
         work_estimate,
+        risk_flags,
     }
 }
 
@@ -483,6 +566,25 @@ fn estimated_materialized_records(
         estimated_candidate_records
     } else {
         0
+    }
+}
+
+fn risk_flags_from_estimate(
+    reason: TypedQueryPlanningReason,
+    output_contract: TypedQueryOutputContract,
+    selectivity_bucket: TypedQuerySelectivityBucket,
+    requires_append_delta_scan: bool,
+) -> TypedQueryPlanningRiskFlags {
+    let broad_predicate = selectivity_bucket.is_broad();
+
+    TypedQueryPlanningRiskFlags {
+        broad_predicate,
+        materialization_pressure: broad_predicate && output_contract.materializes_records(),
+        high_dimensional_low_constraint: matches!(
+            reason,
+            TypedQueryPlanningReason::HighDimensionalLowConstraintQuery
+        ),
+        append_delta_scan: requires_append_delta_scan,
     }
 }
 
