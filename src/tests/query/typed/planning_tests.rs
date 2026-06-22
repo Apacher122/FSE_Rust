@@ -49,6 +49,17 @@ fn typed_query_planning_diagnostics_selects_fse_for_selective_plan() {
     assert!(!diagnostics.requires_append_delta_scan);
     assert!(diagnostics.uses_geometric_traversal());
     assert!(!diagnostics.uses_flat_scan());
+    assert!(diagnostics.work_estimate.estimated_traversal_node_visits > 0);
+    assert_eq!(
+        diagnostics.work_estimate.estimated_reconstructed_records,
+        diagnostics.estimated_candidate_records
+    );
+    assert_eq!(
+        diagnostics.work_estimate.estimated_predicate_evaluations,
+        diagnostics.estimated_candidate_records
+    );
+    assert_eq!(diagnostics.work_estimate.estimated_materialized_records, 0);
+    assert_eq!(diagnostics.work_estimate.estimated_flat_scan_records, 0);
 }
 
 #[test]
@@ -73,6 +84,20 @@ fn typed_query_planning_diagnostics_selects_flat_scan_for_broad_materialized_pla
     assert_eq!(diagnostics.estimated_candidate_ratio, 1.0);
     assert!(diagnostics.output_contract.materializes_records());
     assert!(diagnostics.uses_flat_scan());
+    assert_eq!(diagnostics.work_estimate.estimated_traversal_node_visits, 0);
+    assert_eq!(diagnostics.work_estimate.estimated_reconstructed_records, 0);
+    assert_eq!(
+        diagnostics.work_estimate.estimated_predicate_evaluations,
+        diagnostics.total_records
+    );
+    assert_eq!(
+        diagnostics.work_estimate.estimated_materialized_records,
+        diagnostics.estimated_candidate_records
+    );
+    assert_eq!(
+        diagnostics.work_estimate.estimated_flat_scan_records,
+        diagnostics.total_records
+    );
 }
 
 #[test]
@@ -100,6 +125,7 @@ fn typed_query_planning_diagnostics_reports_noop_for_unsatisfiable_plan() {
     assert_eq!(diagnostics.estimated_candidate_records, 0);
     assert_eq!(diagnostics.estimated_candidate_ratio, 0.0);
     assert!(!diagnostics.uses_geometric_traversal());
+    assert!(diagnostics.work_estimate.is_empty());
 }
 
 #[test]
@@ -129,6 +155,16 @@ fn typed_query_planning_diagnostics_selects_hybrid_for_append_delta_view() {
     assert!(diagnostics.estimated_candidate_records >= 2);
     assert!(diagnostics.requires_append_delta_scan);
     assert!(diagnostics.uses_geometric_traversal());
+    assert!(diagnostics.work_estimate.estimated_traversal_node_visits > 0);
+    assert_eq!(
+        diagnostics.work_estimate.estimated_flat_scan_records,
+        diagnostics.append_delta_record_count
+    );
+    assert!(
+        diagnostics.work_estimate.estimated_predicate_evaluations
+            >= diagnostics.append_delta_record_count
+    );
+    assert_eq!(diagnostics.work_estimate.estimated_materialized_records, 0);
 }
 
 fn score_and_class_plan(schema: &FSESchema, mapping: &FSESchemaDimensionMapping) -> TypedQueryPlan {

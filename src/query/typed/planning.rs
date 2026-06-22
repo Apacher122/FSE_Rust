@@ -45,6 +45,43 @@ impl TypedQueryOutputContract {
     }
 }
 
+/// Estimated work implied by a typed query planning decision.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TypedQueryPlanningWorkEstimate {
+    /// Estimated hierarchy nodes inspected during geometric traversal.
+    pub estimated_traversal_node_visits: usize,
+
+    /// Estimated records reconstructed from retained FSE partitions.
+    pub estimated_reconstructed_records: usize,
+
+    /// Estimated records evaluated against typed predicates.
+    pub estimated_predicate_evaluations: usize,
+
+    /// Estimated records delivered through a typed-record output contract.
+    pub estimated_materialized_records: usize,
+
+    /// Estimated records evaluated by direct batch scanning.
+    pub estimated_flat_scan_records: usize,
+}
+
+impl TypedQueryPlanningWorkEstimate {
+    /// Returns an estimate with no planned work.
+    pub fn empty() -> Self {
+        Self {
+            estimated_traversal_node_visits: 0,
+            estimated_reconstructed_records: 0,
+            estimated_predicate_evaluations: 0,
+            estimated_materialized_records: 0,
+            estimated_flat_scan_records: 0,
+        }
+    }
+
+    /// Returns true when every estimated work component is zero.
+    pub fn is_empty(&self) -> bool {
+        *self == Self::empty()
+    }
+}
+
 /// Execution strategy selected by typed query planning diagnostics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TypedQueryExecutionStrategy {
@@ -145,6 +182,9 @@ pub struct TypedQueryPlanningDiagnostics {
 
     /// Whether append-delta records must be directly evaluated.
     pub requires_append_delta_scan: bool,
+
+    /// Estimated work implied by the selected execution strategy.
+    pub work_estimate: TypedQueryPlanningWorkEstimate,
 }
 
 impl TypedQueryPlanningDiagnostics {
@@ -221,6 +261,14 @@ fn planning_diagnostics_from_estimate(
         estimated_candidate_ratio,
         requires_append_delta_scan,
     );
+    let work_estimate = estimate_strategy_work(
+        strategy,
+        output_contract,
+        base,
+        estimated_candidate_records,
+        append_delta_record_count,
+        total_records,
+    );
 
     TypedQueryPlanningDiagnostics {
         strategy,
@@ -239,6 +287,7 @@ fn planning_diagnostics_from_estimate(
         estimated_retained_leaf_count: base.estimated_retained_leaf_count,
         estimated_retained_leaf_ratio: base.estimated_retained_leaf_ratio,
         requires_append_delta_scan,
+        work_estimate,
     }
 }
 
@@ -364,6 +413,76 @@ fn estimate_base_index(index: &TypedQueryIndex, plan: &TypedQueryPlan) -> BasePl
         estimated_candidate_ratio: estimate.candidate_ratio,
         estimated_retained_leaf_count,
         estimated_retained_leaf_ratio,
+    }
+}
+
+fn estimate_strategy_work(
+    strategy: TypedQueryExecutionStrategy,
+    output_contract: TypedQueryOutputContract,
+    base: BasePlanningEstimate,
+    estimated_candidate_records: usize,
+    append_delta_record_count: usize,
+    total_records: usize,
+) -> TypedQueryPlanningWorkEstimate {
+    match strategy {
+        TypedQueryExecutionStrategy::NoOp => TypedQueryPlanningWorkEstimate::empty(),
+        TypedQueryExecutionStrategy::FlatScan => TypedQueryPlanningWorkEstimate {
+            estimated_traversal_node_visits: 0,
+            estimated_reconstructed_records: 0,
+            estimated_predicate_evaluations: total_records,
+            estimated_materialized_records: estimated_materialized_records(
+                output_contract,
+                estimated_candidate_records,
+            ),
+            estimated_flat_scan_records: total_records,
+        },
+        TypedQueryExecutionStrategy::FseTraversal => TypedQueryPlanningWorkEstimate {
+            estimated_traversal_node_visits: estimated_traversal_node_visits(base),
+            estimated_reconstructed_records: base.estimated_candidate_records,
+            estimated_predicate_evaluations: base.estimated_candidate_records,
+            estimated_materialized_records: estimated_materialized_records(
+                output_contract,
+                base.estimated_candidate_records,
+            ),
+            estimated_flat_scan_records: 0,
+        },
+        TypedQueryExecutionStrategy::Hybrid => TypedQueryPlanningWorkEstimate {
+            estimated_traversal_node_visits: estimated_traversal_node_visits(base),
+            estimated_reconstructed_records: base.estimated_candidate_records,
+            estimated_predicate_evaluations: base
+                .estimated_candidate_records
+                .saturating_add(append_delta_record_count),
+            estimated_materialized_records: estimated_materialized_records(
+                output_contract,
+                estimated_candidate_records,
+            ),
+            estimated_flat_scan_records: append_delta_record_count,
+        },
+    }
+}
+
+fn estimated_traversal_node_visits(base: BasePlanningEstimate) -> usize {
+    if base.node_count == 0 || base.estimated_retained_leaf_count == 0 {
+        return 0;
+    }
+
+    let internal_node_count = base.node_count.saturating_sub(base.leaf_count);
+    let retained_internal_count =
+        estimated_count_from_ratio(base.estimated_retained_leaf_ratio, internal_node_count);
+
+    base.estimated_retained_leaf_count
+        .saturating_add(retained_internal_count)
+        .clamp(1, base.node_count)
+}
+
+fn estimated_materialized_records(
+    output_contract: TypedQueryOutputContract,
+    estimated_candidate_records: usize,
+) -> usize {
+    if output_contract.materializes_records() {
+        estimated_candidate_records
+    } else {
+        0
     }
 }
 
