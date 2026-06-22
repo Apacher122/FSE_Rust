@@ -2363,6 +2363,17 @@ fn csv_archive_update_lifecycle_preserves_logical_results_after_maintenance() {
             before_visited_row_ids.push(row_id);
         })
         .unwrap();
+    let mut before_visited_rows = Vec::new();
+    let before_planned_row_visit_report = before
+        .visit_rows_with_planning(score_and_class_predicates(), |row_id, record| {
+            before_visited_rows.push((
+                row_id,
+                record
+                    .value_named(&before.context.context.schema, "class")
+                    .cloned(),
+            ));
+        })
+        .unwrap();
 
     let result = maintain_typed_query_index_archive_from_append_delta_archive(
         &archive_path,
@@ -2390,6 +2401,12 @@ fn csv_archive_update_lifecycle_preserves_logical_results_after_maintenance() {
     let after_planned_visit_report = after
         .visit_row_ids_with_planning(score_and_class_predicates(), |row_id| {
             after_visited_row_ids.push(row_id);
+        })
+        .unwrap();
+    let mut after_visited_rows = Vec::new();
+    let after_planned_row_visit_report = after
+        .visit_rows_with_planning(score_and_class_predicates(), |row_id, record| {
+            after_visited_rows.push((row_id, record.value_named(&after.schema, "class").cloned()));
         })
         .unwrap();
     let cleared_append = load_typed_record_batch_archive_file(&append_path).unwrap();
@@ -2436,6 +2453,27 @@ fn csv_archive_update_lifecycle_preserves_logical_results_after_maintenance() {
         before_planned_visit_report.diagnostics.output_contract,
         TypedQueryOutputContract::RowIdVisitor
     );
+    assert_eq!(
+        before_visited_rows,
+        vec![
+            (
+                RowId::new(103),
+                Some(FSEValue::Category("alpha".to_string()))
+            ),
+            (
+                RowId::new(104),
+                Some(FSEValue::Category("alpha".to_string()))
+            ),
+        ]
+    );
+    assert_eq!(
+        before_planned_row_visit_report.visited_records,
+        before_row_ids.len()
+    );
+    assert_eq!(
+        before_planned_row_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowVisitor
+    );
     assert_eq!(before_planned_row_report.diagnostics.total_records, 6);
     assert!(
         before_planned_row_report
@@ -2480,6 +2518,15 @@ fn csv_archive_update_lifecycle_preserves_logical_results_after_maintenance() {
     assert_eq!(
         after_planned_visit_report.diagnostics.output_contract,
         TypedQueryOutputContract::RowIdVisitor
+    );
+    assert_eq!(after_visited_rows, before_visited_rows);
+    assert_eq!(
+        after_planned_row_visit_report.visited_records,
+        before_row_ids.len()
+    );
+    assert_eq!(
+        after_planned_row_visit_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowVisitor
     );
     assert_eq!(after_planned_row_report.diagnostics.total_records, 5);
     assert!(
