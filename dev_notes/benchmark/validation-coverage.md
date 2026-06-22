@@ -13,6 +13,7 @@ core benchmark output
 core benchmark CSVs
 count-only summary artifacts
 materialization summary artifacts
+typed indexed comparison artifacts
 typed archive load artifacts
 typed archive append rebuild artifacts
 typed archive append-delta query artifacts
@@ -42,6 +43,8 @@ count-only-workload-summary-<label>.csv
 count-only-workload-summary-<label>.txt
 materialization-mode-summary-<label>.csv
 materialization-mode-summary-<label>.txt
+typed-indexed-comparison-summary-<label>.csv
+typed-indexed-comparison-summary-<label>.txt
 typed-archive-load-summary-<label>.csv
 typed-archive-load-summary-<label>.txt
 typed-archive-append-rebuild-summary-<label>.csv
@@ -158,6 +161,73 @@ agreement = pass
 ```
 
 This protects the review from accepting materialization timing when owned, reusable-owned, reference-result, reference-visitor, row-view, and count-only output contracts disagree.
+
+## Typed indexed comparison validation
+
+The typed indexed comparison summary must include:
+
+```text
+dataset
+max_depth
+workload_name
+matched_records
+typed_scan_elapsed
+indexed_typed_elapsed
+timing_ratio
+candidate_ratio
+planner_strategy
+selectivity_bucket
+planner_risk
+record_avoidance_ratio
+agreement
+```
+
+Every row must have:
+
+```text
+agreement = pass
+```
+
+The `planner_strategy` field must be one of:
+
+```text
+FseTraversal
+FlatScan
+Hybrid
+NoOp
+```
+
+The `selectivity_bucket` field must be one of:
+
+```text
+Empty
+Selective
+Moderate
+Broad
+```
+
+The `planner_risk` field must be either:
+
+```text
+none
+```
+
+or a `+`-delimited combination of these risk flags:
+
+```text
+broad
+materialization
+high_dimensional_low_constraint
+append_delta
+```
+
+This check verifies that typed indexed comparison evidence includes the planner diagnostic fields needed to explain why FSE traversal, flat scan, hybrid execution, or no-op execution was selected.
+
+The typed indexed comparison notes artifact must exist and be non-empty:
+
+```text
+typed-indexed-comparison-summary-<label>.txt
+```
 
 ## Typed archive load validation
 

@@ -500,6 +500,22 @@ function Resolve-BenchmarkReviewManifestArtifactSet {
     -OnFailure $OnFailure `
     -OnInvalidPath $OnInvalidPath
 
+  $ResolvedArtifacts.TypedIndexedComparisonSummary = Resolve-BenchmarkReviewManifestArtifact `
+    -Entries $Entries `
+    -ArtifactName $BenchmarkReviewArtifactNames.TypedIndexedComparisonSummary `
+    -OutputDir $OutputDir `
+    -Label $Label `
+    -OnFailure $OnFailure `
+    -OnInvalidPath $OnInvalidPath
+
+  $ResolvedArtifacts.TypedIndexedComparisonNotes = Resolve-BenchmarkReviewManifestArtifact `
+    -Entries $Entries `
+    -ArtifactName $BenchmarkReviewArtifactNames.TypedIndexedComparisonNotes `
+    -OutputDir $OutputDir `
+    -Label $Label `
+    -OnFailure $OnFailure `
+    -OnInvalidPath $OnInvalidPath
+
   $ResolvedArtifacts.TypedArchiveLoadSummary = Resolve-BenchmarkReviewManifestArtifact `
     -Entries $Entries `
     -ArtifactName $BenchmarkReviewArtifactNames.TypedArchiveLoadSummary `

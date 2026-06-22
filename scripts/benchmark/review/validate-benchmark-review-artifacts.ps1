@@ -108,6 +108,56 @@ function Test-BenchmarkReviewTextColumnAllInSet {
 }
 
 
+function Test-BenchmarkReviewDelimitedTextColumnAllInSet {
+  param(
+    [object[]]$Rows,
+    [string]$ColumnName,
+    [string[]]$ExpectedValues,
+    [string]$Delimiter,
+    [string]$Description
+  )
+
+  $ExpectedSet = @{}
+
+  foreach ($ExpectedValue in $ExpectedValues) {
+    $ExpectedSet[$ExpectedValue.Trim().ToLowerInvariant()] = $true
+  }
+
+  foreach ($Row in $Rows) {
+    $RawValue = $Row.$ColumnName
+
+    if ($null -eq $RawValue) {
+      Add-Failure "$Description has missing value in column '$ColumnName'"
+      continue
+    }
+
+    $TextValue = $RawValue.ToString().Trim().ToLowerInvariant()
+
+    if ([string]::IsNullOrWhiteSpace($TextValue)) {
+      Add-Failure "$Description has empty value in column '$ColumnName'"
+      continue
+    }
+
+    if ($ExpectedSet.ContainsKey($TextValue)) {
+      continue
+    }
+
+    $Parts = @($TextValue.Split($Delimiter) | ForEach-Object { $_.Trim() })
+
+    foreach ($Part in $Parts) {
+      if ([string]::IsNullOrWhiteSpace($Part)) {
+        Add-Failure "$Description has empty delimited value in column '$ColumnName': $RawValue"
+        continue
+      }
+
+      if (!$ExpectedSet.ContainsKey($Part)) {
+        Add-Failure "$Description has unexpected delimited value in column '$ColumnName': $RawValue"
+      }
+    }
+  }
+}
+
+
 function Test-BenchmarkReviewTextColumnsAllEqual {
   param(
     [object[]]$Rows,
@@ -191,6 +241,8 @@ $CountOnlySummaryEntry = $ResolvedArtifacts.CountOnlySummary
 $CountOnlyNotesEntry = $ResolvedArtifacts.CountOnlyNotes
 $MaterializationSummaryEntry = $ResolvedArtifacts.MaterializationSummary
 $MaterializationNotesEntry = $ResolvedArtifacts.MaterializationNotes
+$TypedIndexedComparisonSummaryEntry = $ResolvedArtifacts.TypedIndexedComparisonSummary
+$TypedIndexedComparisonNotesEntry = $ResolvedArtifacts.TypedIndexedComparisonNotes
 $TypedArchiveLoadSummaryEntry = $ResolvedArtifacts.TypedArchiveLoadSummary
 $TypedArchiveLoadNotesEntry = $ResolvedArtifacts.TypedArchiveLoadNotes
 $TypedArchiveAppendRebuildSummaryEntry = $ResolvedArtifacts.TypedArchiveAppendRebuildSummary
@@ -223,6 +275,7 @@ Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $Benchm
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $DebugOutputEntry -Description "debug output"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $CountOnlyNotesEntry -Description "count-only workload notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $MaterializationNotesEntry -Description "materialization mode notes"
+Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedIndexedComparisonNotesEntry -Description "typed indexed comparison notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveLoadNotesEntry -Description "typed archive load notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveAppendRebuildNotesEntry -Description "typed archive append rebuild notes"
 Test-BenchmarkReviewNonEmptyFile -OnFailure $AddValidationFailure -Entry $TypedArchiveAppendDeltaQueryNotesEntry -Description "typed archive append-delta query notes"
@@ -315,6 +368,51 @@ Test-BenchmarkReviewTextColumnAllEquals `
   -ColumnName "agreement" `
   -ExpectedValue "pass" `
   -Description "materialization mode summary"
+
+$TypedIndexedComparisonSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv `
+  -Entry $TypedIndexedComparisonSummaryEntry `
+  -Description "typed indexed comparison summary" `
+  -RequiredColumns @(
+  "dataset",
+  "max_depth",
+  "workload_name",
+  "matched_records",
+  "typed_scan_elapsed",
+  "indexed_typed_elapsed",
+  "timing_ratio",
+  "candidate_ratio",
+  "planner_strategy",
+  "selectivity_bucket",
+  "planner_risk",
+  "record_avoidance_ratio",
+  "agreement"
+) `
+  -MinimumRows 1
+
+Test-BenchmarkReviewTextColumnAllEquals `
+  -Rows $TypedIndexedComparisonSummaryRows `
+  -ColumnName "agreement" `
+  -ExpectedValue "pass" `
+  -Description "typed indexed comparison summary"
+
+Test-BenchmarkReviewTextColumnAllInSet `
+  -Rows $TypedIndexedComparisonSummaryRows `
+  -ColumnName "planner_strategy" `
+  -ExpectedValues @("fsetraversal", "flatscan", "hybrid", "noop") `
+  -Description "typed indexed comparison summary"
+
+Test-BenchmarkReviewTextColumnAllInSet `
+  -Rows $TypedIndexedComparisonSummaryRows `
+  -ColumnName "selectivity_bucket" `
+  -ExpectedValues @("empty", "selective", "moderate", "broad") `
+  -Description "typed indexed comparison summary"
+
+Test-BenchmarkReviewDelimitedTextColumnAllInSet `
+  -Rows $TypedIndexedComparisonSummaryRows `
+  -ColumnName "planner_risk" `
+  -ExpectedValues @("none", "broad", "materialization", "high_dimensional_low_constraint", "append_delta") `
+  -Delimiter "+" `
+  -Description "typed indexed comparison summary"
 
 $TypedArchiveLoadSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv `
   -Entry $TypedArchiveLoadSummaryEntry `

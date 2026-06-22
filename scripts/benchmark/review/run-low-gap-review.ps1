@@ -124,6 +124,8 @@ $CurrentCountOnlyComparisonCsv = $ReviewPaths.CurrentCountOnlyComparisonCsv
 $CurrentCountOnlyComparisonNotes = $ReviewPaths.CurrentCountOnlyComparisonNotes
 $CurrentMaterializationSummaryCsv = $ReviewPaths.CurrentMaterializationSummaryCsv
 $CurrentMaterializationSummaryNotes = $ReviewPaths.CurrentMaterializationSummaryNotes
+$CurrentTypedIndexedComparisonSummaryCsv = $ReviewPaths.CurrentTypedIndexedComparisonSummaryCsv
+$CurrentTypedIndexedComparisonSummaryNotes = $ReviewPaths.CurrentTypedIndexedComparisonSummaryNotes
 $CurrentTypedArchiveLoadSummaryCsv = $ReviewPaths.CurrentTypedArchiveLoadSummaryCsv
 $CurrentTypedArchiveLoadSummaryNotes = $ReviewPaths.CurrentTypedArchiveLoadSummaryNotes
 $CurrentTypedArchiveAppendRebuildSummaryCsv = $ReviewPaths.CurrentTypedArchiveAppendRebuildSummaryCsv
@@ -282,6 +284,8 @@ Add-ReviewLine "count-only workload summary: $CurrentCountOnlyWorkloadSummaryCsv
 Add-ReviewLine "count-only workload notes: $CurrentCountOnlyWorkloadSummaryNotes"
 Add-ReviewLine "materialization mode summary: $CurrentMaterializationSummaryCsv"
 Add-ReviewLine "materialization mode notes: $CurrentMaterializationSummaryNotes"
+Add-ReviewLine "typed indexed comparison summary: $CurrentTypedIndexedComparisonSummaryCsv"
+Add-ReviewLine "typed indexed comparison notes: $CurrentTypedIndexedComparisonSummaryNotes"
 Add-ReviewLine "typed archive load summary: $CurrentTypedArchiveLoadSummaryCsv"
 Add-ReviewLine "typed archive load notes: $CurrentTypedArchiveLoadSummaryNotes"
 Add-ReviewLine "typed archive append rebuild summary: $CurrentTypedArchiveAppendRebuildSummaryCsv"
@@ -564,6 +568,8 @@ $ReviewManifestContext = [PSCustomObject]@{
   PreviousMaterializationSummaryCsv                     = $PreviousMaterializationSummaryCsv
   CurrentMaterializationSummaryCsv                      = $CurrentMaterializationSummaryCsv
   CurrentMaterializationSummaryNotes                    = $CurrentMaterializationSummaryNotes
+  CurrentTypedIndexedComparisonSummaryCsv               = $CurrentTypedIndexedComparisonSummaryCsv
+  CurrentTypedIndexedComparisonSummaryNotes             = $CurrentTypedIndexedComparisonSummaryNotes
   CurrentTypedArchiveLoadSummaryCsv                     = $CurrentTypedArchiveLoadSummaryCsv
   CurrentTypedArchiveLoadSummaryNotes                   = $CurrentTypedArchiveLoadSummaryNotes
   CurrentTypedArchiveAppendRebuildSummaryCsv            = $CurrentTypedArchiveAppendRebuildSummaryCsv

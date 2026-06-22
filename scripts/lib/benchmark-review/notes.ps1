@@ -181,6 +181,8 @@ function Add-BenchmarkReviewArtifactSummary {
   Add-Utf8Text -Path $ReviewNotesPath -Text "count-only workload comparison notes: $(Join-Path $OutputDir "count-only-workload-summary-comparison-$Label.txt")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode summary: $(Join-Path $OutputDir "materialization-mode-summary-$Label.csv")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "materialization mode notes: $(Join-Path $OutputDir "materialization-mode-summary-$Label.txt")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "typed indexed comparison summary: $(Join-Path $OutputDir "typed-indexed-comparison-summary-$Label.csv")`r`n"
+  Add-Utf8Text -Path $ReviewNotesPath -Text "typed indexed comparison notes: $(Join-Path $OutputDir "typed-indexed-comparison-summary-$Label.txt")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive load summary: $(Join-Path $OutputDir "typed-archive-load-summary-$Label.csv")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive load notes: $(Join-Path $OutputDir "typed-archive-load-summary-$Label.txt")`r`n"
   Add-Utf8Text -Path $ReviewNotesPath -Text "typed archive append rebuild summary: $(Join-Path $OutputDir "typed-archive-append-rebuild-summary-$Label.csv")`r`n"
