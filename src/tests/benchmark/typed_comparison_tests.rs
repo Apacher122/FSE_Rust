@@ -10,7 +10,10 @@ use crate::encoding::{
     CategoricalDictionaryEncoder, ComposedRecordEncoder, FloatEncoder, IntegerEncoder,
     TimestampMillisEncoder,
 };
-use crate::query::{FSEPredicate, FSEPredicateField, TypedQueryIndex, TypedQueryPlan};
+use crate::query::{
+    FSEPredicate, FSEPredicateField, TypedQueryExecutionStrategy, TypedQueryIndex, TypedQueryPlan,
+    TypedQuerySelectivityBucket,
+};
 
 #[test]
 fn typed_comparison_reports_exact_indexed_execution_metrics() {
@@ -41,6 +44,15 @@ fn typed_comparison_reports_exact_indexed_execution_metrics() {
         report.retained_leaf_ratio,
         report.indexed_stats.retained_leaf_ratio
     );
+    assert_eq!(
+        report.planning_diagnostics.strategy,
+        TypedQueryExecutionStrategy::FseTraversal
+    );
+    assert_eq!(
+        report.planning_diagnostics.selectivity_bucket,
+        TypedQuerySelectivityBucket::Selective
+    );
+    assert!(!report.planning_diagnostics.risk_flags.has_any());
 }
 
 #[test]

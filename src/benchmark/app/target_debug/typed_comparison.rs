@@ -12,6 +12,7 @@ use crate::benchmark::reports::{
     TypedQueryComparisonReport, compare_typed_query_execution_repeated,
 };
 use crate::benchmark::workloads::QueryWorkloadCase;
+use crate::query::TypedQueryPlanningRiskFlags;
 
 impl BenchmarkApplicationRenderer {
     pub(crate) fn append_target_workload_typed_indexed_comparison_debug_output(
@@ -43,20 +44,23 @@ impl BenchmarkApplicationRenderer {
         output.push_str("Workload typed indexed comparison summary\n");
         output.push_str("-----------------------------------------\n");
         output.push_str(
-            "workload | matched | typed scan | indexed typed | timing ratio | candidate ratio | record avoidance | agreement\n",
+            "workload | matched | typed scan | indexed typed | timing ratio | candidate ratio | planner strategy | selectivity bucket | planner risk | record avoidance | agreement\n",
         );
 
         for workload in &context.workloads {
             let report = typed_comparison_report(context, &typed_context, workload);
 
             output.push_str(&format!(
-                "{} | {} | {} | {} | {} | {} | {} | pass\n",
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
                 workload.name,
                 report.indexed_matched_records,
                 format_duration_ascii(report.repeated_timing.baseline.average_elapsed),
                 format_duration_ascii(report.repeated_timing.fse.average_elapsed),
                 format_speedup_ratio(report.average_timing_ratio),
                 format_scalar_percent(report.candidate_ratio),
+                format!("{:?}", report.planning_diagnostics.strategy),
+                format!("{:?}", report.planning_diagnostics.selectivity_bucket),
+                format_planner_risk_flags(report.planning_diagnostics.risk_flags),
                 format_scalar_percent(report.record_evaluation_avoidance_ratio),
             ));
         }
@@ -111,6 +115,58 @@ fn append_target_typed_comparison_report(output: &mut String, report: &TypedQuer
         "record evaluation avoidance ratio",
         format_scalar_percent(report.record_evaluation_avoidance_ratio),
     );
+    append_debug_line(
+        output,
+        "planner strategy",
+        format!("{:?}", report.planning_diagnostics.strategy),
+    );
+    append_debug_line(
+        output,
+        "planner reason",
+        format!("{:?}", report.planning_diagnostics.reason),
+    );
+    append_debug_line(
+        output,
+        "planner selectivity bucket",
+        format!("{:?}", report.planning_diagnostics.selectivity_bucket),
+    );
+    append_debug_line(
+        output,
+        "planner risk",
+        format_planner_risk_flags(report.planning_diagnostics.risk_flags),
+    );
+    append_debug_line(
+        output,
+        "planner estimated traversal node visits",
+        report
+            .planning_diagnostics
+            .work_estimate
+            .estimated_traversal_node_visits,
+    );
+    append_debug_line(
+        output,
+        "planner estimated reconstructed records",
+        report
+            .planning_diagnostics
+            .work_estimate
+            .estimated_reconstructed_records,
+    );
+    append_debug_line(
+        output,
+        "planner estimated predicate evaluations",
+        report
+            .planning_diagnostics
+            .work_estimate
+            .estimated_predicate_evaluations,
+    );
+    append_debug_line(
+        output,
+        "planner estimated flat scan records",
+        report
+            .planning_diagnostics
+            .work_estimate
+            .estimated_flat_scan_records,
+    );
     append_debug_line(output, "typed comparison agreement", "pass");
 }
 
@@ -131,4 +187,30 @@ fn typed_comparison_report(
 
 fn format_scalar_percent(value: crate::math::Scalar) -> String {
     format_percent_ratio(value as f64)
+}
+
+fn format_planner_risk_flags(flags: TypedQueryPlanningRiskFlags) -> String {
+    let mut risks = Vec::new();
+
+    if flags.broad_predicate {
+        risks.push("broad");
+    }
+
+    if flags.materialization_pressure {
+        risks.push("materialization");
+    }
+
+    if flags.high_dimensional_low_constraint {
+        risks.push("high_dimensional_low_constraint");
+    }
+
+    if flags.append_delta_scan {
+        risks.push("append_delta");
+    }
+
+    if risks.is_empty() {
+        "none".to_string()
+    } else {
+        risks.join("+")
+    }
 }

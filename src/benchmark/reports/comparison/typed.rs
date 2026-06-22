@@ -8,8 +8,9 @@ use crate::benchmark::reports::timing::{
 use crate::data::RowId;
 use crate::math::Scalar;
 use crate::query::{
-    IndexedTypedQueryError, QueryExecutionStats, TypedQueryIndex, TypedQueryPlan,
-    evaluate_typed_query_plan,
+    IndexedTypedQueryError, QueryExecutionStats, TypedQueryIndex, TypedQueryOutputContract,
+    TypedQueryPlan, TypedQueryPlanningDiagnostics, evaluate_typed_query_plan,
+    plan_typed_query_execution,
 };
 
 /// Comparison report for typed batch scan and indexed typed execution.
@@ -28,6 +29,9 @@ pub struct TypedQueryComparisonReport {
 
     /// Geometric execution statistics for indexed typed execution.
     pub indexed_stats: QueryExecutionStats,
+
+    /// Planning diagnostics for the indexed typed execution path.
+    pub planning_diagnostics: TypedQueryPlanningDiagnostics,
 
     /// Wall-clock timing measurements for one execution of both paths.
     pub timing: TimingReport,
@@ -78,6 +82,8 @@ pub fn compare_typed_query_execution_repeated(
     plan: &TypedQueryPlan,
     timing_config: &RepeatedTimingConfig,
 ) -> Result<TypedQueryComparisonReport, IndexedTypedQueryError> {
+    let planning_diagnostics =
+        plan_typed_query_execution(query_index, plan, TypedQueryOutputContract::RowIds);
     let (baseline_row_ids, baseline_elapsed) = measure_elapsed(|| {
         let row_ids = evaluate_typed_query_plan(query_index.batch(), plan);
         std::hint::black_box(row_ids.len());
@@ -116,6 +122,7 @@ pub fn compare_typed_query_execution_repeated(
         baseline_matched_records: baseline_row_ids.len(),
         indexed_matched_records: indexed_report.row_ids.len(),
         indexed_stats: indexed_report.stats.clone(),
+        planning_diagnostics,
         timing: TimingReport {
             baseline_elapsed,
             fse_elapsed: indexed_elapsed,
