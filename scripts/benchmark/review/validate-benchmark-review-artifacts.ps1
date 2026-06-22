@@ -472,6 +472,12 @@ Test-BenchmarkReviewTextColumnAllEquals `
   -ExpectedValue "pass" `
   -Description "typed archive maintenance summary"
 
+Test-BenchmarkReviewTextColumnAllInSet `
+  -Rows $TypedArchiveMaintenanceSummaryRows `
+  -ColumnName "maintenance_status_requires_archive_write" `
+  -ExpectedValues @("true", "false") `
+  -Description "typed archive maintenance summary"
+
 $TypedArchiveAppendDeltaMaintenanceSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv `
   -Entry $TypedArchiveAppendDeltaMaintenanceSummaryEntry `
   -Description "typed archive append-delta maintenance summary" `
@@ -481,6 +487,7 @@ $TypedArchiveAppendDeltaMaintenanceSummaryRows = Read-BenchmarkReviewPolicyValid
   "workload_name",
   "maintenance_action",
   "maintenance_reason",
+  "maintenance_status_requires_archive_write",
   "base_record_count",
   "pending_append_record_count",
   "tombstone_count",

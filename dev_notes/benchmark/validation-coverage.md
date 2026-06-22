@@ -338,6 +338,13 @@ Every row must have:
 agreement = pass
 ```
 
+The `maintenance_status_requires_archive_write` field must be either:
+
+```text
+true
+false
+```
+
 This check verifies that policy-driven typed archive maintenance preserves exact query results after the selected archive action is applied.
 
 The typed archive maintenance notes artifact must exist and be non-empty:
