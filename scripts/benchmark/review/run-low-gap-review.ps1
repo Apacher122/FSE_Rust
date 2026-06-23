@@ -627,6 +627,7 @@ if ($UpdateHistory) {
   Add-ReviewLine "weakest workload history: $(Join-Path $HistoryDir "weakest-workload-history.csv")"
   Add-ReviewLine "count-only workload history: $(Join-Path $HistoryDir "count-only-workload-history.csv")"
   Add-ReviewLine "materialization mode history: $(Join-Path $HistoryDir "materialization-mode-history.csv")"
+  Add-ReviewLine "typed indexed comparison history: $(Join-Path $HistoryDir "typed-indexed-comparison-history.csv")"
   Add-ReviewLine "typed archive load history: $(Join-Path $HistoryDir "typed-archive-load-history.csv")"
   Add-ReviewLine "typed archive append rebuild history: $(Join-Path $HistoryDir "typed-archive-append-rebuild-history.csv")"
   Add-ReviewLine "typed archive append-delta query history: $(Join-Path $HistoryDir "typed-archive-append-delta-query-history.csv")"

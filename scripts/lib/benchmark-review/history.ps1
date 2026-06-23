@@ -581,6 +581,11 @@ function Update-BenchmarkReviewHistory {
 
   Add-BenchmarkSourceCsvToHistory `
     -Context $Context `
+    -SourceCsv $Context.CurrentTypedIndexedComparisonSummaryCsv `
+    -HistoryCsv (Join-Path $Context.HistoryDir "typed-indexed-comparison-history.csv")
+
+  Add-BenchmarkSourceCsvToHistory `
+    -Context $Context `
     -SourceCsv $Context.CurrentTypedArchiveLoadSummaryCsv `
     -HistoryCsv (Join-Path $Context.HistoryDir "typed-archive-load-history.csv")
 

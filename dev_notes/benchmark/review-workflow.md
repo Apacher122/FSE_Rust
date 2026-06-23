@@ -593,6 +593,13 @@ History CSVs:
     weakest-workload-history.csv
     count-only-workload-history.csv
     materialization-mode-history.csv
+    typed-indexed-comparison-history.csv
+    typed-archive-load-history.csv
+    typed-archive-append-rebuild-history.csv
+    typed-archive-append-delta-query-history.csv
+    typed-archive-compaction-history.csv
+    typed-archive-maintenance-history.csv
+    typed-archive-append-delta-maintenance-history.csv
     target-workload-history.csv
     index-footprint-history.csv
     baseline-footprint-history.csv
@@ -603,6 +610,8 @@ The per-run artifacts remain the raw evidence. History CSVs are append-only ledg
 `index-footprint-history.csv` is generated from the normal summary CSV. It stores one deduplicated index-footprint row per validated review run because the index footprint is the same across baseline rows for a given run.
 
 `baseline-footprint-history.csv` is generated from the normal summary CSV. It stores one row per baseline per validated review run because each baseline has its own logical scalar footprint.
+
+`typed-indexed-comparison-history.csv` is generated from the typed indexed comparison summary. It preserves planner strategy, selectivity bucket, planner risk, candidate ratio, timing ratio, record-avoidance ratio, and agreement by workload.
 
 Every summary history row includes:
 

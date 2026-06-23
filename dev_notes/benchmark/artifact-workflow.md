@@ -22,6 +22,7 @@ benchmark_artifacts/
     weakest-workload-history.csv
     count-only-workload-history.csv
     materialization-mode-history.csv
+    typed-indexed-comparison-history.csv
     typed-archive-load-history.csv
     typed-archive-append-rebuild-history.csv
     typed-archive-append-delta-query-history.csv
@@ -433,6 +434,7 @@ low-selectivity-performance-history.csv
 weakest-workload-history.csv
 count-only-workload-history.csv
 materialization-mode-history.csv
+typed-indexed-comparison-history.csv
 typed-archive-load-history.csv
 typed-archive-append-rebuild-history.csv
 typed-archive-append-delta-query-history.csv
@@ -461,6 +463,9 @@ count-only-workload-history.csv:
 
 materialization-mode-history.csv:
   how output-contract materialization costs changed by workload
+
+typed-indexed-comparison-history.csv:
+  how typed planner strategy, selectivity bucket, planner risk, candidate ratio, and indexed timing changed by workload
 
 typed-archive-load-history.csv:
   how loaded `.fse` query execution changed by workload
