@@ -81,6 +81,18 @@ fn typed_query_planning_diagnostics_selects_fse_for_selective_plan() {
             .estimated_flat_scan_records,
         diagnostics.total_records
     );
+    let comparison = diagnostics.cost_comparison_against_flat_scan();
+
+    assert_eq!(comparison.selected_strategy, diagnostics.strategy);
+    assert_eq!(comparison.selected_work, diagnostics.work_estimate);
+    assert_eq!(
+        comparison.flat_scan_work,
+        diagnostics.strategy_costs.flat_scan
+    );
+    assert!(comparison.reduces_predicate_evaluations());
+    assert!(comparison.reduces_flat_scan_records());
+    assert!(comparison.traversal_node_visit_delta > 0);
+    assert_eq!(comparison.materialized_record_delta, 0);
     assert_eq!(
         diagnostics.work_estimate.estimated_reconstructed_records,
         diagnostics.estimated_candidate_records
@@ -142,6 +154,17 @@ fn typed_query_planning_diagnostics_selects_flat_scan_for_broad_materialized_pla
             .estimated_predicate_evaluations,
         diagnostics.estimated_candidate_records
     );
+    let comparison = diagnostics.cost_comparison_against_flat_scan();
+
+    assert_eq!(comparison.selected_strategy, diagnostics.strategy);
+    assert_eq!(comparison.selected_work, diagnostics.work_estimate);
+    assert_eq!(
+        comparison.flat_scan_work,
+        diagnostics.strategy_costs.flat_scan
+    );
+    assert_eq!(comparison.predicate_evaluation_delta, 0);
+    assert_eq!(comparison.flat_scan_record_delta, 0);
+    assert_eq!(comparison.traversal_node_visit_delta, 0);
     assert_eq!(diagnostics.work_estimate.estimated_traversal_node_visits, 0);
     assert_eq!(diagnostics.work_estimate.estimated_reconstructed_records, 0);
     assert_eq!(
@@ -196,6 +219,17 @@ fn typed_query_planning_diagnostics_reports_noop_for_unsatisfiable_plan() {
             .for_strategy(diagnostics.strategy)
     );
     assert!(diagnostics.strategy_costs.no_op.is_empty());
+    let comparison = diagnostics.cost_comparison_against_flat_scan();
+
+    assert_eq!(comparison.selected_strategy, diagnostics.strategy);
+    assert_eq!(comparison.selected_work, diagnostics.work_estimate);
+    assert_eq!(
+        comparison.flat_scan_work,
+        diagnostics.strategy_costs.flat_scan
+    );
+    assert!(comparison.reduces_predicate_evaluations());
+    assert!(comparison.reduces_flat_scan_records());
+    assert_eq!(comparison.traversal_node_visit_delta, 0);
 }
 
 #[test]
@@ -248,6 +282,17 @@ fn typed_query_planning_diagnostics_selects_hybrid_for_append_delta_view() {
             .estimated_predicate_evaluations,
         diagnostics.total_records
     );
+    let comparison = diagnostics.cost_comparison_against_flat_scan();
+
+    assert_eq!(comparison.selected_strategy, diagnostics.strategy);
+    assert_eq!(comparison.selected_work, diagnostics.work_estimate);
+    assert_eq!(
+        comparison.flat_scan_work,
+        diagnostics.strategy_costs.flat_scan
+    );
+    assert!(comparison.reduces_predicate_evaluations());
+    assert!(comparison.reduces_flat_scan_records());
+    assert!(comparison.traversal_node_visit_delta > 0);
     assert!(diagnostics.work_estimate.estimated_traversal_node_visits > 0);
     assert_eq!(
         diagnostics.work_estimate.estimated_flat_scan_records,
@@ -300,6 +345,17 @@ fn typed_query_planning_diagnostics_flags_high_dimensional_low_constraint_query(
         diagnostics.strategy_costs.flat_scan,
         diagnostics.work_estimate
     );
+    let comparison = diagnostics.cost_comparison_against_flat_scan();
+
+    assert_eq!(comparison.selected_strategy, diagnostics.strategy);
+    assert_eq!(comparison.selected_work, diagnostics.work_estimate);
+    assert_eq!(
+        comparison.flat_scan_work,
+        diagnostics.strategy_costs.flat_scan
+    );
+    assert_eq!(comparison.predicate_evaluation_delta, 0);
+    assert_eq!(comparison.flat_scan_record_delta, 0);
+    assert_eq!(comparison.traversal_node_visit_delta, 0);
 }
 
 fn score_and_class_plan(schema: &FSESchema, mapping: &FSESchemaDimensionMapping) -> TypedQueryPlan {

@@ -60,9 +60,9 @@ pub use planned_execution::{
     planned_typed_query_visit_rows_excluding_tombstones,
 };
 pub use planning::{
-    TypedQueryExecutionStrategy, TypedQueryOutputContract, TypedQueryPlanningDiagnostics,
-    TypedQueryPlanningReason, TypedQueryPlanningRiskFlags, TypedQueryPlanningWorkEstimate,
-    TypedQuerySelectivityBucket, TypedQueryStrategyCostEstimates,
+    TypedQueryExecutionStrategy, TypedQueryOutputContract, TypedQueryPlanningCostComparison,
+    TypedQueryPlanningDiagnostics, TypedQueryPlanningReason, TypedQueryPlanningRiskFlags,
+    TypedQueryPlanningWorkEstimate, TypedQuerySelectivityBucket, TypedQueryStrategyCostEstimates,
     plan_typed_append_delta_query_execution, plan_typed_query_execution,
 };
 pub use predicate::{

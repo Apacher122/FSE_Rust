@@ -113,6 +113,80 @@ impl TypedQueryStrategyCostEstimates {
     }
 }
 
+/// Work deltas between the selected typed strategy and direct flat scanning.
+///
+/// Delta fields are computed as selected work minus direct flat-scan work.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TypedQueryPlanningCostComparison {
+    /// Execution strategy selected by the planner.
+    pub selected_strategy: TypedQueryExecutionStrategy,
+
+    /// Estimated work for the selected strategy.
+    pub selected_work: TypedQueryPlanningWorkEstimate,
+
+    /// Estimated work for direct flat scanning.
+    pub flat_scan_work: TypedQueryPlanningWorkEstimate,
+
+    /// Delta for hierarchy node visits.
+    pub traversal_node_visit_delta: i128,
+
+    /// Delta for reconstructed records.
+    pub reconstructed_record_delta: i128,
+
+    /// Delta for typed predicate evaluations.
+    pub predicate_evaluation_delta: i128,
+
+    /// Delta for materialized typed records.
+    pub materialized_record_delta: i128,
+
+    /// Delta for directly scanned batch records.
+    pub flat_scan_record_delta: i128,
+}
+
+impl TypedQueryPlanningCostComparison {
+    fn new(
+        selected_strategy: TypedQueryExecutionStrategy,
+        selected_work: TypedQueryPlanningWorkEstimate,
+        flat_scan_work: TypedQueryPlanningWorkEstimate,
+    ) -> Self {
+        Self {
+            selected_strategy,
+            selected_work,
+            flat_scan_work,
+            traversal_node_visit_delta: work_delta(
+                selected_work.estimated_traversal_node_visits,
+                flat_scan_work.estimated_traversal_node_visits,
+            ),
+            reconstructed_record_delta: work_delta(
+                selected_work.estimated_reconstructed_records,
+                flat_scan_work.estimated_reconstructed_records,
+            ),
+            predicate_evaluation_delta: work_delta(
+                selected_work.estimated_predicate_evaluations,
+                flat_scan_work.estimated_predicate_evaluations,
+            ),
+            materialized_record_delta: work_delta(
+                selected_work.estimated_materialized_records,
+                flat_scan_work.estimated_materialized_records,
+            ),
+            flat_scan_record_delta: work_delta(
+                selected_work.estimated_flat_scan_records,
+                flat_scan_work.estimated_flat_scan_records,
+            ),
+        }
+    }
+
+    /// Returns true when selected predicate evaluation work is lower than flat scan.
+    pub fn reduces_predicate_evaluations(self) -> bool {
+        self.predicate_evaluation_delta < 0
+    }
+
+    /// Returns true when selected direct batch scanning work is lower than flat scan.
+    pub fn reduces_flat_scan_records(self) -> bool {
+        self.flat_scan_record_delta < 0
+    }
+}
+
 /// Estimated selectivity class for a typed query plan.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TypedQuerySelectivityBucket {
@@ -306,6 +380,15 @@ impl TypedQueryPlanningDiagnostics {
     /// Returns true when the candidate estimate is broad.
     pub fn is_broad_query(&self) -> bool {
         self.selectivity_bucket.is_broad()
+    }
+
+    /// Compares the selected strategy with direct flat scanning.
+    pub fn cost_comparison_against_flat_scan(&self) -> TypedQueryPlanningCostComparison {
+        TypedQueryPlanningCostComparison::new(
+            self.strategy,
+            self.work_estimate,
+            self.strategy_costs.flat_scan,
+        )
     }
 }
 
@@ -759,6 +842,10 @@ fn estimated_count_from_ratio(candidate_ratio: Scalar, total: usize) -> usize {
     }
 
     ((candidate_ratio * total as Scalar).ceil() as usize).clamp(1, total)
+}
+
+fn work_delta(selected: usize, baseline: usize) -> i128 {
+    selected as i128 - baseline as i128
 }
 
 fn ratio(part: usize, total: usize) -> Scalar {
