@@ -4,12 +4,16 @@ use std::path::PathBuf;
 
 use crate::build::{BuildConfig, FSEBuilder};
 use crate::data::{FSEField, FSEFieldType, FSERecord, FSERecordBatch, FSESchema, FSEValue, RowId};
-use crate::encoding::{ComposedRecordEncoder, FloatEncoder, IntegerEncoder};
+use crate::encoding::{
+    CategoricalDictionaryEncoder, ComposedRecordEncoder, FloatEncoder, IntegerEncoder,
+    TimestampMillisEncoder,
+};
 use crate::persistence::{
     FSEArchiveFileOperation, FSETypedQueryIndexArchiveFootprint,
     FSETypedQueryIndexArchiveFootprintComponent, FSETypedQueryIndexArchiveFootprintError,
     save_typed_query_index_archive_file, save_typed_record_batch_archive_file,
-    save_typed_row_tombstone_archive_file, typed_query_index_archive_footprint,
+    save_typed_row_tombstone_archive_file, typed_query_index_archive_file_section_footprint,
+    typed_query_index_archive_footprint, typed_query_index_archive_section_footprint,
     typed_query_index_archive_with_append_delta_and_tombstones_footprint,
     typed_query_index_archive_with_append_delta_footprint,
     typed_query_index_archive_with_tombstones_footprint,
@@ -36,6 +40,71 @@ fn typed_query_index_archive_footprint_counts_query_index_file_bytes() {
     assert!(!footprint.includes_tombstone_archive());
 
     let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_query_index_archive_section_footprint_counts_embedded_sections() {
+    let path = temp_archive_path("section-footprint", ".fse");
+
+    save_typed_query_index_archive_file(&path, &typed_query_index()).unwrap();
+
+    let expected_archive_bytes = fs::metadata(&path).unwrap().len();
+    let footprint = typed_query_index_archive_file_section_footprint(&path).unwrap();
+    let embedded_section_bytes = footprint.row_mapped_index_section_bytes
+        + footprint.typed_record_batch_section_bytes
+        + footprint.record_encoder_metadata_section_bytes
+        + footprint.section_framing_bytes;
+
+    assert_eq!(footprint.total_archive_bytes, expected_archive_bytes);
+    assert_eq!(
+        footprint.payload_header_bytes + footprint.typed_query_index_payload_bytes,
+        expected_archive_bytes
+    );
+    assert_eq!(
+        embedded_section_bytes,
+        footprint.typed_query_index_payload_bytes
+    );
+    assert_eq!(footprint.section_framing_bytes, 24);
+    assert!(footprint.payload_header_bytes > 0);
+    assert!(footprint.row_mapped_index_section_bytes > 0);
+    assert!(footprint.typed_record_batch_section_bytes > 0);
+    assert!(footprint.record_encoder_metadata_section_bytes > 0);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_query_index_archive_section_footprint_matches_runtime_report() {
+    let path = temp_archive_path("section-runtime-match", ".fse");
+    let query_index = typed_query_index();
+
+    save_typed_query_index_archive_file(&path, &query_index).unwrap();
+
+    let runtime_footprint = typed_query_index_archive_section_footprint(&query_index).unwrap();
+    let file_footprint = typed_query_index_archive_file_section_footprint(&path).unwrap();
+
+    assert_eq!(file_footprint, runtime_footprint);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn typed_query_index_archive_section_footprint_exposes_categorical_storage() {
+    let numeric_footprint = typed_query_index_archive_section_footprint(&typed_query_index())
+        .expect("numeric section footprint should be reportable");
+    let categorical_footprint =
+        typed_query_index_archive_section_footprint(&categorical_typed_query_index())
+            .expect("categorical section footprint should be reportable");
+
+    assert!(
+        categorical_footprint.typed_record_batch_section_bytes
+            > numeric_footprint.typed_record_batch_section_bytes
+    );
+    assert!(
+        categorical_footprint.record_encoder_metadata_section_bytes
+            > numeric_footprint.record_encoder_metadata_section_bytes
+    );
+    assert!(categorical_footprint.total_archive_bytes > numeric_footprint.total_archive_bytes);
 }
 
 #[test]
@@ -272,6 +341,72 @@ fn entity_schema() -> FSESchema {
         FSEField::new("entity_id", FSEFieldType::Integer, false),
         FSEField::new("score", FSEFieldType::Float, false),
     ])
+}
+
+fn categorical_typed_query_index() -> TypedQueryIndex {
+    let schema = categorical_entity_schema();
+    let batch = categorical_record_batch(&schema);
+    let encoder = ComposedRecordEncoder::new(
+        &schema,
+        vec![
+            Box::new(IntegerEncoder),
+            Box::new(FloatEncoder),
+            Box::new(CategoricalDictionaryEncoder::new(vec![
+                "alpha".to_string(),
+                "beta".to_string(),
+                "gamma".to_string(),
+            ])),
+            Box::new(TimestampMillisEncoder),
+        ],
+    );
+    let builder = FSEBuilder::new(BuildConfig::new(2, 8));
+
+    TypedQueryIndex::try_build(batch, &encoder, &builder).unwrap()
+}
+
+fn categorical_entity_schema() -> FSESchema {
+    FSESchema::new(vec![
+        FSEField::new("entity_id", FSEFieldType::Integer, false),
+        FSEField::new("score", FSEFieldType::Float, false),
+        FSEField::new("class", FSEFieldType::Category, false),
+        FSEField::new("observed_at", FSEFieldType::TimestampMillis, false),
+    ])
+}
+
+fn categorical_record_batch(schema: &FSESchema) -> FSERecordBatch {
+    FSERecordBatch::new(
+        schema.clone(),
+        vec![
+            RowId::new(200),
+            RowId::new(201),
+            RowId::new(202),
+            RowId::new(203),
+        ],
+        vec![
+            categorical_record(schema, 200, 12.5, "alpha", 1_700_000_000_000),
+            categorical_record(schema, 201, 25.0, "beta", 1_700_000_001_000),
+            categorical_record(schema, 202, 37.5, "alpha", 1_700_000_002_000),
+            categorical_record(schema, 203, 50.0, "gamma", 1_700_000_003_000),
+        ],
+    )
+}
+
+fn categorical_record(
+    schema: &FSESchema,
+    entity_id: i64,
+    score: f64,
+    class: &str,
+    observed_at: i64,
+) -> FSERecord {
+    FSERecord::new(
+        vec![
+            FSEValue::Integer(entity_id),
+            FSEValue::Float(score),
+            FSEValue::Category(class.to_string()),
+            FSEValue::TimestampMillis(observed_at),
+        ],
+        schema,
+    )
 }
 
 fn temp_archive_path(name: &str, extension: &str) -> PathBuf {
