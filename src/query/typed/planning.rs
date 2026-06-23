@@ -82,6 +82,37 @@ impl TypedQueryPlanningWorkEstimate {
     }
 }
 
+/// Estimated work for each typed query execution strategy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TypedQueryStrategyCostEstimates {
+    /// Estimated work when no execution path is required.
+    pub no_op: TypedQueryPlanningWorkEstimate,
+
+    /// Estimated work for geometric traversal through the base FSE index.
+    pub fse_traversal: TypedQueryPlanningWorkEstimate,
+
+    /// Estimated work for direct typed predicate evaluation over visible records.
+    pub flat_scan: TypedQueryPlanningWorkEstimate,
+
+    /// Estimated work for base-index traversal plus append-delta evaluation.
+    pub hybrid: TypedQueryPlanningWorkEstimate,
+}
+
+impl TypedQueryStrategyCostEstimates {
+    /// Returns the estimate for an execution strategy.
+    pub fn for_strategy(
+        &self,
+        strategy: TypedQueryExecutionStrategy,
+    ) -> TypedQueryPlanningWorkEstimate {
+        match strategy {
+            TypedQueryExecutionStrategy::NoOp => self.no_op,
+            TypedQueryExecutionStrategy::FseTraversal => self.fse_traversal,
+            TypedQueryExecutionStrategy::FlatScan => self.flat_scan,
+            TypedQueryExecutionStrategy::Hybrid => self.hybrid,
+        }
+    }
+}
+
 /// Estimated selectivity class for a typed query plan.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TypedQuerySelectivityBucket {
@@ -251,6 +282,9 @@ pub struct TypedQueryPlanningDiagnostics {
     /// Estimated work implied by the selected execution strategy.
     pub work_estimate: TypedQueryPlanningWorkEstimate,
 
+    /// Estimated work for each candidate execution strategy.
+    pub strategy_costs: TypedQueryStrategyCostEstimates,
+
     /// Risk flags derived from the planning estimate and output contract.
     pub risk_flags: TypedQueryPlanningRiskFlags,
 }
@@ -336,14 +370,14 @@ fn planning_diagnostics_from_estimate(
         estimated_candidate_ratio,
         requires_append_delta_scan,
     );
-    let work_estimate = estimate_strategy_work(
-        strategy,
+    let strategy_costs = estimate_strategy_costs(
         output_contract,
         base,
         estimated_candidate_records,
         append_delta_record_count,
         total_records,
     );
+    let work_estimate = strategy_costs.for_strategy(strategy);
     let risk_flags = risk_flags_from_estimate(
         reason,
         output_contract,
@@ -370,6 +404,7 @@ fn planning_diagnostics_from_estimate(
         estimated_retained_leaf_ratio: base.estimated_retained_leaf_ratio,
         requires_append_delta_scan,
         work_estimate,
+        strategy_costs,
         risk_flags,
     }
 }
@@ -496,6 +531,49 @@ fn estimate_base_index(index: &TypedQueryIndex, plan: &TypedQueryPlan) -> BasePl
         estimated_candidate_ratio: estimate.candidate_ratio,
         estimated_retained_leaf_count,
         estimated_retained_leaf_ratio,
+    }
+}
+
+fn estimate_strategy_costs(
+    output_contract: TypedQueryOutputContract,
+    base: BasePlanningEstimate,
+    estimated_candidate_records: usize,
+    append_delta_record_count: usize,
+    total_records: usize,
+) -> TypedQueryStrategyCostEstimates {
+    TypedQueryStrategyCostEstimates {
+        no_op: estimate_strategy_work(
+            TypedQueryExecutionStrategy::NoOp,
+            output_contract,
+            base,
+            estimated_candidate_records,
+            append_delta_record_count,
+            total_records,
+        ),
+        fse_traversal: estimate_strategy_work(
+            TypedQueryExecutionStrategy::FseTraversal,
+            output_contract,
+            base,
+            estimated_candidate_records,
+            append_delta_record_count,
+            total_records,
+        ),
+        flat_scan: estimate_strategy_work(
+            TypedQueryExecutionStrategy::FlatScan,
+            output_contract,
+            base,
+            estimated_candidate_records,
+            append_delta_record_count,
+            total_records,
+        ),
+        hybrid: estimate_strategy_work(
+            TypedQueryExecutionStrategy::Hybrid,
+            output_contract,
+            base,
+            estimated_candidate_records,
+            append_delta_record_count,
+            total_records,
+        ),
     }
 }
 

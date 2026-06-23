@@ -58,6 +58,30 @@ fn typed_query_planning_diagnostics_selects_fse_for_selective_plan() {
     assert!(!diagnostics.risk_flags.has_any());
     assert!(diagnostics.work_estimate.estimated_traversal_node_visits > 0);
     assert_eq!(
+        diagnostics.work_estimate,
+        diagnostics
+            .strategy_costs
+            .for_strategy(diagnostics.strategy)
+    );
+    assert_eq!(
+        diagnostics.strategy_costs.fse_traversal,
+        diagnostics.work_estimate
+    );
+    assert_eq!(
+        diagnostics
+            .strategy_costs
+            .flat_scan
+            .estimated_predicate_evaluations,
+        diagnostics.total_records
+    );
+    assert_eq!(
+        diagnostics
+            .strategy_costs
+            .flat_scan
+            .estimated_flat_scan_records,
+        diagnostics.total_records
+    );
+    assert_eq!(
         diagnostics.work_estimate.estimated_reconstructed_records,
         diagnostics.estimated_candidate_records
     );
@@ -101,6 +125,23 @@ fn typed_query_planning_diagnostics_selects_flat_scan_for_broad_materialized_pla
     assert!(diagnostics.risk_flags.materialization_pressure);
     assert!(!diagnostics.risk_flags.high_dimensional_low_constraint);
     assert!(!diagnostics.risk_flags.append_delta_scan);
+    assert_eq!(
+        diagnostics.work_estimate,
+        diagnostics
+            .strategy_costs
+            .for_strategy(diagnostics.strategy)
+    );
+    assert_eq!(
+        diagnostics.strategy_costs.flat_scan,
+        diagnostics.work_estimate
+    );
+    assert_eq!(
+        diagnostics
+            .strategy_costs
+            .fse_traversal
+            .estimated_predicate_evaluations,
+        diagnostics.estimated_candidate_records
+    );
     assert_eq!(diagnostics.work_estimate.estimated_traversal_node_visits, 0);
     assert_eq!(diagnostics.work_estimate.estimated_reconstructed_records, 0);
     assert_eq!(
@@ -148,6 +189,13 @@ fn typed_query_planning_diagnostics_reports_noop_for_unsatisfiable_plan() {
     assert!(!diagnostics.uses_geometric_traversal());
     assert!(!diagnostics.risk_flags.has_any());
     assert!(diagnostics.work_estimate.is_empty());
+    assert_eq!(
+        diagnostics.work_estimate,
+        diagnostics
+            .strategy_costs
+            .for_strategy(diagnostics.strategy)
+    );
+    assert!(diagnostics.strategy_costs.no_op.is_empty());
 }
 
 #[test]
@@ -186,6 +234,20 @@ fn typed_query_planning_diagnostics_selects_hybrid_for_append_delta_view() {
     assert!(!diagnostics.risk_flags.materialization_pressure);
     assert!(!diagnostics.risk_flags.high_dimensional_low_constraint);
     assert!(diagnostics.risk_flags.append_delta_scan);
+    assert_eq!(
+        diagnostics.work_estimate,
+        diagnostics
+            .strategy_costs
+            .for_strategy(diagnostics.strategy)
+    );
+    assert_eq!(diagnostics.strategy_costs.hybrid, diagnostics.work_estimate);
+    assert_eq!(
+        diagnostics
+            .strategy_costs
+            .flat_scan
+            .estimated_predicate_evaluations,
+        diagnostics.total_records
+    );
     assert!(diagnostics.work_estimate.estimated_traversal_node_visits > 0);
     assert_eq!(
         diagnostics.work_estimate.estimated_flat_scan_records,
@@ -228,6 +290,16 @@ fn typed_query_planning_diagnostics_flags_high_dimensional_low_constraint_query(
     assert!(!diagnostics.risk_flags.materialization_pressure);
     assert!(diagnostics.risk_flags.high_dimensional_low_constraint);
     assert!(!diagnostics.risk_flags.append_delta_scan);
+    assert_eq!(
+        diagnostics.work_estimate,
+        diagnostics
+            .strategy_costs
+            .for_strategy(diagnostics.strategy)
+    );
+    assert_eq!(
+        diagnostics.strategy_costs.flat_scan,
+        diagnostics.work_estimate
+    );
 }
 
 fn score_and_class_plan(schema: &FSESchema, mapping: &FSESchemaDimensionMapping) -> TypedQueryPlan {
