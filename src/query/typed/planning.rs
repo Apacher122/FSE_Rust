@@ -185,6 +185,47 @@ impl TypedQueryPlanningCostComparison {
     pub fn reduces_flat_scan_records(self) -> bool {
         self.flat_scan_record_delta < 0
     }
+
+    /// Classifies the selected strategy relative to direct flat scanning.
+    pub fn classification(self) -> TypedQueryPlanningCostClassification {
+        if self.selected_work.is_empty() {
+            return TypedQueryPlanningCostClassification::NoWork;
+        }
+
+        if self.reduces_predicate_evaluations() || self.reduces_flat_scan_records() {
+            return TypedQueryPlanningCostClassification::ScanWorkReduction;
+        }
+
+        if self.has_no_delta() {
+            return TypedQueryPlanningCostClassification::FlatScanEquivalent;
+        }
+
+        TypedQueryPlanningCostClassification::TraversalOverheadWithoutScanReduction
+    }
+
+    fn has_no_delta(self) -> bool {
+        self.traversal_node_visit_delta == 0
+            && self.reconstructed_record_delta == 0
+            && self.predicate_evaluation_delta == 0
+            && self.materialized_record_delta == 0
+            && self.flat_scan_record_delta == 0
+    }
+}
+
+/// Classification of selected planner work relative to direct flat scanning.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TypedQueryPlanningCostClassification {
+    /// The selected strategy has no estimated work.
+    NoWork,
+
+    /// The selected strategy reduces predicate evaluation or direct scan work.
+    ScanWorkReduction,
+
+    /// The selected strategy has the same estimated work shape as flat scan.
+    FlatScanEquivalent,
+
+    /// The selected strategy adds traversal work without reducing scan work.
+    TraversalOverheadWithoutScanReduction,
 }
 
 /// Estimated selectivity class for a typed query plan.
@@ -389,6 +430,11 @@ impl TypedQueryPlanningDiagnostics {
             self.work_estimate,
             self.strategy_costs.flat_scan,
         )
+    }
+
+    /// Classifies selected work relative to direct flat scanning.
+    pub fn cost_classification_against_flat_scan(&self) -> TypedQueryPlanningCostClassification {
+        self.cost_comparison_against_flat_scan().classification()
     }
 }
 

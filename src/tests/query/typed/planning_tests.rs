@@ -10,8 +10,8 @@ use crate::encoding::{
 use crate::query::{
     FSEPredicate, FSEPredicateField, TypedAppendDeltaQueryView, TypedQueryExecutionStrategy,
     TypedQueryIndex, TypedQueryOutputContract, TypedQueryPlan, TypedQueryPlanBuilder,
-    TypedQueryPlanningReason, TypedQuerySelectivityBucket, plan_typed_append_delta_query_execution,
-    plan_typed_query_execution,
+    TypedQueryPlanningCostClassification, TypedQueryPlanningReason, TypedQuerySelectivityBucket,
+    plan_typed_append_delta_query_execution, plan_typed_query_execution,
 };
 
 #[test]
@@ -94,6 +94,14 @@ fn typed_query_planning_diagnostics_selects_fse_for_selective_plan() {
     assert!(comparison.traversal_node_visit_delta > 0);
     assert_eq!(comparison.materialized_record_delta, 0);
     assert_eq!(
+        comparison.classification(),
+        TypedQueryPlanningCostClassification::ScanWorkReduction
+    );
+    assert_eq!(
+        diagnostics.cost_classification_against_flat_scan(),
+        TypedQueryPlanningCostClassification::ScanWorkReduction
+    );
+    assert_eq!(
         diagnostics.work_estimate.estimated_reconstructed_records,
         diagnostics.estimated_candidate_records
     );
@@ -165,6 +173,14 @@ fn typed_query_planning_diagnostics_selects_flat_scan_for_broad_materialized_pla
     assert_eq!(comparison.predicate_evaluation_delta, 0);
     assert_eq!(comparison.flat_scan_record_delta, 0);
     assert_eq!(comparison.traversal_node_visit_delta, 0);
+    assert_eq!(
+        comparison.classification(),
+        TypedQueryPlanningCostClassification::FlatScanEquivalent
+    );
+    assert_eq!(
+        diagnostics.cost_classification_against_flat_scan(),
+        TypedQueryPlanningCostClassification::FlatScanEquivalent
+    );
     assert_eq!(diagnostics.work_estimate.estimated_traversal_node_visits, 0);
     assert_eq!(diagnostics.work_estimate.estimated_reconstructed_records, 0);
     assert_eq!(
@@ -230,6 +246,14 @@ fn typed_query_planning_diagnostics_reports_noop_for_unsatisfiable_plan() {
     assert!(comparison.reduces_predicate_evaluations());
     assert!(comparison.reduces_flat_scan_records());
     assert_eq!(comparison.traversal_node_visit_delta, 0);
+    assert_eq!(
+        comparison.classification(),
+        TypedQueryPlanningCostClassification::NoWork
+    );
+    assert_eq!(
+        diagnostics.cost_classification_against_flat_scan(),
+        TypedQueryPlanningCostClassification::NoWork
+    );
 }
 
 #[test]
@@ -293,6 +317,14 @@ fn typed_query_planning_diagnostics_selects_hybrid_for_append_delta_view() {
     assert!(comparison.reduces_predicate_evaluations());
     assert!(comparison.reduces_flat_scan_records());
     assert!(comparison.traversal_node_visit_delta > 0);
+    assert_eq!(
+        comparison.classification(),
+        TypedQueryPlanningCostClassification::ScanWorkReduction
+    );
+    assert_eq!(
+        diagnostics.cost_classification_against_flat_scan(),
+        TypedQueryPlanningCostClassification::ScanWorkReduction
+    );
     assert!(diagnostics.work_estimate.estimated_traversal_node_visits > 0);
     assert_eq!(
         diagnostics.work_estimate.estimated_flat_scan_records,
@@ -356,6 +388,14 @@ fn typed_query_planning_diagnostics_flags_high_dimensional_low_constraint_query(
     assert_eq!(comparison.predicate_evaluation_delta, 0);
     assert_eq!(comparison.flat_scan_record_delta, 0);
     assert_eq!(comparison.traversal_node_visit_delta, 0);
+    assert_eq!(
+        comparison.classification(),
+        TypedQueryPlanningCostClassification::FlatScanEquivalent
+    );
+    assert_eq!(
+        diagnostics.cost_classification_against_flat_scan(),
+        TypedQueryPlanningCostClassification::FlatScanEquivalent
+    );
 }
 
 fn score_and_class_plan(schema: &FSESchema, mapping: &FSESchemaDimensionMapping) -> TypedQueryPlan {

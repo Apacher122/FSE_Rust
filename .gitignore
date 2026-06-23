@@ -11,6 +11,8 @@ c[0-9]*-*.txt
 *.txt
 TODO
 /FSE_Documents
+/sample_data
+/FSE_Tests
 
 # VS Code
 .vscode/*
