@@ -293,6 +293,9 @@ fn benchmark_application_renderer_uses_detailed_output_for_debug_report() {
     assert!(output.contains("planner strategy"));
     assert!(output.contains("planner selectivity bucket"));
     assert!(output.contains("planner risk"));
+    assert!(output.contains("planner predicate evaluation delta vs flat scan"));
+    assert!(output.contains("planner flat scan record delta vs flat scan"));
+    assert!(output.contains("planner traversal node visit delta vs flat scan"));
     assert!(output.contains("logical archive bytes before maintenance"));
     assert!(output.contains("append archive bytes before maintenance"));
     assert!(output.contains("maintenance status requires archive write"));
@@ -471,6 +474,21 @@ fn benchmark_application_runs_debug_report_configuration() {
             .contains("planner selectivity bucket")
     );
     assert!(output.terminal_output.contains("planner risk"));
+    assert!(
+        output
+            .terminal_output
+            .contains("planner predicate evaluation delta vs flat scan")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("planner flat scan record delta vs flat scan")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("planner traversal node visit delta vs flat scan")
+    );
     assert!(output.terminal_output.contains("rebuilt/append-delta"));
     assert!(
         output

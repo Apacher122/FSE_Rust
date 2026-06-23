@@ -384,6 +384,9 @@ $TypedIndexedComparisonSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv `
   "planner_strategy",
   "selectivity_bucket",
   "planner_risk",
+  "planner_predicate_evaluation_delta",
+  "planner_flat_scan_record_delta",
+  "planner_traversal_node_visit_delta",
   "record_avoidance_ratio",
   "agreement"
 ) `

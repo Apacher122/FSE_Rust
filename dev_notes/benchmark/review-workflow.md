@@ -611,7 +611,7 @@ The per-run artifacts remain the raw evidence. History CSVs are append-only ledg
 
 `baseline-footprint-history.csv` is generated from the normal summary CSV. It stores one row per baseline per validated review run because each baseline has its own logical scalar footprint.
 
-`typed-indexed-comparison-history.csv` is generated from the typed indexed comparison summary. It preserves planner strategy, selectivity bucket, planner risk, candidate ratio, timing ratio, record-avoidance ratio, and agreement by workload.
+`typed-indexed-comparison-history.csv` is generated from the typed indexed comparison summary. It preserves planner strategy, selectivity bucket, planner risk, candidate ratio, timing ratio, planner-vs-flat-scan cost deltas, record-avoidance ratio, and agreement by workload.
 
 Every summary history row includes:
 

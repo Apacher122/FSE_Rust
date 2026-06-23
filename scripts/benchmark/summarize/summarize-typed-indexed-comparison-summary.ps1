@@ -75,7 +75,7 @@ $HeaderIndex = -1
 for ($Index = $SectionIndex + 1; $Index -lt $Lines.Count; $Index++) {
   $Trimmed = $Lines[$Index].Trim()
 
-  if ($Trimmed.StartsWith("workload | matched | typed scan | indexed typed | timing ratio | candidate ratio | planner strategy | selectivity bucket | planner risk | record avoidance | agreement")) {
+  if ($Trimmed.StartsWith("workload | matched | typed scan | indexed typed | timing ratio | candidate ratio | planner strategy | selectivity bucket | planner risk | planner predicate delta | planner flat scan delta | planner traversal delta | record avoidance | agreement")) {
     $HeaderIndex = $Index
     break
   }
@@ -101,7 +101,7 @@ for ($Index = $HeaderIndex + 1; $Index -lt $Lines.Count; $Index++) {
 
   $Columns = @($Trimmed.Split("|") | ForEach-Object { $_.Trim() })
 
-  if ($Columns.Count -ne 11) {
+  if ($Columns.Count -ne 14) {
     throw "unexpected typed indexed comparison summary column count at line $($Index + 1): $($Columns.Count)"
   }
 
@@ -118,7 +118,10 @@ for ($Index = $HeaderIndex + 1; $Index -lt $Lines.Count; $Index++) {
       $Columns[7],
       $Columns[8],
       $Columns[9],
-      $Columns[10]
+      $Columns[10],
+      $Columns[11],
+      $Columns[12],
+      $Columns[13]
     )) | Out-Null
 }
 
@@ -138,6 +141,9 @@ $Header = @(
   "planner_strategy",
   "selectivity_bucket",
   "planner_risk",
+  "planner_predicate_evaluation_delta",
+  "planner_flat_scan_record_delta",
+  "planner_traversal_node_visit_delta",
   "record_avoidance_ratio",
   "agreement"
 )
@@ -147,7 +153,7 @@ Write-CsvDocument `
   -Header $Header `
   -Rows $Rows
 
-$FailedRows = @($Rows | Where-Object { $_[12] -ne "pass" })
+$FailedRows = @($Rows | Where-Object { $_[15] -ne "pass" })
 
 Set-Utf8Text -Path $OutputNotesPath -Text "Typed indexed comparison summary notes`r`n"
 Add-Utf8Text -Path $OutputNotesPath -Text "======================================`r`n`r`n"
@@ -163,7 +169,7 @@ if ($FailedRows.Count -gt 0) {
   Add-Utf8Text -Path $OutputNotesPath -Text "--------------------`r`n"
 
   foreach ($FailedRow in $FailedRows) {
-    Add-Utf8Text -Path $OutputNotesPath -Text "$($FailedRow[2]): $($FailedRow[12])`r`n"
+    Add-Utf8Text -Path $OutputNotesPath -Text "$($FailedRow[2]): $($FailedRow[15])`r`n"
   }
 }
 

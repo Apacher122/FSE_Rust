@@ -53,6 +53,17 @@ fn typed_comparison_reports_exact_indexed_execution_metrics() {
         TypedQuerySelectivityBucket::Selective
     );
     assert!(!report.planning_diagnostics.risk_flags.has_any());
+    let planner_comparison = report
+        .planning_diagnostics
+        .cost_comparison_against_flat_scan();
+
+    assert_eq!(
+        planner_comparison.selected_strategy,
+        TypedQueryExecutionStrategy::FseTraversal
+    );
+    assert!(planner_comparison.reduces_predicate_evaluations());
+    assert!(planner_comparison.reduces_flat_scan_records());
+    assert!(planner_comparison.traversal_node_visit_delta > 0);
 }
 
 #[test]

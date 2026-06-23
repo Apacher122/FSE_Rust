@@ -44,14 +44,17 @@ impl BenchmarkApplicationRenderer {
         output.push_str("Workload typed indexed comparison summary\n");
         output.push_str("-----------------------------------------\n");
         output.push_str(
-            "workload | matched | typed scan | indexed typed | timing ratio | candidate ratio | planner strategy | selectivity bucket | planner risk | record avoidance | agreement\n",
+            "workload | matched | typed scan | indexed typed | timing ratio | candidate ratio | planner strategy | selectivity bucket | planner risk | planner predicate delta | planner flat scan delta | planner traversal delta | record avoidance | agreement\n",
         );
 
         for workload in &context.workloads {
             let report = typed_comparison_report(context, &typed_context, workload);
+            let cost_comparison = report
+                .planning_diagnostics
+                .cost_comparison_against_flat_scan();
 
             output.push_str(&format!(
-                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
                 workload.name,
                 report.indexed_matched_records,
                 format_duration_ascii(report.repeated_timing.baseline.average_elapsed),
@@ -61,6 +64,9 @@ impl BenchmarkApplicationRenderer {
                 format!("{:?}", report.planning_diagnostics.strategy),
                 format!("{:?}", report.planning_diagnostics.selectivity_bucket),
                 format_planner_risk_flags(report.planning_diagnostics.risk_flags),
+                cost_comparison.predicate_evaluation_delta,
+                cost_comparison.flat_scan_record_delta,
+                cost_comparison.traversal_node_visit_delta,
                 format_scalar_percent(report.record_evaluation_avoidance_ratio),
             ));
         }
@@ -70,6 +76,10 @@ impl BenchmarkApplicationRenderer {
 }
 
 fn append_target_typed_comparison_report(output: &mut String, report: &TypedQueryComparisonReport) {
+    let cost_comparison = report
+        .planning_diagnostics
+        .cost_comparison_against_flat_scan();
+
     append_debug_line(
         output,
         "baseline matched records",
@@ -166,6 +176,21 @@ fn append_target_typed_comparison_report(output: &mut String, report: &TypedQuer
             .planning_diagnostics
             .work_estimate
             .estimated_flat_scan_records,
+    );
+    append_debug_line(
+        output,
+        "planner predicate evaluation delta vs flat scan",
+        cost_comparison.predicate_evaluation_delta,
+    );
+    append_debug_line(
+        output,
+        "planner flat scan record delta vs flat scan",
+        cost_comparison.flat_scan_record_delta,
+    );
+    append_debug_line(
+        output,
+        "planner traversal node visit delta vs flat scan",
+        cost_comparison.traversal_node_visit_delta,
     );
     append_debug_line(output, "typed comparison agreement", "pass");
 }

@@ -465,7 +465,7 @@ materialization-mode-history.csv:
   how output-contract materialization costs changed by workload
 
 typed-indexed-comparison-history.csv:
-  how typed planner strategy, selectivity bucket, planner risk, candidate ratio, and indexed timing changed by workload
+  how typed planner strategy, selectivity bucket, planner risk, planner-vs-flat-scan cost deltas, candidate ratio, and indexed timing changed by workload
 
 typed-archive-load-history.csv:
   how loaded `.fse` query execution changed by workload

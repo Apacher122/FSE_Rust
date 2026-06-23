@@ -178,6 +178,9 @@ candidate_ratio
 planner_strategy
 selectivity_bucket
 planner_risk
+planner_predicate_evaluation_delta
+planner_flat_scan_record_delta
+planner_traversal_node_visit_delta
 record_avoidance_ratio
 agreement
 ```
@@ -221,7 +224,7 @@ high_dimensional_low_constraint
 append_delta
 ```
 
-This check verifies that typed indexed comparison evidence includes the planner diagnostic fields needed to explain why FSE traversal, flat scan, hybrid execution, or no-op execution was selected.
+This check verifies that typed indexed comparison evidence includes the planner diagnostic fields and planner-vs-flat-scan cost deltas needed to explain why FSE traversal, flat scan, hybrid execution, or no-op execution was selected.
 
 The typed indexed comparison notes artifact must exist and be non-empty:
 
