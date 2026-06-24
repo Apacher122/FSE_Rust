@@ -64,12 +64,27 @@ fn typed_query_index_archive_codec_uses_compact_value_framing() {
     let compact_batch_section_bytes = batch_section_bytes(&compact_archive_bytes);
     let decoded = decode_typed_query_index_archive_snapshot(&compact_archive_bytes).unwrap();
 
-    assert!(compact_batch_section_bytes.starts_with(b"FSECBT03"));
+    assert!(compact_batch_section_bytes.starts_with(b"FSECBT04"));
     assert_eq!(
         compact_batch_section_bytes.len(),
         compact_entity_batch_section_len()
     );
     assert_eq!(decoded, snapshot);
+}
+
+#[test]
+fn typed_query_index_archive_codec_decodes_legacy_compact_row_id_batch_section() {
+    let snapshot =
+        FSETypedQueryIndexArchiveSnapshot::from_typed_query_index(&typed_query_index()).unwrap();
+    let archive_bytes = encode_typed_query_index_archive_snapshot(&snapshot).unwrap();
+    let legacy_batch_section_bytes = legacy_compact_row_id_batch_section_bytes(&snapshot);
+    let legacy_archive_bytes =
+        replace_batch_section_bytes(&archive_bytes, &legacy_batch_section_bytes);
+    let decoded = decode_typed_query_index_archive_snapshot(&legacy_archive_bytes).unwrap();
+
+    assert_eq!(decoded, snapshot);
+    assert!(legacy_batch_section_bytes.starts_with(b"FSECBT03"));
+    assert!(legacy_batch_section_bytes.len() > batch_section_bytes(&archive_bytes).len());
 }
 
 #[test]
@@ -411,7 +426,7 @@ fn compact_entity_batch_section_len() -> usize {
         + compact_field_len("class")
         + compact_field_len("observed_at");
     let row_id_bytes = 1 + 8 + 4;
-    let record_bytes = 4 * ((1 + 8) + (1 + 8) + (1 + 1) + (1 + 8));
+    let record_bytes = 4 * ((1 + 1) + (1 + 8) + (1 + 1) + (1 + 2));
 
     8 + 8 + schema_field_bytes + row_id_bytes + 8 + record_bytes
 }
@@ -459,6 +474,32 @@ fn legacy_raw_row_id_batch_section_bytes(snapshot: &FSETypedQueryIndexArchiveSna
     }
 
     write_u64_vec(&mut bytes, &snapshot.batch.row_ids);
+    write_u64(&mut bytes, snapshot.batch.records.len() as u64);
+
+    for record in &snapshot.batch.records {
+        for value in &record.values {
+            write_v2_value(&mut bytes, value);
+        }
+    }
+
+    bytes
+}
+
+fn legacy_compact_row_id_batch_section_bytes(
+    snapshot: &FSETypedQueryIndexArchiveSnapshot,
+) -> Vec<u8> {
+    let mut bytes = Vec::new();
+
+    bytes.extend_from_slice(b"FSECBT03");
+    write_u64(&mut bytes, snapshot.batch.schema_fields.len() as u64);
+
+    for field in &snapshot.batch.schema_fields {
+        write_string(&mut bytes, &field.name);
+        write_field_type_tag(&mut bytes, field.field_type);
+        write_bool(&mut bytes, field.nullable);
+    }
+
+    write_compact_u64_vec(&mut bytes, &snapshot.batch.row_ids);
     write_u64(&mut bytes, snapshot.batch.records.len() as u64);
 
     for record in &snapshot.batch.records {
@@ -562,10 +603,58 @@ fn write_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
     }
 }
 
+fn write_compact_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
+    let raw_len = std::mem::size_of::<u64>() * values.len();
+    let varint_len = values
+        .iter()
+        .map(|value| var_u64_len(*value))
+        .sum::<usize>();
+
+    if varint_len < raw_len {
+        bytes.push(1);
+        write_u64(bytes, values.len() as u64);
+
+        for value in values {
+            write_var_u64(bytes, *value);
+        }
+    } else {
+        bytes.push(0);
+        write_u64_vec(bytes, values);
+    }
+}
+
 fn write_bool(bytes: &mut Vec<u8>, value: bool) {
     bytes.push(u8::from(value));
 }
 
 fn write_u64(bytes: &mut Vec<u8>, value: u64) {
     bytes.extend_from_slice(&value.to_le_bytes());
+}
+
+fn write_var_u64(bytes: &mut Vec<u8>, mut value: u64) {
+    loop {
+        let mut byte = (value & 0x7f) as u8;
+        value >>= 7;
+
+        if value != 0 {
+            byte |= 0x80;
+        }
+
+        bytes.push(byte);
+
+        if value == 0 {
+            break;
+        }
+    }
+}
+
+fn var_u64_len(mut value: u64) -> usize {
+    let mut len = 1;
+
+    while value >= 0x80 {
+        value >>= 7;
+        len += 1;
+    }
+
+    len
 }

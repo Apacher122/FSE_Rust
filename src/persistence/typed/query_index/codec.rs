@@ -292,7 +292,7 @@ pub(super) fn encode_typed_query_index_record_batch_section(
     validate_compact_batch_encoder_field_count(snapshot, record_encoder)?;
 
     let mut bytes = Vec::new();
-    bytes.extend_from_slice(&COMPACT_TYPED_BATCH_SECTION_V3_MAGIC);
+    bytes.extend_from_slice(&COMPACT_TYPED_BATCH_SECTION_V4_MAGIC);
 
     write_u64(&mut bytes, snapshot.schema_fields.len() as u64);
     for field in &snapshot.schema_fields {
@@ -303,7 +303,12 @@ pub(super) fn encode_typed_query_index_record_batch_section(
 
     write_u64(&mut bytes, snapshot.records.len() as u64);
     for record in &snapshot.records {
-        write_compact_batch_record_v2(&mut bytes, record, record_encoder.fields())?;
+        write_compact_batch_record(
+            &mut bytes,
+            record,
+            record_encoder.fields(),
+            CompactBatchRecordLayout::FixedFieldCountCompactRowIdsCompactSignedValues,
+        )?;
     }
 
     Ok(bytes)
@@ -326,6 +331,14 @@ fn decode_typed_query_index_record_batch_section(
             bytes,
             record_encoder,
             CompactBatchRecordLayout::FixedFieldCountCompactRowIds,
+        );
+    }
+
+    if bytes.starts_with(&COMPACT_TYPED_BATCH_SECTION_V4_MAGIC) {
+        return decode_compact_typed_query_index_record_batch_section(
+            bytes,
+            record_encoder,
+            CompactBatchRecordLayout::FixedFieldCountCompactRowIdsCompactSignedValues,
         );
     }
 
@@ -404,6 +417,7 @@ enum CompactBatchRecordLayout {
     LegacyValueCount,
     FixedFieldCountRawRowIds,
     FixedFieldCountCompactRowIds,
+    FixedFieldCountCompactRowIdsCompactSignedValues,
 }
 
 impl CompactBatchRecordLayout {
@@ -412,6 +426,9 @@ impl CompactBatchRecordLayout {
             Self::LegacyValueCount => &COMPACT_TYPED_BATCH_SECTION_V1_MAGIC,
             Self::FixedFieldCountRawRowIds => &COMPACT_TYPED_BATCH_SECTION_V2_MAGIC,
             Self::FixedFieldCountCompactRowIds => &COMPACT_TYPED_BATCH_SECTION_V3_MAGIC,
+            Self::FixedFieldCountCompactRowIdsCompactSignedValues => {
+                &COMPACT_TYPED_BATCH_SECTION_V4_MAGIC
+            }
         }
     }
 
@@ -420,7 +437,15 @@ impl CompactBatchRecordLayout {
     }
 
     fn uses_compact_row_ids(self) -> bool {
-        matches!(self, Self::FixedFieldCountCompactRowIds)
+        matches!(
+            self,
+            Self::FixedFieldCountCompactRowIds
+                | Self::FixedFieldCountCompactRowIdsCompactSignedValues
+        )
+    }
+
+    fn uses_compact_signed_values(self) -> bool {
+        matches!(self, Self::FixedFieldCountCompactRowIdsCompactSignedValues)
     }
 }
 
@@ -463,10 +488,11 @@ fn write_compact_batch_field(bytes: &mut Vec<u8>, field: &FSEFieldArchiveRecord)
     write_bool(bytes, field.nullable);
 }
 
-fn write_compact_batch_record_v2(
+fn write_compact_batch_record(
     bytes: &mut Vec<u8>,
     record: &FSERecordArchiveRecord,
     fields: &[FSEFieldEncoderMetadata],
+    record_layout: CompactBatchRecordLayout,
 ) -> Result<(), FSETypedQueryIndexArchiveCodecError> {
     if record.values.len() != fields.len() {
         return Err(
@@ -479,7 +505,7 @@ fn write_compact_batch_record_v2(
 
     for (field_index, value) in record.values.iter().enumerate() {
         let field_encoder = &fields[field_index];
-        write_compact_batch_value(bytes, field_index, value, field_encoder)?;
+        write_compact_batch_value(bytes, field_index, value, field_encoder, record_layout)?;
     }
 
     Ok(())
@@ -490,6 +516,7 @@ fn write_compact_batch_value(
     field_index: usize,
     value: &FSEValueArchiveRecord,
     field_encoder: &FSEFieldEncoderMetadata,
+    record_layout: CompactBatchRecordLayout,
 ) -> Result<(), FSETypedQueryIndexArchiveCodecError> {
     match value {
         FSEValueArchiveRecord::Null => {
@@ -497,7 +524,7 @@ fn write_compact_batch_value(
         }
         FSEValueArchiveRecord::Integer(value) => {
             bytes.push(COMPACT_BATCH_VALUE_INTEGER_TAG);
-            write_i64(bytes, *value);
+            write_compact_i64(bytes, *value, record_layout);
         }
         FSEValueArchiveRecord::Float(value) => {
             bytes.push(COMPACT_BATCH_VALUE_FLOAT_TAG);
@@ -513,7 +540,7 @@ fn write_compact_batch_value(
         }
         FSEValueArchiveRecord::TimestampMillis(value) => {
             bytes.push(COMPACT_BATCH_VALUE_TIMESTAMP_MILLIS_TAG);
-            write_i64(bytes, *value);
+            write_compact_i64(bytes, *value, record_layout);
         }
         FSEValueArchiveRecord::Category(value) => {
             let FSEFieldEncoderMetadata::CategoryDictionary { categories } = field_encoder else {
@@ -689,6 +716,14 @@ fn write_i64(bytes: &mut Vec<u8>, value: i64) {
     bytes.extend_from_slice(&value.to_le_bytes());
 }
 
+fn write_compact_i64(bytes: &mut Vec<u8>, value: i64, record_layout: CompactBatchRecordLayout) {
+    if record_layout.uses_compact_signed_values() {
+        write_var_u64(bytes, zig_zag_encode_i64(value));
+    } else {
+        write_i64(bytes, value);
+    }
+}
+
 fn write_f64(bytes: &mut Vec<u8>, value: f64) {
     bytes.extend_from_slice(&value.to_le_bytes());
 }
@@ -725,6 +760,14 @@ fn var_u64_len(mut value: u64) -> usize {
     len
 }
 
+fn zig_zag_encode_i64(value: i64) -> u64 {
+    ((value as u64) << 1) ^ ((value >> 63) as u64)
+}
+
+fn zig_zag_decode_i64(value: u64) -> i64 {
+    ((value >> 1) as i64) ^ -((value & 1) as i64)
+}
+
 #[derive(Clone, Copy)]
 enum CompactCategoryCodeWidth {
     U8,
@@ -750,6 +793,7 @@ fn compact_category_code_width(category_count: usize) -> CompactCategoryCodeWidt
 const COMPACT_TYPED_BATCH_SECTION_V1_MAGIC: [u8; 8] = *b"FSECBT01";
 const COMPACT_TYPED_BATCH_SECTION_V2_MAGIC: [u8; 8] = *b"FSECBT02";
 const COMPACT_TYPED_BATCH_SECTION_V3_MAGIC: [u8; 8] = *b"FSECBT03";
+const COMPACT_TYPED_BATCH_SECTION_V4_MAGIC: [u8; 8] = *b"FSECBT04";
 
 const COMPACT_U64_VEC_RAW_MODE: u8 = 0;
 const COMPACT_U64_VEC_VARINT_MODE: u8 = 1;
@@ -850,9 +894,9 @@ impl<'a> TypedQueryIndexArchiveReader<'a> {
 
         match self.read_u8(field)? {
             COMPACT_BATCH_VALUE_NULL_TAG => Ok(FSEValueArchiveRecord::Null),
-            COMPACT_BATCH_VALUE_INTEGER_TAG => {
-                Ok(FSEValueArchiveRecord::Integer(self.read_i64(field)?))
-            }
+            COMPACT_BATCH_VALUE_INTEGER_TAG => Ok(FSEValueArchiveRecord::Integer(
+                self.read_compact_i64(field, record_layout)?,
+            )),
             COMPACT_BATCH_VALUE_FLOAT_TAG => {
                 Ok(FSEValueArchiveRecord::Float(self.read_f64(field)?))
             }
@@ -863,7 +907,7 @@ impl<'a> TypedQueryIndexArchiveReader<'a> {
                 Ok(FSEValueArchiveRecord::Boolean(self.read_bool(field)?))
             }
             COMPACT_BATCH_VALUE_TIMESTAMP_MILLIS_TAG => Ok(FSEValueArchiveRecord::TimestampMillis(
-                self.read_i64(field)?,
+                self.read_compact_i64(field, record_layout)?,
             )),
             COMPACT_BATCH_VALUE_CATEGORY_TAG => {
                 let Some(FSEFieldEncoderMetadata::CategoryDictionary { categories }) =
@@ -1081,6 +1125,18 @@ impl<'a> TypedQueryIndexArchiveReader<'a> {
         Ok(i64::from_le_bytes([
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
         ]))
+    }
+
+    fn read_compact_i64(
+        &mut self,
+        field: &'static str,
+        record_layout: CompactBatchRecordLayout,
+    ) -> Result<i64, FSETypedQueryIndexArchiveCodecError> {
+        if record_layout.uses_compact_signed_values() {
+            return self.read_var_u64(field).map(zig_zag_decode_i64);
+        }
+
+        self.read_i64(field)
     }
 
     fn read_f64(
