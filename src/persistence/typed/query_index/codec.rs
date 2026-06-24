@@ -125,6 +125,14 @@ pub enum FSETypedQueryIndexArchiveCodecError {
         value: u8,
     },
 
+    /// A compact integer vector mode was not recognized.
+    InvalidCompactIntegerVectorMode {
+        /// Archive field being read.
+        field: &'static str,
+        /// Mode byte found in the input.
+        mode: u8,
+    },
+
     /// A UTF-8 string field could not be decoded.
     InvalidUtf8 {
         /// Archive field being read.
@@ -165,6 +173,9 @@ impl fmt::Display for FSETypedQueryIndexArchiveCodecError {
             Self::InvalidCompactBatchBoolean { .. } => {
                 formatter.write_str("compact typed record batch archive boolean field is invalid")
             }
+            Self::InvalidCompactIntegerVectorMode { .. } => {
+                formatter.write_str("compact typed query index integer vector mode is invalid")
+            }
             Self::InvalidUtf8 { .. } => {
                 formatter.write_str("typed query index archive contains invalid UTF-8")
             }
@@ -186,6 +197,7 @@ impl Error for FSETypedQueryIndexArchiveCodecError {
             | Self::InvalidCompactBatchFieldTypeTag { .. }
             | Self::InvalidCompactBatchValueTag { .. }
             | Self::InvalidCompactBatchBoolean { .. }
+            | Self::InvalidCompactIntegerVectorMode { .. }
             | Self::UnexpectedEndOfArchive { .. }
             | Self::TrailingBytes { .. }
             | Self::LengthOutOfRange { .. }
@@ -280,14 +292,14 @@ pub(super) fn encode_typed_query_index_record_batch_section(
     validate_compact_batch_encoder_field_count(snapshot, record_encoder)?;
 
     let mut bytes = Vec::new();
-    bytes.extend_from_slice(&COMPACT_TYPED_BATCH_SECTION_V2_MAGIC);
+    bytes.extend_from_slice(&COMPACT_TYPED_BATCH_SECTION_V3_MAGIC);
 
     write_u64(&mut bytes, snapshot.schema_fields.len() as u64);
     for field in &snapshot.schema_fields {
         write_compact_batch_field(&mut bytes, field);
     }
 
-    write_u64_vec(&mut bytes, &snapshot.row_ids);
+    write_compact_u64_vec(&mut bytes, &snapshot.row_ids);
 
     write_u64(&mut bytes, snapshot.records.len() as u64);
     for record in &snapshot.records {
@@ -305,7 +317,15 @@ fn decode_typed_query_index_record_batch_section(
         return decode_compact_typed_query_index_record_batch_section(
             bytes,
             record_encoder,
-            CompactBatchRecordLayout::FixedFieldCount,
+            CompactBatchRecordLayout::FixedFieldCountRawRowIds,
+        );
+    }
+
+    if bytes.starts_with(&COMPACT_TYPED_BATCH_SECTION_V3_MAGIC) {
+        return decode_compact_typed_query_index_record_batch_section(
+            bytes,
+            record_encoder,
+            CompactBatchRecordLayout::FixedFieldCountCompactRowIds,
         );
     }
 
@@ -352,7 +372,7 @@ fn decode_compact_typed_query_index_record_batch_section(
         schema_fields.push(reader.read_compact_batch_field()?);
     }
 
-    let row_ids = reader.read_u64_vec("typed_index.record_batch.row_ids")?;
+    let row_ids = reader.read_row_id_vec("typed_index.record_batch.row_ids", record_layout)?;
     let record_count = reader.read_len("typed_index.record_batch.record_count")?;
     let mut records = Vec::with_capacity(record_count);
 
@@ -382,19 +402,25 @@ fn decode_compact_typed_query_index_record_batch_section(
 #[derive(Clone, Copy)]
 enum CompactBatchRecordLayout {
     LegacyValueCount,
-    FixedFieldCount,
+    FixedFieldCountRawRowIds,
+    FixedFieldCountCompactRowIds,
 }
 
 impl CompactBatchRecordLayout {
     fn magic(self) -> &'static [u8; 8] {
         match self {
             Self::LegacyValueCount => &COMPACT_TYPED_BATCH_SECTION_V1_MAGIC,
-            Self::FixedFieldCount => &COMPACT_TYPED_BATCH_SECTION_V2_MAGIC,
+            Self::FixedFieldCountRawRowIds => &COMPACT_TYPED_BATCH_SECTION_V2_MAGIC,
+            Self::FixedFieldCountCompactRowIds => &COMPACT_TYPED_BATCH_SECTION_V3_MAGIC,
         }
     }
 
     fn uses_fixed_field_count(self) -> bool {
-        matches!(self, Self::FixedFieldCount)
+        !matches!(self, Self::LegacyValueCount)
+    }
+
+    fn uses_compact_row_ids(self) -> bool {
+        matches!(self, Self::FixedFieldCountCompactRowIds)
     }
 }
 
@@ -615,6 +641,26 @@ fn write_compact_category_code(bytes: &mut Vec<u8>, category_count: usize, code:
     }
 }
 
+fn write_compact_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
+    let raw_len = size_of::<u64>() * values.len();
+    let varint_len = values
+        .iter()
+        .map(|value| var_u64_len(*value))
+        .sum::<usize>();
+
+    if varint_len < raw_len {
+        bytes.push(COMPACT_U64_VEC_VARINT_MODE);
+        write_u64(bytes, values.len() as u64);
+
+        for value in values {
+            write_var_u64(bytes, *value);
+        }
+    } else {
+        bytes.push(COMPACT_U64_VEC_RAW_MODE);
+        write_u64_vec(bytes, values);
+    }
+}
+
 fn write_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
     write_u64(bytes, values.len() as u64);
 
@@ -651,6 +697,34 @@ fn write_u64(bytes: &mut Vec<u8>, value: u64) {
     bytes.extend_from_slice(&value.to_le_bytes());
 }
 
+fn write_var_u64(bytes: &mut Vec<u8>, mut value: u64) {
+    loop {
+        let mut byte = (value & 0x7f) as u8;
+        value >>= 7;
+
+        if value != 0 {
+            byte |= 0x80;
+        }
+
+        bytes.push(byte);
+
+        if value == 0 {
+            break;
+        }
+    }
+}
+
+fn var_u64_len(mut value: u64) -> usize {
+    let mut len = 1;
+
+    while value >= 0x80 {
+        value >>= 7;
+        len += 1;
+    }
+
+    len
+}
+
 #[derive(Clone, Copy)]
 enum CompactCategoryCodeWidth {
     U8,
@@ -660,11 +734,13 @@ enum CompactCategoryCodeWidth {
 }
 
 fn compact_category_code_width(category_count: usize) -> CompactCategoryCodeWidth {
-    if category_count <= u8::MAX as usize + 1 {
+    let category_count = category_count as u64;
+
+    if category_count <= u64::from(u8::MAX) + 1 {
         CompactCategoryCodeWidth::U8
-    } else if category_count <= u16::MAX as usize + 1 {
+    } else if category_count <= u64::from(u16::MAX) + 1 {
         CompactCategoryCodeWidth::U16
-    } else if category_count <= u32::MAX as usize + 1 {
+    } else if category_count <= u64::from(u32::MAX) + 1 {
         CompactCategoryCodeWidth::U32
     } else {
         CompactCategoryCodeWidth::U64
@@ -673,6 +749,10 @@ fn compact_category_code_width(category_count: usize) -> CompactCategoryCodeWidt
 
 const COMPACT_TYPED_BATCH_SECTION_V1_MAGIC: [u8; 8] = *b"FSECBT01";
 const COMPACT_TYPED_BATCH_SECTION_V2_MAGIC: [u8; 8] = *b"FSECBT02";
+const COMPACT_TYPED_BATCH_SECTION_V3_MAGIC: [u8; 8] = *b"FSECBT03";
+
+const COMPACT_U64_VEC_RAW_MODE: u8 = 0;
+const COMPACT_U64_VEC_VARINT_MODE: u8 = 1;
 
 const COMPACT_BATCH_FIELD_INTEGER_TAG: u8 = 0;
 const COMPACT_BATCH_FIELD_FLOAT_TAG: u8 = 1;
@@ -795,7 +875,8 @@ impl<'a> TypedQueryIndexArchiveReader<'a> {
                         },
                     );
                 };
-                let code = self.read_compact_category_code(field, categories.len(), record_layout)?;
+                let code =
+                    self.read_compact_category_code(field, categories.len(), record_layout)?;
                 let code_index = usize::try_from(code).map_err(|_| {
                     FSETypedQueryIndexArchiveCodecError::CompactBatchCategoryCodeOutOfRange {
                         field_index,
@@ -850,6 +931,43 @@ impl<'a> TypedQueryIndexArchiveReader<'a> {
         }
 
         Ok(values)
+    }
+
+    fn read_row_id_vec(
+        &mut self,
+        field: &'static str,
+        record_layout: CompactBatchRecordLayout,
+    ) -> Result<Vec<u64>, FSETypedQueryIndexArchiveCodecError> {
+        if record_layout.uses_compact_row_ids() {
+            return self.read_compact_u64_vec(field);
+        }
+
+        self.read_u64_vec(field)
+    }
+
+    fn read_compact_u64_vec(
+        &mut self,
+        field: &'static str,
+    ) -> Result<Vec<u64>, FSETypedQueryIndexArchiveCodecError> {
+        match self.read_u8(field)? {
+            COMPACT_U64_VEC_RAW_MODE => self.read_u64_vec(field),
+            COMPACT_U64_VEC_VARINT_MODE => {
+                let length = self.read_len(field)?;
+                let mut values = Vec::with_capacity(length);
+
+                for _ in 0..length {
+                    values.push(self.read_var_u64(field)?);
+                }
+
+                Ok(values)
+            }
+            mode => Err(
+                FSETypedQueryIndexArchiveCodecError::InvalidCompactIntegerVectorMode {
+                    field,
+                    mode,
+                },
+            ),
+        }
     }
 
     fn read_compact_category_code(
@@ -913,6 +1031,30 @@ impl<'a> TypedQueryIndexArchiveReader<'a> {
         let bytes = self.read_exact(field, 1)?;
 
         Ok(bytes[0])
+    }
+
+    fn read_var_u64(
+        &mut self,
+        field: &'static str,
+    ) -> Result<u64, FSETypedQueryIndexArchiveCodecError> {
+        let mut value = 0_u64;
+        let mut shift = 0_u32;
+
+        for _ in 0..10 {
+            let byte = self.read_u8(field)?;
+            value |= u64::from(byte & 0x7f) << shift;
+
+            if byte & 0x80 == 0 {
+                return Ok(value);
+            }
+
+            shift += 7;
+        }
+
+        Err(FSETypedQueryIndexArchiveCodecError::LengthOutOfRange {
+            field,
+            length: u64::MAX,
+        })
     }
 
     fn read_bool(

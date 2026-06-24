@@ -42,6 +42,14 @@ pub enum FSERowMappedArchiveCodecError {
         /// Length found in the input.
         length: u64,
     },
+
+    /// A compact integer vector mode was not recognized.
+    InvalidCompactIntegerVectorMode {
+        /// Archive field being read.
+        field: &'static str,
+        /// Mode byte found in the input.
+        mode: u8,
+    },
 }
 
 impl fmt::Display for FSERowMappedArchiveCodecError {
@@ -58,6 +66,9 @@ impl fmt::Display for FSERowMappedArchiveCodecError {
             Self::LengthOutOfRange { .. } => {
                 formatter.write_str("row-mapped archive length field is outside the runtime range")
             }
+            Self::InvalidCompactIntegerVectorMode { .. } => {
+                formatter.write_str("row-mapped archive compact integer vector mode is invalid")
+            }
         }
     }
 }
@@ -69,7 +80,8 @@ impl Error for FSERowMappedArchiveCodecError {
             Self::IndexCodec(error) => Some(error),
             Self::UnexpectedEndOfArchive { .. }
             | Self::TrailingBytes { .. }
-            | Self::LengthOutOfRange { .. } => None,
+            | Self::LengthOutOfRange { .. }
+            | Self::InvalidCompactIntegerVectorMode { .. } => None,
         }
     }
 }
@@ -96,12 +108,13 @@ pub fn encode_row_mapped_archive_snapshot(
         .map_err(FSERowMappedArchiveCodecError::IndexCodec)?;
     let mut bytes = Vec::new();
 
+    bytes.extend_from_slice(&ROW_MAPPED_ARCHIVE_V2_MAGIC);
     write_byte_vec(&mut bytes, &index_bytes);
     write_u64(&mut bytes, snapshot.leaf_row_id_records.len() as u64);
 
     for record in &snapshot.leaf_row_id_records {
         write_u64(&mut bytes, record.node_id);
-        write_u64_vec(&mut bytes, &record.row_ids);
+        write_compact_u64_vec(&mut bytes, &record.row_ids);
     }
 
     Ok(bytes)
@@ -109,6 +122,43 @@ pub fn encode_row_mapped_archive_snapshot(
 
 /// Decodes a row-mapped archive snapshot from little-endian bytes.
 pub fn decode_row_mapped_archive_snapshot(
+    bytes: &[u8],
+) -> Result<FSERowMappedIndexArchiveSnapshot, FSERowMappedArchiveCodecError> {
+    if !bytes.starts_with(&ROW_MAPPED_ARCHIVE_V2_MAGIC) {
+        return decode_legacy_row_mapped_archive_snapshot(bytes);
+    }
+
+    let mut reader = RowMappedArchiveReader::new(bytes);
+    reader.read_exact("row_mapped.magic", ROW_MAPPED_ARCHIVE_V2_MAGIC.len())?;
+    let index_bytes = reader.read_byte_vec("row_mapped.index_snapshot")?;
+    let index =
+        decode_archive_snapshot(&index_bytes).map_err(FSERowMappedArchiveCodecError::IndexCodec)?;
+    let row_mapping_count = reader.read_len("row_mapped.leaf_row_id_record_count")?;
+    let mut leaf_row_id_records = Vec::with_capacity(row_mapping_count);
+
+    for _ in 0..row_mapping_count {
+        leaf_row_id_records.push(FSELeafRowIdArchiveRecord {
+            node_id: reader.read_u64("row_mapped.leaf_row_id_record.node_id")?,
+            row_ids: reader.read_compact_u64_vec("row_mapped.leaf_row_id_record.row_ids")?,
+        });
+    }
+
+    if reader.remaining() != 0 {
+        return Err(FSERowMappedArchiveCodecError::TrailingBytes {
+            remaining: reader.remaining(),
+        });
+    }
+
+    let snapshot = FSERowMappedIndexArchiveSnapshot {
+        index,
+        leaf_row_id_records,
+    };
+    snapshot.validate()?;
+
+    Ok(snapshot)
+}
+
+fn decode_legacy_row_mapped_archive_snapshot(
     bytes: &[u8],
 ) -> Result<FSERowMappedIndexArchiveSnapshot, FSERowMappedArchiveCodecError> {
     let mut reader = RowMappedArchiveReader::new(bytes);
@@ -165,9 +215,61 @@ fn write_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
     }
 }
 
+fn write_compact_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
+    let raw_len = size_of::<u64>() * values.len();
+    let varint_len = values
+        .iter()
+        .map(|value| var_u64_len(*value))
+        .sum::<usize>();
+
+    if varint_len < raw_len {
+        bytes.push(COMPACT_U64_VEC_VARINT_MODE);
+        write_u64(bytes, values.len() as u64);
+
+        for value in values {
+            write_var_u64(bytes, *value);
+        }
+    } else {
+        bytes.push(COMPACT_U64_VEC_RAW_MODE);
+        write_u64_vec(bytes, values);
+    }
+}
+
 fn write_u64(bytes: &mut Vec<u8>, value: u64) {
     bytes.extend_from_slice(&value.to_le_bytes());
 }
+
+fn write_var_u64(bytes: &mut Vec<u8>, mut value: u64) {
+    loop {
+        let mut byte = (value & 0x7f) as u8;
+        value >>= 7;
+
+        if value != 0 {
+            byte |= 0x80;
+        }
+
+        bytes.push(byte);
+
+        if value == 0 {
+            break;
+        }
+    }
+}
+
+fn var_u64_len(mut value: u64) -> usize {
+    let mut len = 1;
+
+    while value >= 0x80 {
+        value >>= 7;
+        len += 1;
+    }
+
+    len
+}
+
+const ROW_MAPPED_ARCHIVE_V2_MAGIC: [u8; 8] = *b"FSERMV02";
+const COMPACT_U64_VEC_RAW_MODE: u8 = 0;
+const COMPACT_U64_VEC_VARINT_MODE: u8 = 1;
 
 struct RowMappedArchiveReader<'a> {
     bytes: &'a [u8],
@@ -221,6 +323,28 @@ impl<'a> RowMappedArchiveReader<'a> {
         Ok(values)
     }
 
+    fn read_compact_u64_vec(
+        &mut self,
+        field: &'static str,
+    ) -> Result<Vec<u64>, FSERowMappedArchiveCodecError> {
+        match self.read_u8(field)? {
+            COMPACT_U64_VEC_RAW_MODE => self.read_u64_vec(field),
+            COMPACT_U64_VEC_VARINT_MODE => {
+                let length = self.read_len(field)?;
+                let mut values = Vec::with_capacity(length);
+
+                for _ in 0..length {
+                    values.push(self.read_var_u64(field)?);
+                }
+
+                Ok(values)
+            }
+            mode => {
+                Err(FSERowMappedArchiveCodecError::InvalidCompactIntegerVectorMode { field, mode })
+            }
+        }
+    }
+
     fn read_len(&mut self, field: &'static str) -> Result<usize, FSERowMappedArchiveCodecError> {
         let length = self.read_u64(field)?;
 
@@ -234,6 +358,33 @@ impl<'a> RowMappedArchiveReader<'a> {
         Ok(u64::from_le_bytes([
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
         ]))
+    }
+
+    fn read_u8(&mut self, field: &'static str) -> Result<u8, FSERowMappedArchiveCodecError> {
+        let bytes = self.read_exact(field, 1)?;
+
+        Ok(bytes[0])
+    }
+
+    fn read_var_u64(&mut self, field: &'static str) -> Result<u64, FSERowMappedArchiveCodecError> {
+        let mut value = 0_u64;
+        let mut shift = 0_u32;
+
+        for _ in 0..10 {
+            let byte = self.read_u8(field)?;
+            value |= u64::from(byte & 0x7f) << shift;
+
+            if byte & 0x80 == 0 {
+                return Ok(value);
+            }
+
+            shift += 7;
+        }
+
+        Err(FSERowMappedArchiveCodecError::LengthOutOfRange {
+            field,
+            length: u64::MAX,
+        })
     }
 
     fn read_exact(

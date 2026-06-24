@@ -8,10 +8,10 @@ use crate::encoding::{
     FSERecordEncoderMetadata, FloatEncoder, IntegerEncoder, TimestampMillisEncoder,
 };
 use crate::persistence::{
-    FSEFieldTypeArchiveTag, FSETypedQueryIndexArchiveCodecError,
-    FSETypedQueryIndexArchiveSnapshot, FSEValueArchiveRecord,
-    FSETypedQueryIndexArchiveSnapshotError, decode_typed_query_index_archive_snapshot,
-    encode_typed_query_index_archive_snapshot, encode_typed_record_batch_archive_snapshot,
+    FSEFieldTypeArchiveTag, FSETypedQueryIndexArchiveCodecError, FSETypedQueryIndexArchiveSnapshot,
+    FSETypedQueryIndexArchiveSnapshotError, FSEValueArchiveRecord,
+    decode_typed_query_index_archive_snapshot, encode_typed_query_index_archive_snapshot,
+    encode_typed_record_batch_archive_snapshot,
 };
 use crate::query::{FSEPredicate, FSEPredicateField, TypedQueryIndex, TypedQueryPlanBuilder};
 
@@ -64,16 +64,34 @@ fn typed_query_index_archive_codec_uses_compact_value_framing() {
     let compact_batch_section_bytes = batch_section_bytes(&compact_archive_bytes);
     let decoded = decode_typed_query_index_archive_snapshot(&compact_archive_bytes).unwrap();
 
-    assert_eq!(compact_batch_section_bytes.len(), compact_entity_batch_section_len());
+    assert!(compact_batch_section_bytes.starts_with(b"FSECBT03"));
+    assert_eq!(
+        compact_batch_section_bytes.len(),
+        compact_entity_batch_section_len()
+    );
     assert_eq!(decoded, snapshot);
 }
 
 #[test]
-fn typed_query_index_archive_codec_decodes_legacy_compact_batch_section() {
+fn typed_query_index_archive_codec_decodes_legacy_value_count_compact_batch_section() {
     let snapshot =
         FSETypedQueryIndexArchiveSnapshot::from_typed_query_index(&typed_query_index()).unwrap();
     let archive_bytes = encode_typed_query_index_archive_snapshot(&snapshot).unwrap();
     let legacy_batch_section_bytes = legacy_compact_batch_section_bytes(&snapshot);
+    let legacy_archive_bytes =
+        replace_batch_section_bytes(&archive_bytes, &legacy_batch_section_bytes);
+    let decoded = decode_typed_query_index_archive_snapshot(&legacy_archive_bytes).unwrap();
+
+    assert_eq!(decoded, snapshot);
+    assert!(legacy_batch_section_bytes.len() > batch_section_bytes(&archive_bytes).len());
+}
+
+#[test]
+fn typed_query_index_archive_codec_decodes_legacy_raw_row_id_compact_batch_section() {
+    let snapshot =
+        FSETypedQueryIndexArchiveSnapshot::from_typed_query_index(&typed_query_index()).unwrap();
+    let archive_bytes = encode_typed_query_index_archive_snapshot(&snapshot).unwrap();
+    let legacy_batch_section_bytes = legacy_raw_row_id_batch_section_bytes(&snapshot);
     let legacy_archive_bytes =
         replace_batch_section_bytes(&archive_bytes, &legacy_batch_section_bytes);
     let decoded = decode_typed_query_index_archive_snapshot(&legacy_archive_bytes).unwrap();
@@ -388,10 +406,11 @@ fn replace_batch_section_bytes(bytes: &[u8], batch_section: &[u8]) -> Vec<u8> {
 }
 
 fn compact_entity_batch_section_len() -> usize {
-    let schema_field_bytes =
-        compact_field_len("entity_id") + compact_field_len("score") + compact_field_len("class")
-            + compact_field_len("observed_at");
-    let row_id_bytes = 8 + (4 * 8);
+    let schema_field_bytes = compact_field_len("entity_id")
+        + compact_field_len("score")
+        + compact_field_len("class")
+        + compact_field_len("observed_at");
+    let row_id_bytes = 1 + 8 + 4;
     let record_bytes = 4 * ((1 + 8) + (1 + 8) + (1 + 1) + (1 + 8));
 
     8 + 8 + schema_field_bytes + row_id_bytes + 8 + record_bytes
@@ -427,6 +446,30 @@ fn legacy_compact_batch_section_bytes(snapshot: &FSETypedQueryIndexArchiveSnapsh
     bytes
 }
 
+fn legacy_raw_row_id_batch_section_bytes(snapshot: &FSETypedQueryIndexArchiveSnapshot) -> Vec<u8> {
+    let mut bytes = Vec::new();
+
+    bytes.extend_from_slice(b"FSECBT02");
+    write_u64(&mut bytes, snapshot.batch.schema_fields.len() as u64);
+
+    for field in &snapshot.batch.schema_fields {
+        write_string(&mut bytes, &field.name);
+        write_field_type_tag(&mut bytes, field.field_type);
+        write_bool(&mut bytes, field.nullable);
+    }
+
+    write_u64_vec(&mut bytes, &snapshot.batch.row_ids);
+    write_u64(&mut bytes, snapshot.batch.records.len() as u64);
+
+    for record in &snapshot.batch.records {
+        for value in &record.values {
+            write_v2_value(&mut bytes, value);
+        }
+    }
+
+    bytes
+}
+
 fn write_legacy_value(bytes: &mut Vec<u8>, value: &FSEValueArchiveRecord) {
     match value {
         FSEValueArchiveRecord::Null => bytes.push(0),
@@ -453,6 +496,36 @@ fn write_legacy_value(bytes: &mut Vec<u8>, value: &FSEValueArchiveRecord) {
         FSEValueArchiveRecord::Category(value) => {
             bytes.push(6);
             write_u64(bytes, category_code(value));
+        }
+    }
+}
+
+fn write_v2_value(bytes: &mut Vec<u8>, value: &FSEValueArchiveRecord) {
+    match value {
+        FSEValueArchiveRecord::Null => bytes.push(0),
+        FSEValueArchiveRecord::Integer(value) => {
+            bytes.push(1);
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        FSEValueArchiveRecord::Float(value) => {
+            bytes.push(2);
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        FSEValueArchiveRecord::Text(value) => {
+            bytes.push(3);
+            write_string(bytes, value);
+        }
+        FSEValueArchiveRecord::Boolean(value) => {
+            bytes.push(4);
+            write_bool(bytes, *value);
+        }
+        FSEValueArchiveRecord::TimestampMillis(value) => {
+            bytes.push(5);
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        FSEValueArchiveRecord::Category(value) => {
+            bytes.push(6);
+            bytes.push(category_code(value) as u8);
         }
     }
 }

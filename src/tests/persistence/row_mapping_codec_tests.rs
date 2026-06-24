@@ -3,8 +3,8 @@ use crate::data::RowId;
 use crate::encoding::EncodedRecordBatch;
 use crate::math::Vector;
 use crate::persistence::{
-    FSEArchiveCodecError, FSERowMappedArchiveCodecError, FSERowMappedArchiveSnapshotError,
-    FSERowMappedIndexArchiveSnapshot, decode_row_mapped_archive_snapshot,
+    FSERowMappedArchiveCodecError, FSERowMappedArchiveSnapshotError,
+    FSERowMappedIndexArchiveSnapshot, decode_row_mapped_archive_snapshot, encode_archive_snapshot,
     encode_row_mapped_archive_snapshot,
 };
 
@@ -37,6 +37,27 @@ fn row_mapped_archive_codec_round_trips_snapshot() {
     let snapshot = row_mapped_snapshot();
     let bytes = encode_row_mapped_archive_snapshot(&snapshot).unwrap();
     let decoded = decode_row_mapped_archive_snapshot(&bytes).unwrap();
+
+    assert_eq!(decoded, snapshot);
+}
+
+#[test]
+fn row_mapped_archive_codec_compacts_row_id_vectors() {
+    let snapshot = row_mapped_snapshot();
+    let compact_bytes = encode_row_mapped_archive_snapshot(&snapshot).unwrap();
+    let legacy_bytes = encode_legacy_row_mapped_archive_snapshot(&snapshot);
+    let decoded = decode_row_mapped_archive_snapshot(&compact_bytes).unwrap();
+
+    assert!(compact_bytes.starts_with(b"FSERMV02"));
+    assert!(compact_bytes.len() < legacy_bytes.len());
+    assert_eq!(decoded, snapshot);
+}
+
+#[test]
+fn row_mapped_archive_codec_decodes_legacy_row_id_vectors() {
+    let snapshot = row_mapped_snapshot();
+    let legacy_bytes = encode_legacy_row_mapped_archive_snapshot(&snapshot);
+    let decoded = decode_row_mapped_archive_snapshot(&legacy_bytes).unwrap();
 
     assert_eq!(decoded, snapshot);
 }
@@ -102,9 +123,7 @@ fn row_mapped_archive_codec_rejects_invalid_embedded_index_payload() {
 
     assert!(matches!(
         decode_row_mapped_archive_snapshot(&bytes),
-        Err(FSERowMappedArchiveCodecError::IndexCodec(
-            FSEArchiveCodecError::Snapshot(_)
-        ))
+        Err(FSERowMappedArchiveCodecError::IndexCodec(_))
     ));
 }
 
@@ -112,10 +131,8 @@ fn row_mapped_archive_codec_rejects_invalid_embedded_index_payload() {
 fn row_mapped_archive_codec_rejects_invalid_row_mapping_payload() {
     let snapshot = row_mapped_snapshot();
     let mut bytes = encode_row_mapped_archive_snapshot(&snapshot).unwrap();
-    let second_leaf_first_row_id_offset = bytes.len() - 2 * std::mem::size_of::<u64>();
-    bytes[second_leaf_first_row_id_offset
-        ..second_leaf_first_row_id_offset + std::mem::size_of::<u64>()]
-        .copy_from_slice(&10_u64.to_le_bytes());
+    let last_row_id_offset = bytes.len() - 1;
+    bytes[last_row_id_offset] = 10;
 
     assert_eq!(
         decode_row_mapped_archive_snapshot(&bytes),
@@ -123,4 +140,38 @@ fn row_mapped_archive_codec_rejects_invalid_row_mapping_payload() {
             FSERowMappedArchiveSnapshotError::DuplicateRowId { row_id: 10 }
         ))
     );
+}
+
+fn encode_legacy_row_mapped_archive_snapshot(
+    snapshot: &FSERowMappedIndexArchiveSnapshot,
+) -> Vec<u8> {
+    let index_bytes = encode_archive_snapshot(&snapshot.index).unwrap();
+    let mut bytes = Vec::new();
+
+    write_byte_vec(&mut bytes, &index_bytes);
+    write_u64(&mut bytes, snapshot.leaf_row_id_records.len() as u64);
+
+    for record in &snapshot.leaf_row_id_records {
+        write_u64(&mut bytes, record.node_id);
+        write_u64_vec(&mut bytes, &record.row_ids);
+    }
+
+    bytes
+}
+
+fn write_byte_vec(bytes: &mut Vec<u8>, values: &[u8]) {
+    write_u64(bytes, values.len() as u64);
+    bytes.extend_from_slice(values);
+}
+
+fn write_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
+    write_u64(bytes, values.len() as u64);
+
+    for value in values {
+        write_u64(bytes, *value);
+    }
+}
+
+fn write_u64(bytes: &mut Vec<u8>, value: u64) {
+    bytes.extend_from_slice(&value.to_le_bytes());
 }
