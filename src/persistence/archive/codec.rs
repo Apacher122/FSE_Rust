@@ -10,6 +10,13 @@ use super::{FSEArchiveSnapshotError, FSEIndexArchiveSnapshot, FSEPartitionNodeAr
 use crate::persistence::{FSEArchiveManifest, FSEArchiveSections};
 
 const MIN_ARCHIVE_NODE_BYTES: usize = 57;
+const INDEX_ARCHIVE_V2_MAGIC: [u8; 8] = *b"FSEIDX02";
+const COMPACT_SCALAR_VEC_RAW_MODE: u8 = 0;
+const COMPACT_SCALAR_VEC_EMPTY_MODE: u8 = 1;
+const COMPACT_SCALAR_VEC_REPEATED_MODE: u8 = 2;
+const COMPACT_U64_VEC_RAW_MODE: u8 = 0;
+const COMPACT_U64_VEC_VARINT_MODE: u8 = 1;
+const COMPACT_U64_VEC_EMPTY_MODE: u8 = 2;
 
 /// Error returned when archive byte encoding or decoding fails.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -56,6 +63,22 @@ pub enum FSEArchiveCodecError {
         /// Length found in the input.
         length: u64,
     },
+
+    /// A compact scalar vector mode was not recognized.
+    InvalidCompactScalarVectorMode {
+        /// Archive field being read.
+        field: &'static str,
+        /// Mode byte found in the input.
+        mode: u8,
+    },
+
+    /// A compact integer vector mode was not recognized.
+    InvalidCompactIntegerVectorMode {
+        /// Archive field being read.
+        field: &'static str,
+        /// Mode byte found in the input.
+        mode: u8,
+    },
 }
 
 impl fmt::Display for FSEArchiveCodecError {
@@ -75,6 +98,12 @@ impl fmt::Display for FSEArchiveCodecError {
             Self::LengthOutOfRange { .. } => {
                 formatter.write_str("archive length field is outside the runtime range")
             }
+            Self::InvalidCompactScalarVectorMode { .. } => {
+                formatter.write_str("archive compact scalar vector mode is invalid")
+            }
+            Self::InvalidCompactIntegerVectorMode { .. } => {
+                formatter.write_str("archive compact integer vector mode is invalid")
+            }
         }
     }
 }
@@ -87,7 +116,9 @@ impl Error for FSEArchiveCodecError {
             | Self::InvalidUtf8 { .. }
             | Self::InvalidBoolean { .. }
             | Self::TrailingBytes { .. }
-            | Self::LengthOutOfRange { .. } => None,
+            | Self::LengthOutOfRange { .. }
+            | Self::InvalidCompactScalarVectorMode { .. }
+            | Self::InvalidCompactIntegerVectorMode { .. } => None,
         }
     }
 }
@@ -105,6 +136,7 @@ pub fn encode_archive_snapshot(
     snapshot.validate()?;
 
     let mut bytes = Vec::new();
+    bytes.extend_from_slice(&INDEX_ARCHIVE_V2_MAGIC);
     write_manifest(&mut bytes, &snapshot.manifest);
 
     for node in &snapshot.nodes {
@@ -118,7 +150,12 @@ pub fn encode_archive_snapshot(
 pub fn decode_archive_snapshot(
     bytes: &[u8],
 ) -> Result<FSEIndexArchiveSnapshot, FSEArchiveCodecError> {
+    if !bytes.starts_with(&INDEX_ARCHIVE_V2_MAGIC) {
+        return decode_legacy_archive_snapshot(bytes);
+    }
+
     let mut reader = ArchiveReader::new(bytes);
+    reader.read_exact("archive.magic", INDEX_ARCHIVE_V2_MAGIC.len())?;
     let manifest = reader.read_manifest()?;
 
     manifest
@@ -126,6 +163,35 @@ pub fn decode_archive_snapshot(
         .map_err(FSEArchiveSnapshotError::Manifest)?;
 
     let node_count = reader.read_node_count(manifest.node_count)?;
+    let mut nodes = Vec::with_capacity(node_count);
+
+    for _ in 0..node_count {
+        nodes.push(reader.read_compact_node()?);
+    }
+
+    if reader.remaining() != 0 {
+        return Err(FSEArchiveCodecError::TrailingBytes {
+            remaining: reader.remaining(),
+        });
+    }
+
+    let snapshot = FSEIndexArchiveSnapshot { manifest, nodes };
+    snapshot.validate()?;
+
+    Ok(snapshot)
+}
+
+fn decode_legacy_archive_snapshot(
+    bytes: &[u8],
+) -> Result<FSEIndexArchiveSnapshot, FSEArchiveCodecError> {
+    let mut reader = ArchiveReader::new(bytes);
+    let manifest = reader.read_manifest()?;
+
+    manifest
+        .validate()
+        .map_err(FSEArchiveSnapshotError::Manifest)?;
+
+    let node_count = reader.read_legacy_node_count(manifest.node_count)?;
     let mut nodes = Vec::with_capacity(node_count);
 
     for _ in 0..node_count {
@@ -172,17 +238,17 @@ fn write_manifest(bytes: &mut Vec<u8>, manifest: &FSEArchiveManifest) {
 
 fn write_node(bytes: &mut Vec<u8>, node: &FSEPartitionNodeArchiveRecord) {
     write_u64(bytes, node.id);
-    write_scalar_vec(bytes, &node.centroid);
-    write_scalar_vec(bytes, &node.bounds_min);
-    write_scalar_vec(bytes, &node.bounds_max);
+    write_compact_scalar_vec(bytes, &node.centroid);
+    write_compact_scalar_vec(bytes, &node.bounds_min);
+    write_compact_scalar_vec(bytes, &node.bounds_max);
     write_u64(bytes, node.residual_dimensions.len() as u64);
 
     for dimension in &node.residual_dimensions {
-        write_scalar_vec(bytes, dimension);
+        write_compact_scalar_vec(bytes, dimension);
     }
 
     write_u64(bytes, node.cardinality);
-    write_u64_vec(bytes, &node.children);
+    write_compact_u64_vec(bytes, &node.children);
     write_bool(bytes, node.is_leaf);
 }
 
@@ -195,7 +261,7 @@ fn write_scalar_vec(bytes: &mut Vec<u8>, values: &[Scalar]) {
     write_u64(bytes, values.len() as u64);
 
     for value in values {
-        bytes.extend_from_slice(&value.to_le_bytes());
+        write_scalar(bytes, *value);
     }
 }
 
@@ -205,6 +271,65 @@ fn write_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
     for value in values {
         write_u64(bytes, *value);
     }
+}
+
+fn write_compact_scalar_vec(bytes: &mut Vec<u8>, values: &[Scalar]) {
+    if values.is_empty() {
+        bytes.push(COMPACT_SCALAR_VEC_EMPTY_MODE);
+        return;
+    }
+
+    if let Some(value) = repeated_scalar(values) {
+        bytes.push(COMPACT_SCALAR_VEC_REPEATED_MODE);
+        write_u64(bytes, values.len() as u64);
+        write_scalar(bytes, value);
+        return;
+    }
+
+    bytes.push(COMPACT_SCALAR_VEC_RAW_MODE);
+    write_scalar_vec(bytes, values);
+}
+
+fn write_compact_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
+    if values.is_empty() {
+        bytes.push(COMPACT_U64_VEC_EMPTY_MODE);
+        return;
+    }
+
+    let raw_len = size_of::<u64>() * values.len();
+    let varint_len = values
+        .iter()
+        .map(|value| var_u64_len(*value))
+        .sum::<usize>();
+
+    if varint_len < raw_len {
+        bytes.push(COMPACT_U64_VEC_VARINT_MODE);
+        write_u64(bytes, values.len() as u64);
+
+        for value in values {
+            write_var_u64(bytes, *value);
+        }
+    } else {
+        bytes.push(COMPACT_U64_VEC_RAW_MODE);
+        write_u64_vec(bytes, values);
+    }
+}
+
+fn repeated_scalar(values: &[Scalar]) -> Option<Scalar> {
+    if values.len() < 2 {
+        return None;
+    }
+
+    let value = values[0];
+
+    values
+        .iter()
+        .all(|other| other.to_bits() == value.to_bits())
+        .then_some(value)
+}
+
+fn write_scalar(bytes: &mut Vec<u8>, value: Scalar) {
+    bytes.extend_from_slice(&value.to_le_bytes());
 }
 
 fn write_bool(bytes: &mut Vec<u8>, value: bool) {
@@ -217,6 +342,34 @@ fn write_u32(bytes: &mut Vec<u8>, value: u32) {
 
 fn write_u64(bytes: &mut Vec<u8>, value: u64) {
     bytes.extend_from_slice(&value.to_le_bytes());
+}
+
+fn write_var_u64(bytes: &mut Vec<u8>, mut value: u64) {
+    loop {
+        let mut byte = (value & 0x7f) as u8;
+        value >>= 7;
+
+        if value != 0 {
+            byte |= 0x80;
+        }
+
+        bytes.push(byte);
+
+        if value == 0 {
+            break;
+        }
+    }
+}
+
+fn var_u64_len(mut value: u64) -> usize {
+    let mut len = 1;
+
+    while value >= 0x80 {
+        value >>= 7;
+        len += 1;
+    }
+
+    len
 }
 
 struct ArchiveReader<'a> {
@@ -252,6 +405,10 @@ impl<'a> ArchiveReader<'a> {
     }
 
     fn read_node_count(&self, value: u64) -> Result<usize, FSEArchiveCodecError> {
+        checked_len("manifest.node_count", value)
+    }
+
+    fn read_legacy_node_count(&self, value: u64) -> Result<usize, FSEArchiveCodecError> {
         let node_count = checked_len("manifest.node_count", value)?;
         let minimum_bytes = node_count.checked_mul(MIN_ARCHIVE_NODE_BYTES).ok_or(
             FSEArchiveCodecError::LengthOutOfRange {
@@ -269,6 +426,33 @@ impl<'a> ArchiveReader<'a> {
         }
 
         Ok(node_count)
+    }
+
+    fn read_compact_node(&mut self) -> Result<FSEPartitionNodeArchiveRecord, FSEArchiveCodecError> {
+        let id = self.read_u64("node.id")?;
+        let centroid = self.read_compact_scalar_vec("node.centroid")?;
+        let bounds_min = self.read_compact_scalar_vec("node.bounds_min")?;
+        let bounds_max = self.read_compact_scalar_vec("node.bounds_max")?;
+        let residual_dimension_count = checked_len(
+            "node.residual_dimension_count",
+            self.read_u64("node.residual_dimension_count")?,
+        )?;
+        let mut residual_dimensions = Vec::with_capacity(residual_dimension_count);
+
+        for _ in 0..residual_dimension_count {
+            residual_dimensions.push(self.read_compact_scalar_vec("node.residual_dimension")?);
+        }
+
+        Ok(FSEPartitionNodeArchiveRecord {
+            id,
+            centroid,
+            bounds_min,
+            bounds_max,
+            residual_dimensions,
+            cardinality: self.read_u64("node.cardinality")?,
+            children: self.read_compact_u64_vec("node.children")?,
+            is_leaf: self.read_bool("node.is_leaf")?,
+        })
     }
 
     fn read_node(&mut self) -> Result<FSEPartitionNodeArchiveRecord, FSEArchiveCodecError> {
@@ -331,6 +515,23 @@ impl<'a> ArchiveReader<'a> {
         Ok(values)
     }
 
+    fn read_compact_scalar_vec(
+        &mut self,
+        field: &'static str,
+    ) -> Result<Vec<Scalar>, FSEArchiveCodecError> {
+        match self.read_u8(field)? {
+            COMPACT_SCALAR_VEC_RAW_MODE => self.read_scalar_vec(field),
+            COMPACT_SCALAR_VEC_EMPTY_MODE => Ok(Vec::new()),
+            COMPACT_SCALAR_VEC_REPEATED_MODE => {
+                let length = checked_len(field, self.read_u64(field)?)?;
+                let value = self.read_scalar(field)?;
+
+                Ok(vec![value; length])
+            }
+            mode => Err(FSEArchiveCodecError::InvalidCompactScalarVectorMode { field, mode }),
+        }
+    }
+
     fn read_u64_vec(&mut self, field: &'static str) -> Result<Vec<u64>, FSEArchiveCodecError> {
         let length = checked_len(field, self.read_u64(field)?)?;
         let byte_length =
@@ -357,6 +558,27 @@ impl<'a> ArchiveReader<'a> {
         Ok(values)
     }
 
+    fn read_compact_u64_vec(
+        &mut self,
+        field: &'static str,
+    ) -> Result<Vec<u64>, FSEArchiveCodecError> {
+        match self.read_u8(field)? {
+            COMPACT_U64_VEC_RAW_MODE => self.read_u64_vec(field),
+            COMPACT_U64_VEC_VARINT_MODE => {
+                let length = checked_len(field, self.read_u64(field)?)?;
+                let mut values = Vec::with_capacity(length);
+
+                for _ in 0..length {
+                    values.push(self.read_var_u64(field)?);
+                }
+
+                Ok(values)
+            }
+            COMPACT_U64_VEC_EMPTY_MODE => Ok(Vec::new()),
+            mode => Err(FSEArchiveCodecError::InvalidCompactIntegerVectorMode { field, mode }),
+        }
+    }
+
     fn read_bool(&mut self, field: &'static str) -> Result<bool, FSEArchiveCodecError> {
         let value = self.read_exact(field, 1)?[0];
 
@@ -379,6 +601,41 @@ impl<'a> ArchiveReader<'a> {
         Ok(u64::from_le_bytes([
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
         ]))
+    }
+
+    fn read_u8(&mut self, field: &'static str) -> Result<u8, FSEArchiveCodecError> {
+        let bytes = self.read_exact(field, 1)?;
+
+        Ok(bytes[0])
+    }
+
+    fn read_scalar(&mut self, field: &'static str) -> Result<Scalar, FSEArchiveCodecError> {
+        let bytes = self.read_exact(field, size_of::<Scalar>())?;
+
+        Ok(Scalar::from_le_bytes([
+            bytes[0], bytes[1], bytes[2], bytes[3],
+        ]))
+    }
+
+    fn read_var_u64(&mut self, field: &'static str) -> Result<u64, FSEArchiveCodecError> {
+        let mut value = 0_u64;
+        let mut shift = 0_u32;
+
+        for _ in 0..10 {
+            let byte = self.read_u8(field)?;
+            value |= u64::from(byte & 0x7f) << shift;
+
+            if byte & 0x80 == 0 {
+                return Ok(value);
+            }
+
+            shift += 7;
+        }
+
+        Err(FSEArchiveCodecError::LengthOutOfRange {
+            field,
+            length: u64::MAX,
+        })
     }
 
     fn read_exact(
