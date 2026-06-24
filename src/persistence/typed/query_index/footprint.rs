@@ -12,9 +12,10 @@ use crate::persistence::{
     FSE_ARCHIVE_FILE_EXTENSION, FSE_ARCHIVE_PAYLOAD_MAGIC, FSEArchiveFileOperation,
     FSEArchivePayloadHeaderError, FSEArchivePayloadKind, FSETypedQueryIndexArchiveCodecError,
     FSETypedQueryIndexArchiveSnapshot, decode_archive_payload, encode_row_mapped_archive_snapshot,
-    encode_typed_record_batch_archive_snapshot,
 };
 use crate::query::TypedQueryIndex;
+
+use super::codec::encode_typed_query_index_record_batch_section;
 
 const TYPED_QUERY_INDEX_SECTION_COUNT: u64 = 3;
 
@@ -524,8 +525,7 @@ fn typed_query_index_archive_section_footprint_from_snapshot(
         .map_err(FSETypedQueryIndexArchiveCodecError::IndexCodec)?
         .len() as u64;
     let typed_record_batch_section_bytes =
-        encode_typed_record_batch_archive_snapshot(&snapshot.batch)
-            .map_err(FSETypedQueryIndexArchiveCodecError::BatchCodec)?
+        encode_typed_query_index_record_batch_section(&snapshot.batch, &snapshot.record_encoder)?
             .len() as u64;
     let record_encoder_metadata_section_bytes =
         record_encoder_metadata_archive_byte_count(&snapshot.record_encoder)?;

@@ -10,7 +10,7 @@ use crate::encoding::{
 use crate::persistence::{
     FSETypedQueryIndexArchiveCodecError, FSETypedQueryIndexArchiveSnapshot,
     FSETypedQueryIndexArchiveSnapshotError, decode_typed_query_index_archive_snapshot,
-    encode_typed_query_index_archive_snapshot,
+    encode_typed_query_index_archive_snapshot, encode_typed_record_batch_archive_snapshot,
 };
 use crate::query::{FSEPredicate, FSEPredicateField, TypedQueryIndex, TypedQueryPlanBuilder};
 
@@ -38,6 +38,20 @@ fn typed_query_index_archive_codec_round_trips_record_encoder_metadata() {
     let decoded = decode_typed_query_index_archive_snapshot(&bytes).unwrap();
 
     assert_eq!(decoded.record_encoder, metadata);
+    assert_eq!(decoded, snapshot);
+}
+
+#[test]
+fn typed_query_index_archive_codec_compacts_categorical_record_batch_section() {
+    let snapshot =
+        FSETypedQueryIndexArchiveSnapshot::from_typed_query_index(&typed_query_index()).unwrap();
+    let compact_archive_bytes = encode_typed_query_index_archive_snapshot(&snapshot).unwrap();
+    let compact_batch_section_bytes = batch_section_bytes(&compact_archive_bytes);
+    let old_record_batch_section_bytes =
+        encode_typed_record_batch_archive_snapshot(&snapshot.batch).unwrap();
+    let decoded = decode_typed_query_index_archive_snapshot(&compact_archive_bytes).unwrap();
+
+    assert!(compact_batch_section_bytes.len() < old_record_batch_section_bytes.len());
     assert_eq!(decoded, snapshot);
 }
 
@@ -136,13 +150,18 @@ fn typed_query_index_archive_codec_reports_embedded_batch_codec_error() {
     let mut bytes = snapshot.to_archive_bytes().unwrap();
     let batch_length_offset = batch_length_offset(&bytes);
     let batch_payload_offset = batch_length_offset + 8;
-    let first_field_type_offset = batch_payload_offset + 8 + 8 + "entity_id".len();
+    let first_field_type_offset = batch_payload_offset + 8 + 8 + 8 + "entity_id".len();
     bytes[first_field_type_offset] = 99;
 
-    assert!(matches!(
+    assert_eq!(
         decode_typed_query_index_archive_snapshot(&bytes),
-        Err(FSETypedQueryIndexArchiveCodecError::BatchCodec(_))
-    ));
+        Err(
+            FSETypedQueryIndexArchiveCodecError::InvalidCompactBatchFieldTypeTag {
+                field: "typed_index.record_batch.schema.field.type",
+                tag: 99,
+            }
+        )
+    );
 }
 
 #[test]
@@ -312,4 +331,14 @@ fn record_encoder_metadata_payload_offset(bytes: &[u8]) -> usize {
     let batch_length = u64::from_le_bytes(length_bytes) as usize;
 
     batch_length_offset + 8 + batch_length + 8
+}
+
+fn batch_section_bytes(bytes: &[u8]) -> &[u8] {
+    let batch_length_offset = batch_length_offset(bytes);
+    let mut length_bytes = [0_u8; 8];
+    length_bytes.copy_from_slice(&bytes[batch_length_offset..batch_length_offset + 8]);
+    let batch_length = u64::from_le_bytes(length_bytes) as usize;
+    let batch_payload_offset = batch_length_offset + 8;
+
+    &bytes[batch_payload_offset..batch_payload_offset + batch_length]
 }
