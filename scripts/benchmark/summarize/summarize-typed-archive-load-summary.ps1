@@ -75,7 +75,7 @@ $HeaderIndex = -1
 for ($Index = $SectionIndex + 1; $Index -lt $Lines.Count; $Index++) {
   $Trimmed = $Lines[$Index].Trim()
 
-  if ($Trimmed.StartsWith("workload | matched | archive bytes | in-memory | warm-loaded | cold-loaded | warm/in-memory | cold/in-memory | cold/warm | agreement")) {
+  if ($Trimmed.StartsWith("workload | matched | archive bytes | row-mapped index bytes | typed record batch bytes | encoder metadata bytes | payload header bytes | section framing bytes | in-memory | warm-loaded | cold-loaded | warm/in-memory | cold/in-memory | cold/warm | agreement")) {
     $HeaderIndex = $Index
     break
   }
@@ -101,7 +101,7 @@ for ($Index = $HeaderIndex + 1; $Index -lt $Lines.Count; $Index++) {
 
   $Columns = @($Trimmed.Split("|") | ForEach-Object { $_.Trim() })
 
-  if ($Columns.Count -ne 10) {
+  if ($Columns.Count -ne 15) {
     throw "unexpected typed archive load timing summary column count at line $($Index + 1): $($Columns.Count)"
   }
 
@@ -117,7 +117,12 @@ for ($Index = $HeaderIndex + 1; $Index -lt $Lines.Count; $Index++) {
       $Columns[6],
       $Columns[7],
       $Columns[8],
-      $Columns[9]
+      $Columns[9],
+      $Columns[10],
+      $Columns[11],
+      $Columns[12],
+      $Columns[13],
+      $Columns[14]
     )) | Out-Null
 }
 
@@ -131,6 +136,11 @@ $Header = @(
   "workload_name",
   "matched_records",
   "archive_bytes",
+  "row_mapped_index_section_bytes",
+  "typed_record_batch_section_bytes",
+  "record_encoder_metadata_section_bytes",
+  "payload_header_bytes",
+  "section_framing_bytes",
   "in_memory_elapsed",
   "warm_loaded_elapsed",
   "cold_loaded_elapsed",
@@ -145,7 +155,7 @@ Write-CsvDocument `
   -Header $Header `
   -Rows $Rows
 
-$FailedRows = @($Rows | Where-Object { $_[11] -ne "pass" })
+$FailedRows = @($Rows | Where-Object { $_[16] -ne "pass" })
 $TotalMatchedRecords = 0
 $WarmLoadedRatios = New-Object System.Collections.Generic.List[double]
 $ColdLoadedRatios = New-Object System.Collections.Generic.List[double]
@@ -154,9 +164,9 @@ $ColdToWarmRatios = New-Object System.Collections.Generic.List[double]
 foreach ($Row in $Rows) {
   $TotalMatchedRecords += Convert-ToInvariantIntOrZero -Value $Row[3]
 
-  $WarmLoadedRatio = Convert-ToInvariantDouble -Value $Row[8]
-  $ColdLoadedRatio = Convert-ToInvariantDouble -Value $Row[9]
-  $ColdToWarmRatio = Convert-ToInvariantDouble -Value $Row[10]
+  $WarmLoadedRatio = Convert-ToInvariantDouble -Value $Row[13]
+  $ColdLoadedRatio = Convert-ToInvariantDouble -Value $Row[14]
+  $ColdToWarmRatio = Convert-ToInvariantDouble -Value $Row[15]
 
   if ($null -ne $WarmLoadedRatio) {
     $WarmLoadedRatios.Add($WarmLoadedRatio) | Out-Null
@@ -196,7 +206,7 @@ if ($FailedRows.Count -gt 0) {
   Add-Utf8Text -Path $OutputNotesPath -Text "--------------------`r`n"
 
   foreach ($FailedRow in $FailedRows) {
-    Add-Utf8Text -Path $OutputNotesPath -Text "$($FailedRow[2]): $($FailedRow[11])`r`n"
+    Add-Utf8Text -Path $OutputNotesPath -Text "$($FailedRow[2]): $($FailedRow[16])`r`n"
   }
 }
 

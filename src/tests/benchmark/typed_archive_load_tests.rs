@@ -48,6 +48,20 @@ fn typed_archive_load_timing_reports_exact_loaded_execution() {
 
     assert_eq!(report.matched_records, 2);
     assert_eq!(report.archive_bytes, fs::metadata(&path).unwrap().len());
+    assert_eq!(
+        report.section_footprint.total_archive_bytes,
+        report.archive_bytes
+    );
+    assert!(report.section_footprint.row_mapped_index_section_bytes > 0);
+    assert!(report.section_footprint.typed_record_batch_section_bytes > 0);
+    assert!(
+        report
+            .section_footprint
+            .record_encoder_metadata_section_bytes
+            > 0
+    );
+    assert!(report.section_footprint.payload_header_bytes > 0);
+    assert!(report.section_footprint.section_framing_bytes > 0);
     assert_eq!(report.in_memory_timing.iterations, 3);
     assert_eq!(report.warm_loaded_timing.iterations, 3);
     assert_eq!(report.cold_loaded_timing.iterations, 3);

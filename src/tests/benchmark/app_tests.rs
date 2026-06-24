@@ -283,6 +283,9 @@ fn benchmark_application_renderer_uses_detailed_output_for_debug_report() {
     assert!(output.contains("Target workload typed indexed comparison"));
     assert!(output.contains("Target workload typed archive load timing"));
     assert!(output.contains("archive bytes"));
+    assert!(output.contains("row-mapped index section bytes"));
+    assert!(output.contains("typed record batch section bytes"));
+    assert!(output.contains("record encoder metadata section bytes"));
     assert!(output.contains("Target workload typed archive append rebuild timing"));
     assert!(output.contains("Target workload typed archive append-delta query timing"));
     assert!(output.contains("Target workload typed archive compaction timing"));

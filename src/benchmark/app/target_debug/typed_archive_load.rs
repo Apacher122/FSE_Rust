@@ -70,17 +70,24 @@ impl BenchmarkApplicationRenderer {
         output.push_str("Workload typed archive load timing summary\n");
         output.push_str("------------------------------------------\n");
         output.push_str(
-            "workload | matched | archive bytes | in-memory | warm-loaded | cold-loaded | warm/in-memory | cold/in-memory | cold/warm | agreement\n",
+            "workload | matched | archive bytes | row-mapped index bytes | typed record batch bytes | encoder metadata bytes | payload header bytes | section framing bytes | in-memory | warm-loaded | cold-loaded | warm/in-memory | cold/in-memory | cold/warm | agreement\n",
         );
 
         for workload in &context.workloads {
             let report = typed_archive_load_report(context, &typed_context, workload);
 
             output.push_str(&format!(
-                "{} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
                 workload.name,
                 report.matched_records,
                 report.archive_bytes,
+                report.section_footprint.row_mapped_index_section_bytes,
+                report.section_footprint.typed_record_batch_section_bytes,
+                report
+                    .section_footprint
+                    .record_encoder_metadata_section_bytes,
+                report.section_footprint.payload_header_bytes,
+                report.section_footprint.section_framing_bytes,
                 format_duration_ascii(report.in_memory_timing.average_elapsed),
                 format_duration_ascii(report.warm_loaded_timing.average_elapsed),
                 format_duration_ascii(report.cold_loaded_timing.average_elapsed),
@@ -436,6 +443,33 @@ fn append_target_typed_archive_load_report(
 ) {
     append_debug_line(output, "matched records", report.matched_records);
     append_debug_line(output, "archive bytes", report.archive_bytes);
+    append_debug_line(
+        output,
+        "row-mapped index section bytes",
+        report.section_footprint.row_mapped_index_section_bytes,
+    );
+    append_debug_line(
+        output,
+        "typed record batch section bytes",
+        report.section_footprint.typed_record_batch_section_bytes,
+    );
+    append_debug_line(
+        output,
+        "record encoder metadata section bytes",
+        report
+            .section_footprint
+            .record_encoder_metadata_section_bytes,
+    );
+    append_debug_line(
+        output,
+        "payload header bytes",
+        report.section_footprint.payload_header_bytes,
+    );
+    append_debug_line(
+        output,
+        "section framing bytes",
+        report.section_footprint.section_framing_bytes,
+    );
     append_debug_duration_line(
         output,
         "in-memory typed average elapsed",

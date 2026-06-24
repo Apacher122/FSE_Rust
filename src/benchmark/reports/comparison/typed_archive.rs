@@ -21,15 +21,15 @@ use crate::persistence::{
     FSETombstonedTypedQueryIndexArchiveError, FSETypedQueryIndexAppendDeltaArchiveMaintenanceError,
     FSETypedQueryIndexArchiveCompactionError, FSETypedQueryIndexArchiveError,
     FSETypedQueryIndexArchiveFootprintError, FSETypedQueryIndexArchiveMaintenanceError,
-    FSETypedRowTombstoneArchiveError, append_typed_query_index_archive_file,
-    compact_typed_query_index_archive_file,
+    FSETypedQueryIndexArchiveSectionFootprint, FSETypedRowTombstoneArchiveError,
+    append_typed_query_index_archive_file, compact_typed_query_index_archive_file,
     inspect_typed_query_index_archive_file_maintenance_status,
     inspect_typed_query_index_archive_file_maintenance_status_with_append_batch_archive,
     load_typed_query_index_archive_file, load_typed_query_index_archive_with_tombstones,
     maintain_typed_query_index_archive_file,
     maintain_typed_query_index_archive_file_with_append_batch_archive,
     save_typed_query_index_archive_file, save_typed_record_batch_archive_file,
-    save_typed_row_tombstone_archive_file,
+    save_typed_row_tombstone_archive_file, typed_query_index_archive_file_section_footprint,
     typed_query_index_archive_with_append_delta_and_tombstones_footprint,
     typed_query_index_archive_with_tombstones_footprint,
 };
@@ -222,6 +222,9 @@ pub struct TypedArchiveLoadTimingReport {
 
     /// Typed query index archive byte length used by the load benchmark.
     pub archive_bytes: u64,
+
+    /// Section byte footprint for the typed query index archive.
+    pub section_footprint: FSETypedQueryIndexArchiveSectionFootprint,
 
     /// Timing for querying the existing in-memory typed query index.
     pub in_memory_timing: RepeatedTimingReport,
@@ -518,7 +521,8 @@ where
 
     save_typed_query_index_archive_file(archive_path, query_index)?;
 
-    let archive_bytes = archive_file_len(archive_path)?;
+    let section_footprint = typed_query_index_archive_file_section_footprint(archive_path)?;
+    let archive_bytes = section_footprint.total_archive_bytes;
     let in_memory_row_ids = query_index.query_row_ids(plan)?;
     let warm_loaded_index = load_typed_query_index_archive_file(archive_path)?;
     let warm_loaded_row_ids = warm_loaded_index.query_row_ids(plan)?;
@@ -564,6 +568,7 @@ where
     Ok(TypedArchiveLoadTimingReport {
         matched_records: in_memory_row_ids.len(),
         archive_bytes,
+        section_footprint,
         warm_loaded_to_in_memory_ratio: duration_ratio(
             warm_loaded_timing.average_elapsed,
             in_memory_timing.average_elapsed,
