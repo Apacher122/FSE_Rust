@@ -282,6 +282,7 @@ fn benchmark_application_renderer_uses_detailed_output_for_debug_report() {
     assert!(output.contains("Target workload exact existence timing"));
     assert!(output.contains("Target workload typed indexed comparison"));
     assert!(output.contains("Target workload typed archive load timing"));
+    assert!(output.contains("archive bytes"));
     assert!(output.contains("Target workload typed archive append rebuild timing"));
     assert!(output.contains("Target workload typed archive append-delta query timing"));
     assert!(output.contains("Target workload typed archive compaction timing"));

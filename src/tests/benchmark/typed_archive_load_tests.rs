@@ -47,6 +47,7 @@ fn typed_archive_load_timing_reports_exact_loaded_execution() {
     .expect("typed archive timing should execute");
 
     assert_eq!(report.matched_records, 2);
+    assert_eq!(report.archive_bytes, fs::metadata(&path).unwrap().len());
     assert_eq!(report.in_memory_timing.iterations, 3);
     assert_eq!(report.warm_loaded_timing.iterations, 3);
     assert_eq!(report.cold_loaded_timing.iterations, 3);

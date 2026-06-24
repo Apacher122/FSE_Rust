@@ -70,16 +70,17 @@ impl BenchmarkApplicationRenderer {
         output.push_str("Workload typed archive load timing summary\n");
         output.push_str("------------------------------------------\n");
         output.push_str(
-            "workload | matched | in-memory | warm-loaded | cold-loaded | warm/in-memory | cold/in-memory | cold/warm | agreement\n",
+            "workload | matched | archive bytes | in-memory | warm-loaded | cold-loaded | warm/in-memory | cold/in-memory | cold/warm | agreement\n",
         );
 
         for workload in &context.workloads {
             let report = typed_archive_load_report(context, &typed_context, workload);
 
             output.push_str(&format!(
-                "{} | {} | {} | {} | {} | {} | {} | {} | pass\n",
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
                 workload.name,
                 report.matched_records,
+                report.archive_bytes,
                 format_duration_ascii(report.in_memory_timing.average_elapsed),
                 format_duration_ascii(report.warm_loaded_timing.average_elapsed),
                 format_duration_ascii(report.cold_loaded_timing.average_elapsed),
@@ -434,6 +435,7 @@ fn append_target_typed_archive_load_report(
     report: &TypedArchiveLoadTimingReport,
 ) {
     append_debug_line(output, "matched records", report.matched_records);
+    append_debug_line(output, "archive bytes", report.archive_bytes);
     append_debug_duration_line(
         output,
         "in-memory typed average elapsed",

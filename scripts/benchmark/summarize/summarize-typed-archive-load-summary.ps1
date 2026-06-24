@@ -75,7 +75,7 @@ $HeaderIndex = -1
 for ($Index = $SectionIndex + 1; $Index -lt $Lines.Count; $Index++) {
   $Trimmed = $Lines[$Index].Trim()
 
-  if ($Trimmed.StartsWith("workload | matched | in-memory | warm-loaded | cold-loaded | warm/in-memory | cold/in-memory | cold/warm | agreement")) {
+  if ($Trimmed.StartsWith("workload | matched | archive bytes | in-memory | warm-loaded | cold-loaded | warm/in-memory | cold/in-memory | cold/warm | agreement")) {
     $HeaderIndex = $Index
     break
   }
@@ -101,7 +101,7 @@ for ($Index = $HeaderIndex + 1; $Index -lt $Lines.Count; $Index++) {
 
   $Columns = @($Trimmed.Split("|") | ForEach-Object { $_.Trim() })
 
-  if ($Columns.Count -ne 9) {
+  if ($Columns.Count -ne 10) {
     throw "unexpected typed archive load timing summary column count at line $($Index + 1): $($Columns.Count)"
   }
 
@@ -116,7 +116,8 @@ for ($Index = $HeaderIndex + 1; $Index -lt $Lines.Count; $Index++) {
       $Columns[5],
       $Columns[6],
       $Columns[7],
-      $Columns[8]
+      $Columns[8],
+      $Columns[9]
     )) | Out-Null
 }
 
@@ -129,6 +130,7 @@ $Header = @(
   "max_depth",
   "workload_name",
   "matched_records",
+  "archive_bytes",
   "in_memory_elapsed",
   "warm_loaded_elapsed",
   "cold_loaded_elapsed",
@@ -143,7 +145,7 @@ Write-CsvDocument `
   -Header $Header `
   -Rows $Rows
 
-$FailedRows = @($Rows | Where-Object { $_[10] -ne "pass" })
+$FailedRows = @($Rows | Where-Object { $_[11] -ne "pass" })
 $TotalMatchedRecords = 0
 $WarmLoadedRatios = New-Object System.Collections.Generic.List[double]
 $ColdLoadedRatios = New-Object System.Collections.Generic.List[double]
@@ -152,9 +154,9 @@ $ColdToWarmRatios = New-Object System.Collections.Generic.List[double]
 foreach ($Row in $Rows) {
   $TotalMatchedRecords += Convert-ToInvariantIntOrZero -Value $Row[3]
 
-  $WarmLoadedRatio = Convert-ToInvariantDouble -Value $Row[7]
-  $ColdLoadedRatio = Convert-ToInvariantDouble -Value $Row[8]
-  $ColdToWarmRatio = Convert-ToInvariantDouble -Value $Row[9]
+  $WarmLoadedRatio = Convert-ToInvariantDouble -Value $Row[8]
+  $ColdLoadedRatio = Convert-ToInvariantDouble -Value $Row[9]
+  $ColdToWarmRatio = Convert-ToInvariantDouble -Value $Row[10]
 
   if ($null -ne $WarmLoadedRatio) {
     $WarmLoadedRatios.Add($WarmLoadedRatio) | Out-Null
@@ -194,7 +196,7 @@ if ($FailedRows.Count -gt 0) {
   Add-Utf8Text -Path $OutputNotesPath -Text "--------------------`r`n"
 
   foreach ($FailedRow in $FailedRows) {
-    Add-Utf8Text -Path $OutputNotesPath -Text "$($FailedRow[2]): $($FailedRow[10])`r`n"
+    Add-Utf8Text -Path $OutputNotesPath -Text "$($FailedRow[2]): $($FailedRow[11])`r`n"
   }
 }
 

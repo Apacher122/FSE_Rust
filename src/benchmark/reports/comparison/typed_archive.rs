@@ -220,6 +220,9 @@ pub struct TypedArchiveLoadTimingReport {
     /// Number of records matched by the typed query plan.
     pub matched_records: usize,
 
+    /// Typed query index archive byte length used by the load benchmark.
+    pub archive_bytes: u64,
+
     /// Timing for querying the existing in-memory typed query index.
     pub in_memory_timing: RepeatedTimingReport,
 
@@ -515,6 +518,7 @@ where
 
     save_typed_query_index_archive_file(archive_path, query_index)?;
 
+    let archive_bytes = archive_file_len(archive_path)?;
     let in_memory_row_ids = query_index.query_row_ids(plan)?;
     let warm_loaded_index = load_typed_query_index_archive_file(archive_path)?;
     let warm_loaded_row_ids = warm_loaded_index.query_row_ids(plan)?;
@@ -559,6 +563,7 @@ where
 
     Ok(TypedArchiveLoadTimingReport {
         matched_records: in_memory_row_ids.len(),
+        archive_bytes,
         warm_loaded_to_in_memory_ratio: duration_ratio(
             warm_loaded_timing.average_elapsed,
             in_memory_timing.average_elapsed,

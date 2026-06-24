@@ -425,6 +425,7 @@ $TypedArchiveLoadSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv `
   "max_depth",
   "workload_name",
   "matched_records",
+  "archive_bytes",
   "in_memory_elapsed",
   "warm_loaded_elapsed",
   "cold_loaded_elapsed",
