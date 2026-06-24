@@ -280,7 +280,7 @@ pub(super) fn encode_typed_query_index_record_batch_section(
     validate_compact_batch_encoder_field_count(snapshot, record_encoder)?;
 
     let mut bytes = Vec::new();
-    bytes.extend_from_slice(&COMPACT_TYPED_BATCH_SECTION_MAGIC);
+    bytes.extend_from_slice(&COMPACT_TYPED_BATCH_SECTION_V2_MAGIC);
 
     write_u64(&mut bytes, snapshot.schema_fields.len() as u64);
     for field in &snapshot.schema_fields {
@@ -291,7 +291,7 @@ pub(super) fn encode_typed_query_index_record_batch_section(
 
     write_u64(&mut bytes, snapshot.records.len() as u64);
     for record in &snapshot.records {
-        write_compact_batch_record(&mut bytes, record, record_encoder.fields())?;
+        write_compact_batch_record_v2(&mut bytes, record, record_encoder.fields())?;
     }
 
     Ok(bytes)
@@ -301,7 +301,32 @@ fn decode_typed_query_index_record_batch_section(
     bytes: &[u8],
     record_encoder: &FSERecordEncoderMetadata,
 ) -> Result<FSERecordBatchArchiveSnapshot, FSETypedQueryIndexArchiveCodecError> {
-    if !bytes.starts_with(&COMPACT_TYPED_BATCH_SECTION_MAGIC) {
+    if bytes.starts_with(&COMPACT_TYPED_BATCH_SECTION_V2_MAGIC) {
+        return decode_compact_typed_query_index_record_batch_section(
+            bytes,
+            record_encoder,
+            CompactBatchRecordLayout::FixedFieldCount,
+        );
+    }
+
+    if bytes.starts_with(&COMPACT_TYPED_BATCH_SECTION_V1_MAGIC) {
+        return decode_compact_typed_query_index_record_batch_section(
+            bytes,
+            record_encoder,
+            CompactBatchRecordLayout::LegacyValueCount,
+        );
+    }
+
+    decode_typed_record_batch_archive_snapshot(bytes)
+        .map_err(FSETypedQueryIndexArchiveCodecError::BatchCodec)
+}
+
+fn decode_compact_typed_query_index_record_batch_section(
+    bytes: &[u8],
+    record_encoder: &FSERecordEncoderMetadata,
+    record_layout: CompactBatchRecordLayout,
+) -> Result<FSERecordBatchArchiveSnapshot, FSETypedQueryIndexArchiveCodecError> {
+    if !bytes.starts_with(record_layout.magic()) {
         return decode_typed_record_batch_archive_snapshot(bytes)
             .map_err(FSETypedQueryIndexArchiveCodecError::BatchCodec);
     }
@@ -309,7 +334,7 @@ fn decode_typed_query_index_record_batch_section(
     let mut reader = TypedQueryIndexArchiveReader::new(bytes);
     reader.read_exact(
         "typed_index.record_batch.compact_magic",
-        COMPACT_TYPED_BATCH_SECTION_MAGIC.len(),
+        record_layout.magic().len(),
     )?;
 
     let field_count = reader.read_len("typed_index.record_batch.schema.field_count")?;
@@ -332,7 +357,7 @@ fn decode_typed_query_index_record_batch_section(
     let mut records = Vec::with_capacity(record_count);
 
     for _ in 0..record_count {
-        records.push(reader.read_compact_batch_record(record_encoder.fields())?);
+        records.push(reader.read_compact_batch_record(record_encoder.fields(), record_layout)?);
     }
 
     if reader.remaining() != 0 {
@@ -352,6 +377,25 @@ fn decode_typed_query_index_record_batch_section(
         .map_err(FSETypedQueryIndexArchiveCodecError::BatchCodec)?;
 
     Ok(snapshot)
+}
+
+#[derive(Clone, Copy)]
+enum CompactBatchRecordLayout {
+    LegacyValueCount,
+    FixedFieldCount,
+}
+
+impl CompactBatchRecordLayout {
+    fn magic(self) -> &'static [u8; 8] {
+        match self {
+            Self::LegacyValueCount => &COMPACT_TYPED_BATCH_SECTION_V1_MAGIC,
+            Self::FixedFieldCount => &COMPACT_TYPED_BATCH_SECTION_V2_MAGIC,
+        }
+    }
+
+    fn uses_fixed_field_count(self) -> bool {
+        matches!(self, Self::FixedFieldCount)
+    }
 }
 
 impl FSETypedQueryIndexArchiveSnapshot {
@@ -393,20 +437,22 @@ fn write_compact_batch_field(bytes: &mut Vec<u8>, field: &FSEFieldArchiveRecord)
     write_bool(bytes, field.nullable);
 }
 
-fn write_compact_batch_record(
+fn write_compact_batch_record_v2(
     bytes: &mut Vec<u8>,
     record: &FSERecordArchiveRecord,
     fields: &[FSEFieldEncoderMetadata],
 ) -> Result<(), FSETypedQueryIndexArchiveCodecError> {
-    write_u64(bytes, record.values.len() as u64);
-
-    for (field_index, value) in record.values.iter().enumerate() {
-        let field_encoder = fields.get(field_index).ok_or(
+    if record.values.len() != fields.len() {
+        return Err(
             FSETypedQueryIndexArchiveCodecError::CompactBatchEncoderFieldCountMismatch {
                 schema_field_count: record.values.len(),
                 encoder_field_count: fields.len(),
             },
-        )?;
+        );
+    }
+
+    for (field_index, value) in record.values.iter().enumerate() {
+        let field_encoder = &fields[field_index];
         write_compact_batch_value(bytes, field_index, value, field_encoder)?;
     }
 
@@ -462,7 +508,7 @@ fn write_compact_batch_value(
                 })?;
 
             bytes.push(COMPACT_BATCH_VALUE_CATEGORY_TAG);
-            write_u64(bytes, code as u64);
+            write_compact_category_code(bytes, categories.len(), code as u64);
         }
     }
 
@@ -560,6 +606,15 @@ fn write_string(bytes: &mut Vec<u8>, value: &str) {
     write_byte_vec(bytes, value.as_bytes());
 }
 
+fn write_compact_category_code(bytes: &mut Vec<u8>, category_count: usize, code: u64) {
+    match compact_category_code_width(category_count) {
+        CompactCategoryCodeWidth::U8 => write_u8(bytes, code as u8),
+        CompactCategoryCodeWidth::U16 => write_u16(bytes, code as u16),
+        CompactCategoryCodeWidth::U32 => write_u32(bytes, code as u32),
+        CompactCategoryCodeWidth::U64 => write_u64(bytes, code),
+    }
+}
+
 fn write_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
     write_u64(bytes, values.len() as u64);
 
@@ -570,6 +625,18 @@ fn write_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
 
 fn write_bool(bytes: &mut Vec<u8>, value: bool) {
     bytes.push(u8::from(value));
+}
+
+fn write_u8(bytes: &mut Vec<u8>, value: u8) {
+    bytes.push(value);
+}
+
+fn write_u16(bytes: &mut Vec<u8>, value: u16) {
+    bytes.extend_from_slice(&value.to_le_bytes());
+}
+
+fn write_u32(bytes: &mut Vec<u8>, value: u32) {
+    bytes.extend_from_slice(&value.to_le_bytes());
 }
 
 fn write_i64(bytes: &mut Vec<u8>, value: i64) {
@@ -584,7 +651,28 @@ fn write_u64(bytes: &mut Vec<u8>, value: u64) {
     bytes.extend_from_slice(&value.to_le_bytes());
 }
 
-const COMPACT_TYPED_BATCH_SECTION_MAGIC: [u8; 8] = *b"FSECBT01";
+#[derive(Clone, Copy)]
+enum CompactCategoryCodeWidth {
+    U8,
+    U16,
+    U32,
+    U64,
+}
+
+fn compact_category_code_width(category_count: usize) -> CompactCategoryCodeWidth {
+    if category_count <= u8::MAX as usize + 1 {
+        CompactCategoryCodeWidth::U8
+    } else if category_count <= u16::MAX as usize + 1 {
+        CompactCategoryCodeWidth::U16
+    } else if category_count <= u32::MAX as usize + 1 {
+        CompactCategoryCodeWidth::U32
+    } else {
+        CompactCategoryCodeWidth::U64
+    }
+}
+
+const COMPACT_TYPED_BATCH_SECTION_V1_MAGIC: [u8; 8] = *b"FSECBT01";
+const COMPACT_TYPED_BATCH_SECTION_V2_MAGIC: [u8; 8] = *b"FSECBT02";
 
 const COMPACT_BATCH_FIELD_INTEGER_TAG: u8 = 0;
 const COMPACT_BATCH_FIELD_FLOAT_TAG: u8 = 1;
@@ -656,12 +744,17 @@ impl<'a> TypedQueryIndexArchiveReader<'a> {
     fn read_compact_batch_record(
         &mut self,
         fields: &[FSEFieldEncoderMetadata],
+        record_layout: CompactBatchRecordLayout,
     ) -> Result<FSERecordArchiveRecord, FSETypedQueryIndexArchiveCodecError> {
-        let value_count = self.read_len("typed_index.record_batch.record.value_count")?;
+        let value_count = if record_layout.uses_fixed_field_count() {
+            fields.len()
+        } else {
+            self.read_len("typed_index.record_batch.record.value_count")?
+        };
         let mut values = Vec::with_capacity(value_count);
 
         for field_index in 0..value_count {
-            values.push(self.read_compact_batch_value(field_index, fields)?);
+            values.push(self.read_compact_batch_value(field_index, fields, record_layout)?);
         }
 
         Ok(FSERecordArchiveRecord { values })
@@ -671,6 +764,7 @@ impl<'a> TypedQueryIndexArchiveReader<'a> {
         &mut self,
         field_index: usize,
         fields: &[FSEFieldEncoderMetadata],
+        record_layout: CompactBatchRecordLayout,
     ) -> Result<FSEValueArchiveRecord, FSETypedQueryIndexArchiveCodecError> {
         let field = "typed_index.record_batch.record.value";
 
@@ -692,7 +786,6 @@ impl<'a> TypedQueryIndexArchiveReader<'a> {
                 self.read_i64(field)?,
             )),
             COMPACT_BATCH_VALUE_CATEGORY_TAG => {
-                let code = self.read_u64(field)?;
                 let Some(FSEFieldEncoderMetadata::CategoryDictionary { categories }) =
                     fields.get(field_index)
                 else {
@@ -702,6 +795,7 @@ impl<'a> TypedQueryIndexArchiveReader<'a> {
                         },
                     );
                 };
+                let code = self.read_compact_category_code(field, categories.len(), record_layout)?;
                 let code_index = usize::try_from(code).map_err(|_| {
                     FSETypedQueryIndexArchiveCodecError::CompactBatchCategoryCodeOutOfRange {
                         field_index,
@@ -758,6 +852,24 @@ impl<'a> TypedQueryIndexArchiveReader<'a> {
         Ok(values)
     }
 
+    fn read_compact_category_code(
+        &mut self,
+        field: &'static str,
+        category_count: usize,
+        record_layout: CompactBatchRecordLayout,
+    ) -> Result<u64, FSETypedQueryIndexArchiveCodecError> {
+        if matches!(record_layout, CompactBatchRecordLayout::LegacyValueCount) {
+            return self.read_u64(field);
+        }
+
+        match compact_category_code_width(category_count) {
+            CompactCategoryCodeWidth::U8 => self.read_u8(field).map(u64::from),
+            CompactCategoryCodeWidth::U16 => self.read_u16(field).map(u64::from),
+            CompactCategoryCodeWidth::U32 => self.read_u32(field).map(u64::from),
+            CompactCategoryCodeWidth::U64 => self.read_u64(field),
+        }
+    }
+
     fn read_len(
         &mut self,
         field: &'static str,
@@ -777,6 +889,24 @@ impl<'a> TypedQueryIndexArchiveReader<'a> {
         Ok(u64::from_le_bytes([
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
         ]))
+    }
+
+    fn read_u16(
+        &mut self,
+        field: &'static str,
+    ) -> Result<u16, FSETypedQueryIndexArchiveCodecError> {
+        let bytes = self.read_exact(field, size_of::<u16>())?;
+
+        Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
+    }
+
+    fn read_u32(
+        &mut self,
+        field: &'static str,
+    ) -> Result<u32, FSETypedQueryIndexArchiveCodecError> {
+        let bytes = self.read_exact(field, size_of::<u32>())?;
+
+        Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
     }
 
     fn read_u8(&mut self, field: &'static str) -> Result<u8, FSETypedQueryIndexArchiveCodecError> {

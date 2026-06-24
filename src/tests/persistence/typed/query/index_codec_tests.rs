@@ -8,7 +8,8 @@ use crate::encoding::{
     FSERecordEncoderMetadata, FloatEncoder, IntegerEncoder, TimestampMillisEncoder,
 };
 use crate::persistence::{
-    FSETypedQueryIndexArchiveCodecError, FSETypedQueryIndexArchiveSnapshot,
+    FSEFieldTypeArchiveTag, FSETypedQueryIndexArchiveCodecError,
+    FSETypedQueryIndexArchiveSnapshot, FSEValueArchiveRecord,
     FSETypedQueryIndexArchiveSnapshotError, decode_typed_query_index_archive_snapshot,
     encode_typed_query_index_archive_snapshot, encode_typed_record_batch_archive_snapshot,
 };
@@ -53,6 +54,32 @@ fn typed_query_index_archive_codec_compacts_categorical_record_batch_section() {
 
     assert!(compact_batch_section_bytes.len() < old_record_batch_section_bytes.len());
     assert_eq!(decoded, snapshot);
+}
+
+#[test]
+fn typed_query_index_archive_codec_uses_compact_value_framing() {
+    let snapshot =
+        FSETypedQueryIndexArchiveSnapshot::from_typed_query_index(&typed_query_index()).unwrap();
+    let compact_archive_bytes = encode_typed_query_index_archive_snapshot(&snapshot).unwrap();
+    let compact_batch_section_bytes = batch_section_bytes(&compact_archive_bytes);
+    let decoded = decode_typed_query_index_archive_snapshot(&compact_archive_bytes).unwrap();
+
+    assert_eq!(compact_batch_section_bytes.len(), compact_entity_batch_section_len());
+    assert_eq!(decoded, snapshot);
+}
+
+#[test]
+fn typed_query_index_archive_codec_decodes_legacy_compact_batch_section() {
+    let snapshot =
+        FSETypedQueryIndexArchiveSnapshot::from_typed_query_index(&typed_query_index()).unwrap();
+    let archive_bytes = encode_typed_query_index_archive_snapshot(&snapshot).unwrap();
+    let legacy_batch_section_bytes = legacy_compact_batch_section_bytes(&snapshot);
+    let legacy_archive_bytes =
+        replace_batch_section_bytes(&archive_bytes, &legacy_batch_section_bytes);
+    let decoded = decode_typed_query_index_archive_snapshot(&legacy_archive_bytes).unwrap();
+
+    assert_eq!(decoded, snapshot);
+    assert!(legacy_batch_section_bytes.len() > batch_section_bytes(&archive_bytes).len());
 }
 
 #[test]
@@ -341,4 +368,131 @@ fn batch_section_bytes(bytes: &[u8]) -> &[u8] {
     let batch_payload_offset = batch_length_offset + 8;
 
     &bytes[batch_payload_offset..batch_payload_offset + batch_length]
+}
+
+fn replace_batch_section_bytes(bytes: &[u8], batch_section: &[u8]) -> Vec<u8> {
+    let batch_length_offset = batch_length_offset(bytes);
+    let mut length_bytes = [0_u8; 8];
+    length_bytes.copy_from_slice(&bytes[batch_length_offset..batch_length_offset + 8]);
+    let old_batch_length = u64::from_le_bytes(length_bytes) as usize;
+    let batch_payload_offset = batch_length_offset + 8;
+    let old_batch_end = batch_payload_offset + old_batch_length;
+    let mut replaced = Vec::new();
+
+    replaced.extend_from_slice(&bytes[..batch_length_offset]);
+    replaced.extend_from_slice(&(batch_section.len() as u64).to_le_bytes());
+    replaced.extend_from_slice(batch_section);
+    replaced.extend_from_slice(&bytes[old_batch_end..]);
+
+    replaced
+}
+
+fn compact_entity_batch_section_len() -> usize {
+    let schema_field_bytes =
+        compact_field_len("entity_id") + compact_field_len("score") + compact_field_len("class")
+            + compact_field_len("observed_at");
+    let row_id_bytes = 8 + (4 * 8);
+    let record_bytes = 4 * ((1 + 8) + (1 + 8) + (1 + 1) + (1 + 8));
+
+    8 + 8 + schema_field_bytes + row_id_bytes + 8 + record_bytes
+}
+
+fn compact_field_len(name: &str) -> usize {
+    8 + name.len() + 1 + 1
+}
+
+fn legacy_compact_batch_section_bytes(snapshot: &FSETypedQueryIndexArchiveSnapshot) -> Vec<u8> {
+    let mut bytes = Vec::new();
+
+    bytes.extend_from_slice(b"FSECBT01");
+    write_u64(&mut bytes, snapshot.batch.schema_fields.len() as u64);
+
+    for field in &snapshot.batch.schema_fields {
+        write_string(&mut bytes, &field.name);
+        write_field_type_tag(&mut bytes, field.field_type);
+        write_bool(&mut bytes, field.nullable);
+    }
+
+    write_u64_vec(&mut bytes, &snapshot.batch.row_ids);
+    write_u64(&mut bytes, snapshot.batch.records.len() as u64);
+
+    for record in &snapshot.batch.records {
+        write_u64(&mut bytes, record.values.len() as u64);
+
+        for value in &record.values {
+            write_legacy_value(&mut bytes, value);
+        }
+    }
+
+    bytes
+}
+
+fn write_legacy_value(bytes: &mut Vec<u8>, value: &FSEValueArchiveRecord) {
+    match value {
+        FSEValueArchiveRecord::Null => bytes.push(0),
+        FSEValueArchiveRecord::Integer(value) => {
+            bytes.push(1);
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        FSEValueArchiveRecord::Float(value) => {
+            bytes.push(2);
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        FSEValueArchiveRecord::Text(value) => {
+            bytes.push(3);
+            write_string(bytes, value);
+        }
+        FSEValueArchiveRecord::Boolean(value) => {
+            bytes.push(4);
+            write_bool(bytes, *value);
+        }
+        FSEValueArchiveRecord::TimestampMillis(value) => {
+            bytes.push(5);
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        FSEValueArchiveRecord::Category(value) => {
+            bytes.push(6);
+            write_u64(bytes, category_code(value));
+        }
+    }
+}
+
+fn category_code(value: &str) -> u64 {
+    match value {
+        "alpha" => 0,
+        "beta" => 1,
+        other => panic!("unexpected test category: {other}"),
+    }
+}
+
+fn write_field_type_tag(bytes: &mut Vec<u8>, tag: FSEFieldTypeArchiveTag) {
+    bytes.push(match tag {
+        FSEFieldTypeArchiveTag::Integer => 0,
+        FSEFieldTypeArchiveTag::Float => 1,
+        FSEFieldTypeArchiveTag::Text => 2,
+        FSEFieldTypeArchiveTag::Boolean => 3,
+        FSEFieldTypeArchiveTag::TimestampMillis => 4,
+        FSEFieldTypeArchiveTag::Category => 5,
+    });
+}
+
+fn write_string(bytes: &mut Vec<u8>, value: &str) {
+    write_u64(bytes, value.len() as u64);
+    bytes.extend_from_slice(value.as_bytes());
+}
+
+fn write_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
+    write_u64(bytes, values.len() as u64);
+
+    for value in values {
+        write_u64(bytes, *value);
+    }
+}
+
+fn write_bool(bytes: &mut Vec<u8>, value: bool) {
+    bytes.push(u8::from(value));
+}
+
+fn write_u64(bytes: &mut Vec<u8>, value: u64) {
+    bytes.extend_from_slice(&value.to_le_bytes());
 }
