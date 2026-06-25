@@ -11,6 +11,7 @@ use crate::persistence::{FSEArchiveManifest, FSEArchiveSections};
 
 const MIN_ARCHIVE_NODE_BYTES: usize = 57;
 const INDEX_ARCHIVE_V2_MAGIC: [u8; 8] = *b"FSEIDX02";
+const INDEX_ARCHIVE_V3_MAGIC: [u8; 8] = *b"FSEIDX03";
 const COMPACT_SCALAR_VEC_RAW_MODE: u8 = 0;
 const COMPACT_SCALAR_VEC_EMPTY_MODE: u8 = 1;
 const COMPACT_SCALAR_VEC_REPEATED_MODE: u8 = 2;
@@ -136,11 +137,11 @@ pub fn encode_archive_snapshot(
     snapshot.validate()?;
 
     let mut bytes = Vec::new();
-    bytes.extend_from_slice(&INDEX_ARCHIVE_V2_MAGIC);
+    bytes.extend_from_slice(&INDEX_ARCHIVE_V3_MAGIC);
     write_manifest(&mut bytes, &snapshot.manifest);
 
     for node in &snapshot.nodes {
-        write_node(&mut bytes, node);
+        write_fixed_shape_node(&mut bytes, node, snapshot.manifest.dimensions as usize);
     }
 
     Ok(bytes)
@@ -150,6 +151,10 @@ pub fn encode_archive_snapshot(
 pub fn decode_archive_snapshot(
     bytes: &[u8],
 ) -> Result<FSEIndexArchiveSnapshot, FSEArchiveCodecError> {
+    if bytes.starts_with(&INDEX_ARCHIVE_V3_MAGIC) {
+        return decode_fixed_shape_archive_snapshot(bytes);
+    }
+
     if !bytes.starts_with(&INDEX_ARCHIVE_V2_MAGIC) {
         return decode_legacy_archive_snapshot(bytes);
     }
@@ -167,6 +172,37 @@ pub fn decode_archive_snapshot(
 
     for _ in 0..node_count {
         nodes.push(reader.read_compact_node()?);
+    }
+
+    if reader.remaining() != 0 {
+        return Err(FSEArchiveCodecError::TrailingBytes {
+            remaining: reader.remaining(),
+        });
+    }
+
+    let snapshot = FSEIndexArchiveSnapshot { manifest, nodes };
+    snapshot.validate()?;
+
+    Ok(snapshot)
+}
+
+fn decode_fixed_shape_archive_snapshot(
+    bytes: &[u8],
+) -> Result<FSEIndexArchiveSnapshot, FSEArchiveCodecError> {
+    let mut reader = ArchiveReader::new(bytes);
+    reader.read_exact("archive.magic", INDEX_ARCHIVE_V3_MAGIC.len())?;
+    let manifest = reader.read_manifest()?;
+
+    manifest
+        .validate()
+        .map_err(FSEArchiveSnapshotError::Manifest)?;
+
+    let dimensions = checked_len("manifest.dimensions", u64::from(manifest.dimensions))?;
+    let node_count = reader.read_node_count(manifest.node_count)?;
+    let mut nodes = Vec::with_capacity(node_count);
+
+    for _ in 0..node_count {
+        nodes.push(reader.read_fixed_shape_node(dimensions)?);
     }
 
     if reader.remaining() != 0 {
@@ -236,33 +272,33 @@ fn write_manifest(bytes: &mut Vec<u8>, manifest: &FSEArchiveManifest) {
     write_bool(bytes, manifest.sections.encoder_metadata);
 }
 
-fn write_node(bytes: &mut Vec<u8>, node: &FSEPartitionNodeArchiveRecord) {
-    write_u64(bytes, node.id);
-    write_compact_scalar_vec(bytes, &node.centroid);
-    write_compact_scalar_vec(bytes, &node.bounds_min);
-    write_compact_scalar_vec(bytes, &node.bounds_max);
-    write_u64(bytes, node.residual_dimensions.len() as u64);
-
-    for dimension in &node.residual_dimensions {
-        write_compact_scalar_vec(bytes, dimension);
-    }
-
-    write_u64(bytes, node.cardinality);
-    write_compact_u64_vec(bytes, &node.children);
-    write_bool(bytes, node.is_leaf);
-}
-
 fn write_string(bytes: &mut Vec<u8>, value: &str) {
     write_u64(bytes, value.len() as u64);
     bytes.extend_from_slice(value.as_bytes());
 }
 
-fn write_scalar_vec(bytes: &mut Vec<u8>, values: &[Scalar]) {
-    write_u64(bytes, values.len() as u64);
+fn write_fixed_shape_node(
+    bytes: &mut Vec<u8>,
+    node: &FSEPartitionNodeArchiveRecord,
+    dimensions: usize,
+) {
+    write_var_u64(bytes, node.id);
+    write_fixed_compact_scalar_vec(bytes, &node.centroid, dimensions);
+    write_fixed_compact_scalar_vec(bytes, &node.bounds_min, dimensions);
+    write_fixed_compact_scalar_vec(bytes, &node.bounds_max, dimensions);
 
-    for value in values {
-        write_scalar(bytes, *value);
+    let residual_rows = node.residual_dimensions.first().map_or(0, Vec::len);
+    write_var_u64(bytes, residual_rows as u64);
+
+    if residual_rows > 0 {
+        for dimension in &node.residual_dimensions {
+            write_fixed_compact_scalar_vec(bytes, dimension, residual_rows);
+        }
     }
+
+    write_var_u64(bytes, node.cardinality);
+    write_compact_u64_vec(bytes, &node.children);
+    write_bool(bytes, node.is_leaf);
 }
 
 fn write_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
@@ -273,21 +309,22 @@ fn write_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
     }
 }
 
-fn write_compact_scalar_vec(bytes: &mut Vec<u8>, values: &[Scalar]) {
-    if values.is_empty() {
+fn write_fixed_compact_scalar_vec(bytes: &mut Vec<u8>, values: &[Scalar], expected_len: usize) {
+    if expected_len == 0 {
         bytes.push(COMPACT_SCALAR_VEC_EMPTY_MODE);
         return;
     }
 
     if let Some(value) = repeated_scalar(values) {
         bytes.push(COMPACT_SCALAR_VEC_REPEATED_MODE);
-        write_u64(bytes, values.len() as u64);
         write_scalar(bytes, value);
         return;
     }
 
     bytes.push(COMPACT_SCALAR_VEC_RAW_MODE);
-    write_scalar_vec(bytes, values);
+    for value in values {
+        write_scalar(bytes, *value);
+    }
 }
 
 fn write_compact_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
@@ -455,6 +492,42 @@ impl<'a> ArchiveReader<'a> {
         })
     }
 
+    fn read_fixed_shape_node(
+        &mut self,
+        dimensions: usize,
+    ) -> Result<FSEPartitionNodeArchiveRecord, FSEArchiveCodecError> {
+        let id = self.read_var_u64("node.id")?;
+        let centroid = self.read_fixed_compact_scalar_vec("node.centroid", dimensions)?;
+        let bounds_min = self.read_fixed_compact_scalar_vec("node.bounds_min", dimensions)?;
+        let bounds_max = self.read_fixed_compact_scalar_vec("node.bounds_max", dimensions)?;
+        let residual_rows = checked_len(
+            "node.residual_row_count",
+            self.read_var_u64("node.residual_row_count")?,
+        )?;
+        let mut residual_dimensions = Vec::with_capacity(dimensions);
+
+        if residual_rows == 0 {
+            residual_dimensions.resize_with(dimensions, Vec::new);
+        } else {
+            for _ in 0..dimensions {
+                residual_dimensions.push(
+                    self.read_fixed_compact_scalar_vec("node.residual_dimension", residual_rows)?,
+                );
+            }
+        }
+
+        Ok(FSEPartitionNodeArchiveRecord {
+            id,
+            centroid,
+            bounds_min,
+            bounds_max,
+            residual_dimensions,
+            cardinality: self.read_var_u64("node.cardinality")?,
+            children: self.read_compact_u64_vec("node.children")?,
+            is_leaf: self.read_bool("node.is_leaf")?,
+        })
+    }
+
     fn read_node(&mut self) -> Result<FSEPartitionNodeArchiveRecord, FSEArchiveCodecError> {
         let id = self.read_u64("node.id")?;
         let centroid = self.read_scalar_vec("node.centroid")?;
@@ -530,6 +603,46 @@ impl<'a> ArchiveReader<'a> {
             }
             mode => Err(FSEArchiveCodecError::InvalidCompactScalarVectorMode { field, mode }),
         }
+    }
+
+    fn read_fixed_compact_scalar_vec(
+        &mut self,
+        field: &'static str,
+        length: usize,
+    ) -> Result<Vec<Scalar>, FSEArchiveCodecError> {
+        match self.read_u8(field)? {
+            COMPACT_SCALAR_VEC_RAW_MODE => self.read_fixed_scalar_vec(field, length),
+            COMPACT_SCALAR_VEC_EMPTY_MODE => Ok(Vec::new()),
+            COMPACT_SCALAR_VEC_REPEATED_MODE => {
+                let value = self.read_scalar(field)?;
+
+                Ok(vec![value; length])
+            }
+            mode => Err(FSEArchiveCodecError::InvalidCompactScalarVectorMode { field, mode }),
+        }
+    }
+
+    fn read_fixed_scalar_vec(
+        &mut self,
+        field: &'static str,
+        length: usize,
+    ) -> Result<Vec<Scalar>, FSEArchiveCodecError> {
+        let byte_length = length.checked_mul(size_of::<Scalar>()).ok_or(
+            FSEArchiveCodecError::LengthOutOfRange {
+                field,
+                length: length as u64,
+            },
+        )?;
+        let bytes = self.read_exact(field, byte_length)?;
+        let mut values = Vec::with_capacity(length);
+
+        for chunk in bytes.chunks_exact(size_of::<Scalar>()) {
+            values.push(Scalar::from_le_bytes([
+                chunk[0], chunk[1], chunk[2], chunk[3],
+            ]));
+        }
+
+        Ok(values)
     }
 
     fn read_u64_vec(&mut self, field: &'static str) -> Result<Vec<u64>, FSEArchiveCodecError> {

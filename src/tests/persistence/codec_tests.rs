@@ -32,8 +32,21 @@ fn archive_snapshot_codec_uses_versioned_compact_container() {
     let fixture = small_benchmark_fixture();
     let snapshot = FSEIndexArchiveSnapshot::from_index(&fixture.index).unwrap();
     let bytes = encode_archive_snapshot(&snapshot).unwrap();
+    let v2_bytes = encode_v2_archive_snapshot_for_test(&snapshot);
 
-    assert_eq!(&bytes[..8], b"FSEIDX02");
+    assert_eq!(&bytes[..8], b"FSEIDX03");
+    assert!(bytes.len() < v2_bytes.len());
+}
+
+#[test]
+fn archive_snapshot_codec_decodes_v2_compact_snapshot_bytes() {
+    let fixture = small_benchmark_fixture();
+    let snapshot = FSEIndexArchiveSnapshot::from_index(&fixture.index).unwrap();
+    let bytes = encode_v2_archive_snapshot_for_test(&snapshot);
+    let decoded = decode_archive_snapshot(&bytes).unwrap();
+
+    assert!(bytes.starts_with(b"FSEIDX02"));
+    assert_eq!(decoded, snapshot);
 }
 
 #[test]
@@ -170,6 +183,19 @@ fn encode_legacy_archive_snapshot_for_test(snapshot: &FSEIndexArchiveSnapshot) -
     bytes
 }
 
+fn encode_v2_archive_snapshot_for_test(snapshot: &FSEIndexArchiveSnapshot) -> Vec<u8> {
+    let mut bytes = Vec::new();
+
+    bytes.extend_from_slice(b"FSEIDX02");
+    write_legacy_manifest_for_test(&mut bytes, &snapshot.manifest);
+
+    for node in &snapshot.nodes {
+        write_v2_node_for_test(&mut bytes, node);
+    }
+
+    bytes
+}
+
 fn write_legacy_manifest_for_test(bytes: &mut Vec<u8>, manifest: &FSEArchiveManifest) {
     write_legacy_string_for_test(bytes, &manifest.magic);
     write_legacy_u32_for_test(bytes, manifest.format_version);
@@ -182,6 +208,22 @@ fn write_legacy_manifest_for_test(bytes: &mut Vec<u8>, manifest: &FSEArchiveMani
     write_legacy_bool_for_test(bytes, manifest.sections.dataset_metadata);
     write_legacy_bool_for_test(bytes, manifest.sections.schema_metadata);
     write_legacy_bool_for_test(bytes, manifest.sections.encoder_metadata);
+}
+
+fn write_v2_node_for_test(bytes: &mut Vec<u8>, node: &FSEPartitionNodeArchiveRecord) {
+    write_legacy_u64_for_test(bytes, node.id);
+    write_compact_scalar_vec_for_test(bytes, &node.centroid);
+    write_compact_scalar_vec_for_test(bytes, &node.bounds_min);
+    write_compact_scalar_vec_for_test(bytes, &node.bounds_max);
+    write_legacy_u64_for_test(bytes, node.residual_dimensions.len() as u64);
+
+    for dimension in &node.residual_dimensions {
+        write_compact_scalar_vec_for_test(bytes, dimension);
+    }
+
+    write_legacy_u64_for_test(bytes, node.cardinality);
+    write_compact_u64_vec_for_test(bytes, &node.children);
+    write_legacy_bool_for_test(bytes, node.is_leaf);
 }
 
 fn write_legacy_node_for_test(bytes: &mut Vec<u8>, node: &FSEPartitionNodeArchiveRecord) {
@@ -198,6 +240,61 @@ fn write_legacy_node_for_test(bytes: &mut Vec<u8>, node: &FSEPartitionNodeArchiv
     write_legacy_u64_for_test(bytes, node.cardinality);
     write_legacy_u64_vec_for_test(bytes, &node.children);
     write_legacy_bool_for_test(bytes, node.is_leaf);
+}
+
+fn write_compact_scalar_vec_for_test(bytes: &mut Vec<u8>, values: &[Scalar]) {
+    if values.is_empty() {
+        bytes.push(1);
+        return;
+    }
+
+    if let Some(value) = repeated_scalar_for_test(values) {
+        bytes.push(2);
+        write_legacy_u64_for_test(bytes, values.len() as u64);
+        bytes.extend_from_slice(&value.to_le_bytes());
+        return;
+    }
+
+    bytes.push(0);
+    write_legacy_scalar_vec_for_test(bytes, values);
+}
+
+fn write_compact_u64_vec_for_test(bytes: &mut Vec<u8>, values: &[u64]) {
+    if values.is_empty() {
+        bytes.push(2);
+        return;
+    }
+
+    let raw_len = std::mem::size_of::<u64>() * values.len();
+    let varint_len = values
+        .iter()
+        .map(|value| var_u64_len(*value))
+        .sum::<usize>();
+
+    if varint_len < raw_len {
+        bytes.push(1);
+        write_legacy_u64_for_test(bytes, values.len() as u64);
+
+        for value in values {
+            write_var_u64_for_test(bytes, *value);
+        }
+    } else {
+        bytes.push(0);
+        write_legacy_u64_vec_for_test(bytes, values);
+    }
+}
+
+fn repeated_scalar_for_test(values: &[Scalar]) -> Option<Scalar> {
+    if values.len() < 2 {
+        return None;
+    }
+
+    let value = values[0];
+
+    values
+        .iter()
+        .all(|other| other.to_bits() == value.to_bits())
+        .then_some(value)
 }
 
 fn write_legacy_string_for_test(bytes: &mut Vec<u8>, value: &str) {
@@ -231,4 +328,32 @@ fn write_legacy_u32_for_test(bytes: &mut Vec<u8>, value: u32) {
 
 fn write_legacy_u64_for_test(bytes: &mut Vec<u8>, value: u64) {
     bytes.extend_from_slice(&value.to_le_bytes());
+}
+
+fn write_var_u64_for_test(bytes: &mut Vec<u8>, mut value: u64) {
+    loop {
+        let mut byte = (value & 0x7f) as u8;
+        value >>= 7;
+
+        if value != 0 {
+            byte |= 0x80;
+        }
+
+        bytes.push(byte);
+
+        if value == 0 {
+            break;
+        }
+    }
+}
+
+fn var_u64_len(mut value: u64) -> usize {
+    let mut len = 1;
+
+    while value >= 0x80 {
+        value >>= 7;
+        len += 1;
+    }
+
+    len
 }
