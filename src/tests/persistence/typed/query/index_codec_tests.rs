@@ -64,12 +64,27 @@ fn typed_query_index_archive_codec_uses_compact_value_framing() {
     let compact_batch_section_bytes = batch_section_bytes(&compact_archive_bytes);
     let decoded = decode_typed_query_index_archive_snapshot(&compact_archive_bytes).unwrap();
 
-    assert!(compact_batch_section_bytes.starts_with(b"FSECBT04"));
+    assert!(compact_batch_section_bytes.starts_with(b"FSECBT05"));
     assert_eq!(
         compact_batch_section_bytes.len(),
         compact_entity_batch_section_len()
     );
     assert_eq!(decoded, snapshot);
+}
+
+#[test]
+fn typed_query_index_archive_codec_decodes_legacy_compact_signed_batch_section() {
+    let snapshot =
+        FSETypedQueryIndexArchiveSnapshot::from_typed_query_index(&typed_query_index()).unwrap();
+    let archive_bytes = encode_typed_query_index_archive_snapshot(&snapshot).unwrap();
+    let legacy_batch_section_bytes = legacy_compact_signed_batch_section_bytes(&snapshot);
+    let legacy_archive_bytes =
+        replace_batch_section_bytes(&archive_bytes, &legacy_batch_section_bytes);
+    let decoded = decode_typed_query_index_archive_snapshot(&legacy_archive_bytes).unwrap();
+
+    assert_eq!(decoded, snapshot);
+    assert!(legacy_batch_section_bytes.starts_with(b"FSECBT04"));
+    assert!(legacy_batch_section_bytes.len() > batch_section_bytes(&archive_bytes).len());
 }
 
 #[test]
@@ -426,9 +441,9 @@ fn compact_entity_batch_section_len() -> usize {
         + compact_field_len("class")
         + compact_field_len("observed_at");
     let row_id_bytes = 1 + 8 + 4;
-    let record_bytes = 4 * ((1 + 1) + (1 + 8) + (1 + 1) + (1 + 2));
+    let column_bytes = (1 + 4) + (1 + (4 * 8)) + (1 + 4) + (1 + (4 * 2));
 
-    8 + 8 + schema_field_bytes + row_id_bytes + 8 + record_bytes
+    8 + 8 + schema_field_bytes + row_id_bytes + 8 + column_bytes
 }
 
 fn compact_field_len(name: &str) -> usize {
@@ -511,6 +526,32 @@ fn legacy_compact_row_id_batch_section_bytes(
     bytes
 }
 
+fn legacy_compact_signed_batch_section_bytes(
+    snapshot: &FSETypedQueryIndexArchiveSnapshot,
+) -> Vec<u8> {
+    let mut bytes = Vec::new();
+
+    bytes.extend_from_slice(b"FSECBT04");
+    write_u64(&mut bytes, snapshot.batch.schema_fields.len() as u64);
+
+    for field in &snapshot.batch.schema_fields {
+        write_string(&mut bytes, &field.name);
+        write_field_type_tag(&mut bytes, field.field_type);
+        write_bool(&mut bytes, field.nullable);
+    }
+
+    write_compact_u64_vec(&mut bytes, &snapshot.batch.row_ids);
+    write_u64(&mut bytes, snapshot.batch.records.len() as u64);
+
+    for record in &snapshot.batch.records {
+        for value in &record.values {
+            write_v4_value(&mut bytes, value);
+        }
+    }
+
+    bytes
+}
+
 fn write_legacy_value(bytes: &mut Vec<u8>, value: &FSEValueArchiveRecord) {
     match value {
         FSEValueArchiveRecord::Null => bytes.push(0),
@@ -563,6 +604,36 @@ fn write_v2_value(bytes: &mut Vec<u8>, value: &FSEValueArchiveRecord) {
         FSEValueArchiveRecord::TimestampMillis(value) => {
             bytes.push(5);
             bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        FSEValueArchiveRecord::Category(value) => {
+            bytes.push(6);
+            bytes.push(category_code(value) as u8);
+        }
+    }
+}
+
+fn write_v4_value(bytes: &mut Vec<u8>, value: &FSEValueArchiveRecord) {
+    match value {
+        FSEValueArchiveRecord::Null => bytes.push(0),
+        FSEValueArchiveRecord::Integer(value) => {
+            bytes.push(1);
+            write_var_u64(bytes, zig_zag_encode_i64(*value));
+        }
+        FSEValueArchiveRecord::Float(value) => {
+            bytes.push(2);
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        FSEValueArchiveRecord::Text(value) => {
+            bytes.push(3);
+            write_string(bytes, value);
+        }
+        FSEValueArchiveRecord::Boolean(value) => {
+            bytes.push(4);
+            write_bool(bytes, *value);
+        }
+        FSEValueArchiveRecord::TimestampMillis(value) => {
+            bytes.push(5);
+            write_var_u64(bytes, zig_zag_encode_i64(*value));
         }
         FSEValueArchiveRecord::Category(value) => {
             bytes.push(6);
@@ -657,4 +728,8 @@ fn var_u64_len(mut value: u64) -> usize {
     }
 
     len
+}
+
+fn zig_zag_encode_i64(value: i64) -> u64 {
+    ((value as u64) << 1) ^ ((value >> 63) as u64)
 }

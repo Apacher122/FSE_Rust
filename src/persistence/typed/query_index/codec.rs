@@ -69,6 +69,12 @@ pub enum FSETypedQueryIndexArchiveCodecError {
         category_count: usize,
     },
 
+    /// A columnar compact batch value did not match the schema field type.
+    CompactBatchColumnValueTypeMismatch {
+        /// Field index containing the mismatched value.
+        field_index: usize,
+    },
+
     /// The byte slice ended before a complete typed query index field could be read.
     UnexpectedEndOfArchive {
         /// Archive field being read.
@@ -133,6 +139,14 @@ pub enum FSETypedQueryIndexArchiveCodecError {
         mode: u8,
     },
 
+    /// A compact typed record batch null bitmap mode was not recognized.
+    InvalidCompactBatchNullMode {
+        /// Archive field being read.
+        field: &'static str,
+        /// Mode byte found in the input.
+        mode: u8,
+    },
+
     /// A UTF-8 string field could not be decoded.
     InvalidUtf8 {
         /// Archive field being read.
@@ -157,6 +171,9 @@ impl fmt::Display for FSETypedQueryIndexArchiveCodecError {
                 .write_str("compact typed record batch category is missing from encoder metadata"),
             Self::CompactBatchCategoryCodeOutOfRange { .. } => formatter
                 .write_str("compact typed record batch category code is outside encoder metadata"),
+            Self::CompactBatchColumnValueTypeMismatch { .. } => {
+                formatter.write_str("compact typed record batch column value does not match schema")
+            }
             Self::UnexpectedEndOfArchive { .. } => formatter
                 .write_str("typed query index archive ended before the field could be read"),
             Self::TrailingBytes { .. } => {
@@ -176,6 +193,9 @@ impl fmt::Display for FSETypedQueryIndexArchiveCodecError {
             Self::InvalidCompactIntegerVectorMode { .. } => {
                 formatter.write_str("compact typed query index integer vector mode is invalid")
             }
+            Self::InvalidCompactBatchNullMode { .. } => {
+                formatter.write_str("compact typed record batch null bitmap mode is invalid")
+            }
             Self::InvalidUtf8 { .. } => {
                 formatter.write_str("typed query index archive contains invalid UTF-8")
             }
@@ -194,10 +214,12 @@ impl Error for FSETypedQueryIndexArchiveCodecError {
             | Self::CompactBatchCategoryEncoderMismatch { .. }
             | Self::CompactBatchCategoryNotInEncoderMetadata { .. }
             | Self::CompactBatchCategoryCodeOutOfRange { .. }
+            | Self::CompactBatchColumnValueTypeMismatch { .. }
             | Self::InvalidCompactBatchFieldTypeTag { .. }
             | Self::InvalidCompactBatchValueTag { .. }
             | Self::InvalidCompactBatchBoolean { .. }
             | Self::InvalidCompactIntegerVectorMode { .. }
+            | Self::InvalidCompactBatchNullMode { .. }
             | Self::UnexpectedEndOfArchive { .. }
             | Self::TrailingBytes { .. }
             | Self::LengthOutOfRange { .. }
@@ -292,7 +314,7 @@ pub(super) fn encode_typed_query_index_record_batch_section(
     validate_compact_batch_encoder_field_count(snapshot, record_encoder)?;
 
     let mut bytes = Vec::new();
-    bytes.extend_from_slice(&COMPACT_TYPED_BATCH_SECTION_V4_MAGIC);
+    bytes.extend_from_slice(&COMPACT_TYPED_BATCH_SECTION_V5_MAGIC);
 
     write_u64(&mut bytes, snapshot.schema_fields.len() as u64);
     for field in &snapshot.schema_fields {
@@ -302,14 +324,7 @@ pub(super) fn encode_typed_query_index_record_batch_section(
     write_compact_u64_vec(&mut bytes, &snapshot.row_ids);
 
     write_u64(&mut bytes, snapshot.records.len() as u64);
-    for record in &snapshot.records {
-        write_compact_batch_record(
-            &mut bytes,
-            record,
-            record_encoder.fields(),
-            CompactBatchRecordLayout::FixedFieldCountCompactRowIdsCompactSignedValues,
-        )?;
-    }
+    write_compact_batch_columns(&mut bytes, snapshot, record_encoder.fields())?;
 
     Ok(bytes)
 }
@@ -318,6 +333,10 @@ fn decode_typed_query_index_record_batch_section(
     bytes: &[u8],
     record_encoder: &FSERecordEncoderMetadata,
 ) -> Result<FSERecordBatchArchiveSnapshot, FSETypedQueryIndexArchiveCodecError> {
+    if bytes.starts_with(&COMPACT_TYPED_BATCH_SECTION_V5_MAGIC) {
+        return decode_columnar_typed_query_index_record_batch_section(bytes, record_encoder);
+    }
+
     if bytes.starts_with(&COMPACT_TYPED_BATCH_SECTION_V2_MAGIC) {
         return decode_compact_typed_query_index_record_batch_section(
             bytes,
@@ -412,12 +431,91 @@ fn decode_compact_typed_query_index_record_batch_section(
     Ok(snapshot)
 }
 
+fn decode_columnar_typed_query_index_record_batch_section(
+    bytes: &[u8],
+    record_encoder: &FSERecordEncoderMetadata,
+) -> Result<FSERecordBatchArchiveSnapshot, FSETypedQueryIndexArchiveCodecError> {
+    let mut reader = TypedQueryIndexArchiveReader::new(bytes);
+    reader.read_exact(
+        "typed_index.record_batch.compact_magic",
+        COMPACT_TYPED_BATCH_SECTION_V5_MAGIC.len(),
+    )?;
+
+    let field_count = reader.read_len("typed_index.record_batch.schema.field_count")?;
+    if field_count != record_encoder.fields().len() {
+        return Err(
+            FSETypedQueryIndexArchiveCodecError::CompactBatchEncoderFieldCountMismatch {
+                schema_field_count: field_count,
+                encoder_field_count: record_encoder.fields().len(),
+            },
+        );
+    }
+
+    let mut schema_fields = Vec::with_capacity(field_count);
+    for _ in 0..field_count {
+        schema_fields.push(reader.read_compact_batch_field()?);
+    }
+
+    let row_ids = reader.read_compact_u64_vec("typed_index.record_batch.row_ids")?;
+    let record_count = reader.read_len("typed_index.record_batch.record_count")?;
+    let mut columns = Vec::with_capacity(field_count);
+
+    for (field_index, schema_field) in schema_fields.iter().enumerate() {
+        let nulls = reader.read_compact_batch_nulls(record_count)?;
+        let mut values = Vec::with_capacity(record_count);
+
+        for is_null in nulls {
+            if is_null {
+                values.push(FSEValueArchiveRecord::Null);
+            } else {
+                values.push(reader.read_compact_batch_column_value(
+                    field_index,
+                    schema_field,
+                    record_encoder.fields(),
+                )?);
+            }
+        }
+
+        columns.push(values);
+    }
+
+    if reader.remaining() != 0 {
+        return Err(FSETypedQueryIndexArchiveCodecError::TrailingBytes {
+            remaining: reader.remaining(),
+        });
+    }
+
+    let mut records = Vec::with_capacity(record_count);
+    for record_index in 0..record_count {
+        let mut values = Vec::with_capacity(field_count);
+
+        for column in &columns {
+            values.push(column[record_index].clone());
+        }
+
+        records.push(FSERecordArchiveRecord { values });
+    }
+
+    let snapshot = FSERecordBatchArchiveSnapshot {
+        schema_fields,
+        row_ids,
+        records,
+    };
+    snapshot
+        .validate()
+        .map_err(FSETypedRecordBatchArchiveCodecError::Snapshot)
+        .map_err(FSETypedQueryIndexArchiveCodecError::BatchCodec)?;
+
+    Ok(snapshot)
+}
+
 #[derive(Clone, Copy)]
 enum CompactBatchRecordLayout {
     LegacyValueCount,
     FixedFieldCountRawRowIds,
     FixedFieldCountCompactRowIds,
     FixedFieldCountCompactRowIdsCompactSignedValues,
+    ColumnarCompactValues,
 }
 
 impl CompactBatchRecordLayout {
@@ -429,6 +527,7 @@ impl CompactBatchRecordLayout {
             Self::FixedFieldCountCompactRowIdsCompactSignedValues => {
                 &COMPACT_TYPED_BATCH_SECTION_V4_MAGIC
             }
+            Self::ColumnarCompactValues => &COMPACT_TYPED_BATCH_SECTION_V5_MAGIC,
         }
     }
 
@@ -441,11 +540,15 @@ impl CompactBatchRecordLayout {
             self,
             Self::FixedFieldCountCompactRowIds
                 | Self::FixedFieldCountCompactRowIdsCompactSignedValues
+                | Self::ColumnarCompactValues
         )
     }
 
     fn uses_compact_signed_values(self) -> bool {
-        matches!(self, Self::FixedFieldCountCompactRowIdsCompactSignedValues)
+        matches!(
+            self,
+            Self::FixedFieldCountCompactRowIdsCompactSignedValues | Self::ColumnarCompactValues
+        )
     }
 }
 
@@ -488,61 +591,110 @@ fn write_compact_batch_field(bytes: &mut Vec<u8>, field: &FSEFieldArchiveRecord)
     write_bool(bytes, field.nullable);
 }
 
-fn write_compact_batch_record(
+fn write_compact_batch_columns(
     bytes: &mut Vec<u8>,
-    record: &FSERecordArchiveRecord,
+    snapshot: &FSERecordBatchArchiveSnapshot,
     fields: &[FSEFieldEncoderMetadata],
-    record_layout: CompactBatchRecordLayout,
 ) -> Result<(), FSETypedQueryIndexArchiveCodecError> {
-    if record.values.len() != fields.len() {
-        return Err(
-            FSETypedQueryIndexArchiveCodecError::CompactBatchEncoderFieldCountMismatch {
-                schema_field_count: record.values.len(),
-                encoder_field_count: fields.len(),
-            },
-        );
-    }
+    for (field_index, schema_field) in snapshot.schema_fields.iter().enumerate() {
+        write_compact_batch_nulls(bytes, snapshot, field_index)?;
 
-    for (field_index, value) in record.values.iter().enumerate() {
-        let field_encoder = &fields[field_index];
-        write_compact_batch_value(bytes, field_index, value, field_encoder, record_layout)?;
+        for record in &snapshot.records {
+            let Some(value) = record.values.get(field_index) else {
+                return Err(
+                    FSETypedQueryIndexArchiveCodecError::CompactBatchEncoderFieldCountMismatch {
+                        schema_field_count: record.values.len(),
+                        encoder_field_count: snapshot.schema_fields.len(),
+                    },
+                );
+            };
+
+            if matches!(value, FSEValueArchiveRecord::Null) {
+                continue;
+            }
+
+            write_compact_batch_column_value(
+                bytes,
+                field_index,
+                value,
+                schema_field,
+                &fields[field_index],
+            )?;
+        }
     }
 
     Ok(())
 }
 
-fn write_compact_batch_value(
+fn write_compact_batch_nulls(
+    bytes: &mut Vec<u8>,
+    snapshot: &FSERecordBatchArchiveSnapshot,
+    field_index: usize,
+) -> Result<(), FSETypedQueryIndexArchiveCodecError> {
+    let mut bitmap = vec![0_u8; (snapshot.records.len() + 7) / 8];
+    let mut has_null = false;
+
+    for (record_index, record) in snapshot.records.iter().enumerate() {
+        let Some(value) = record.values.get(field_index) else {
+            return Err(
+                FSETypedQueryIndexArchiveCodecError::CompactBatchEncoderFieldCountMismatch {
+                    schema_field_count: record.values.len(),
+                    encoder_field_count: snapshot.schema_fields.len(),
+                },
+            );
+        };
+
+        if matches!(value, FSEValueArchiveRecord::Null) {
+            has_null = true;
+            bitmap[record_index / 8] |= 1 << (record_index % 8);
+        }
+    }
+
+    if has_null {
+        bytes.push(COMPACT_BATCH_NULLS_BITMAP_MODE);
+        bytes.extend_from_slice(&bitmap);
+    } else {
+        bytes.push(COMPACT_BATCH_NULLS_NONE_MODE);
+    }
+
+    Ok(())
+}
+
+fn write_compact_batch_column_value(
     bytes: &mut Vec<u8>,
     field_index: usize,
     value: &FSEValueArchiveRecord,
+    schema_field: &FSEFieldArchiveRecord,
     field_encoder: &FSEFieldEncoderMetadata,
-    record_layout: CompactBatchRecordLayout,
 ) -> Result<(), FSETypedQueryIndexArchiveCodecError> {
-    match value {
-        FSEValueArchiveRecord::Null => {
-            bytes.push(COMPACT_BATCH_VALUE_NULL_TAG);
+    match (schema_field.field_type, value) {
+        (FSEFieldTypeArchiveTag::Integer, FSEValueArchiveRecord::Integer(value)) => {
+            write_compact_i64(
+                bytes,
+                *value,
+                CompactBatchRecordLayout::ColumnarCompactValues,
+            );
         }
-        FSEValueArchiveRecord::Integer(value) => {
-            bytes.push(COMPACT_BATCH_VALUE_INTEGER_TAG);
-            write_compact_i64(bytes, *value, record_layout);
-        }
-        FSEValueArchiveRecord::Float(value) => {
-            bytes.push(COMPACT_BATCH_VALUE_FLOAT_TAG);
+        (FSEFieldTypeArchiveTag::Float, FSEValueArchiveRecord::Float(value)) => {
             write_f64(bytes, *value);
         }
-        FSEValueArchiveRecord::Text(value) => {
-            bytes.push(COMPACT_BATCH_VALUE_TEXT_TAG);
+        (FSEFieldTypeArchiveTag::Text, FSEValueArchiveRecord::Text(value)) => {
             write_string(bytes, value);
         }
-        FSEValueArchiveRecord::Boolean(value) => {
-            bytes.push(COMPACT_BATCH_VALUE_BOOLEAN_TAG);
+        (FSEFieldTypeArchiveTag::Boolean, FSEValueArchiveRecord::Boolean(value)) => {
             write_bool(bytes, *value);
         }
-        FSEValueArchiveRecord::TimestampMillis(value) => {
-            bytes.push(COMPACT_BATCH_VALUE_TIMESTAMP_MILLIS_TAG);
-            write_compact_i64(bytes, *value, record_layout);
+        (
+            FSEFieldTypeArchiveTag::TimestampMillis,
+            FSEValueArchiveRecord::TimestampMillis(value),
+        ) => {
+            write_compact_i64(
+                bytes,
+                *value,
+                CompactBatchRecordLayout::ColumnarCompactValues,
+            );
         }
-        FSEValueArchiveRecord::Category(value) => {
+        (FSEFieldTypeArchiveTag::Category, FSEValueArchiveRecord::Category(value)) => {
             let FSEFieldEncoderMetadata::CategoryDictionary { categories } = field_encoder else {
                 return Err(
                     FSETypedQueryIndexArchiveCodecError::CompactBatchCategoryEncoderMismatch {
@@ -560,8 +712,14 @@ fn write_compact_batch_value(
                     }
                 })?;
 
-            bytes.push(COMPACT_BATCH_VALUE_CATEGORY_TAG);
             write_compact_category_code(bytes, categories.len(), code as u64);
+        }
+        _ => {
+            return Err(
+                FSETypedQueryIndexArchiveCodecError::CompactBatchColumnValueTypeMismatch {
+                    field_index,
+                },
+            );
         }
     }
 
@@ -794,9 +952,13 @@ const COMPACT_TYPED_BATCH_SECTION_V1_MAGIC: [u8; 8] = *b"FSECBT01";
 const COMPACT_TYPED_BATCH_SECTION_V2_MAGIC: [u8; 8] = *b"FSECBT02";
 const COMPACT_TYPED_BATCH_SECTION_V3_MAGIC: [u8; 8] = *b"FSECBT03";
 const COMPACT_TYPED_BATCH_SECTION_V4_MAGIC: [u8; 8] = *b"FSECBT04";
+const COMPACT_TYPED_BATCH_SECTION_V5_MAGIC: [u8; 8] = *b"FSECBT05";
 
 const COMPACT_U64_VEC_RAW_MODE: u8 = 0;
 const COMPACT_U64_VEC_VARINT_MODE: u8 = 1;
+
+const COMPACT_BATCH_NULLS_NONE_MODE: u8 = 0;
+const COMPACT_BATCH_NULLS_BITMAP_MODE: u8 = 1;
 
 const COMPACT_BATCH_FIELD_INTEGER_TAG: u8 = 0;
 const COMPACT_BATCH_FIELD_FLOAT_TAG: u8 = 1;
@@ -943,6 +1105,92 @@ impl<'a> TypedQueryIndexArchiveReader<'a> {
             tag => {
                 Err(FSETypedQueryIndexArchiveCodecError::InvalidCompactBatchValueTag { field, tag })
             }
+        }
+    }
+
+    fn read_compact_batch_column_value(
+        &mut self,
+        field_index: usize,
+        schema_field: &FSEFieldArchiveRecord,
+        fields: &[FSEFieldEncoderMetadata],
+    ) -> Result<FSEValueArchiveRecord, FSETypedQueryIndexArchiveCodecError> {
+        let field = "typed_index.record_batch.column.value";
+
+        match schema_field.field_type {
+            FSEFieldTypeArchiveTag::Integer => Ok(FSEValueArchiveRecord::Integer(
+                self.read_compact_i64(field, CompactBatchRecordLayout::ColumnarCompactValues)?,
+            )),
+            FSEFieldTypeArchiveTag::Float => {
+                Ok(FSEValueArchiveRecord::Float(self.read_f64(field)?))
+            }
+            FSEFieldTypeArchiveTag::Text => {
+                Ok(FSEValueArchiveRecord::Text(self.read_string(field)?))
+            }
+            FSEFieldTypeArchiveTag::Boolean => {
+                Ok(FSEValueArchiveRecord::Boolean(self.read_bool(field)?))
+            }
+            FSEFieldTypeArchiveTag::TimestampMillis => Ok(FSEValueArchiveRecord::TimestampMillis(
+                self.read_compact_i64(field, CompactBatchRecordLayout::ColumnarCompactValues)?,
+            )),
+            FSEFieldTypeArchiveTag::Category => {
+                let Some(FSEFieldEncoderMetadata::CategoryDictionary { categories }) =
+                    fields.get(field_index)
+                else {
+                    return Err(
+                        FSETypedQueryIndexArchiveCodecError::CompactBatchCategoryEncoderMismatch {
+                            field_index,
+                        },
+                    );
+                };
+                let code = self.read_compact_category_code(
+                    field,
+                    categories.len(),
+                    CompactBatchRecordLayout::ColumnarCompactValues,
+                )?;
+                let code_index = usize::try_from(code).map_err(|_| {
+                    FSETypedQueryIndexArchiveCodecError::CompactBatchCategoryCodeOutOfRange {
+                        field_index,
+                        code,
+                        category_count: categories.len(),
+                    }
+                })?;
+                let Some(category) = categories.get(code_index) else {
+                    return Err(
+                        FSETypedQueryIndexArchiveCodecError::CompactBatchCategoryCodeOutOfRange {
+                            field_index,
+                            code,
+                            category_count: categories.len(),
+                        },
+                    );
+                };
+
+                Ok(FSEValueArchiveRecord::Category(category.clone()))
+            }
+        }
+    }
+
+    fn read_compact_batch_nulls(
+        &mut self,
+        record_count: usize,
+    ) -> Result<Vec<bool>, FSETypedQueryIndexArchiveCodecError> {
+        let field = "typed_index.record_batch.column.nulls";
+
+        match self.read_u8(field)? {
+            COMPACT_BATCH_NULLS_NONE_MODE => Ok(vec![false; record_count]),
+            COMPACT_BATCH_NULLS_BITMAP_MODE => {
+                let bitmap = self.read_exact(field, (record_count + 7) / 8)?;
+                let mut nulls = Vec::with_capacity(record_count);
+
+                for record_index in 0..record_count {
+                    let is_null = bitmap[record_index / 8] & (1 << (record_index % 8)) != 0;
+                    nulls.push(is_null);
+                }
+
+                Ok(nulls)
+            }
+            mode => Err(
+                FSETypedQueryIndexArchiveCodecError::InvalidCompactBatchNullMode { field, mode },
+            ),
         }
     }
 
