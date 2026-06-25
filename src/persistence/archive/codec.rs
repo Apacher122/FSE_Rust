@@ -12,9 +12,13 @@ use crate::persistence::{FSEArchiveManifest, FSEArchiveSections};
 const MIN_ARCHIVE_NODE_BYTES: usize = 57;
 const INDEX_ARCHIVE_V2_MAGIC: [u8; 8] = *b"FSEIDX02";
 const INDEX_ARCHIVE_V3_MAGIC: [u8; 8] = *b"FSEIDX03";
+const INDEX_ARCHIVE_V4_MAGIC: [u8; 8] = *b"FSEIDX04";
 const COMPACT_SCALAR_VEC_RAW_MODE: u8 = 0;
 const COMPACT_SCALAR_VEC_EMPTY_MODE: u8 = 1;
 const COMPACT_SCALAR_VEC_REPEATED_MODE: u8 = 2;
+const COMPACT_SCALAR_VEC_BYTE_PLANES_MODE: u8 = 3;
+const COMPACT_SCALAR_BYTE_PLANE_REPEATED_MODE: u8 = 0;
+const COMPACT_SCALAR_BYTE_PLANE_RAW_MODE: u8 = 1;
 const COMPACT_U64_VEC_RAW_MODE: u8 = 0;
 const COMPACT_U64_VEC_VARINT_MODE: u8 = 1;
 const COMPACT_U64_VEC_EMPTY_MODE: u8 = 2;
@@ -73,6 +77,14 @@ pub enum FSEArchiveCodecError {
         mode: u8,
     },
 
+    /// A compact scalar byte-plane mode was not recognized.
+    InvalidCompactScalarBytePlaneMode {
+        /// Archive field being read.
+        field: &'static str,
+        /// Mode byte found in the input.
+        mode: u8,
+    },
+
     /// A compact integer vector mode was not recognized.
     InvalidCompactIntegerVectorMode {
         /// Archive field being read.
@@ -102,6 +114,9 @@ impl fmt::Display for FSEArchiveCodecError {
             Self::InvalidCompactScalarVectorMode { .. } => {
                 formatter.write_str("archive compact scalar vector mode is invalid")
             }
+            Self::InvalidCompactScalarBytePlaneMode { .. } => {
+                formatter.write_str("archive compact scalar byte-plane mode is invalid")
+            }
             Self::InvalidCompactIntegerVectorMode { .. } => {
                 formatter.write_str("archive compact integer vector mode is invalid")
             }
@@ -119,6 +134,7 @@ impl Error for FSEArchiveCodecError {
             | Self::TrailingBytes { .. }
             | Self::LengthOutOfRange { .. }
             | Self::InvalidCompactScalarVectorMode { .. }
+            | Self::InvalidCompactScalarBytePlaneMode { .. }
             | Self::InvalidCompactIntegerVectorMode { .. } => None,
         }
     }
@@ -137,7 +153,7 @@ pub fn encode_archive_snapshot(
     snapshot.validate()?;
 
     let mut bytes = Vec::new();
-    bytes.extend_from_slice(&INDEX_ARCHIVE_V3_MAGIC);
+    bytes.extend_from_slice(&INDEX_ARCHIVE_V4_MAGIC);
     write_manifest(&mut bytes, &snapshot.manifest);
 
     for node in &snapshot.nodes {
@@ -151,8 +167,12 @@ pub fn encode_archive_snapshot(
 pub fn decode_archive_snapshot(
     bytes: &[u8],
 ) -> Result<FSEIndexArchiveSnapshot, FSEArchiveCodecError> {
+    if bytes.starts_with(&INDEX_ARCHIVE_V4_MAGIC) {
+        return decode_fixed_shape_archive_snapshot(bytes, &INDEX_ARCHIVE_V4_MAGIC);
+    }
+
     if bytes.starts_with(&INDEX_ARCHIVE_V3_MAGIC) {
-        return decode_fixed_shape_archive_snapshot(bytes);
+        return decode_fixed_shape_archive_snapshot(bytes, &INDEX_ARCHIVE_V3_MAGIC);
     }
 
     if !bytes.starts_with(&INDEX_ARCHIVE_V2_MAGIC) {
@@ -188,9 +208,10 @@ pub fn decode_archive_snapshot(
 
 fn decode_fixed_shape_archive_snapshot(
     bytes: &[u8],
+    magic: &[u8; 8],
 ) -> Result<FSEIndexArchiveSnapshot, FSEArchiveCodecError> {
     let mut reader = ArchiveReader::new(bytes);
-    reader.read_exact("archive.magic", INDEX_ARCHIVE_V3_MAGIC.len())?;
+    reader.read_exact("archive.magic", magic.len())?;
     let manifest = reader.read_manifest()?;
 
     manifest
@@ -321,6 +342,12 @@ fn write_fixed_compact_scalar_vec(bytes: &mut Vec<u8>, values: &[Scalar], expect
         return;
     }
 
+    if compact_scalar_byte_plane_payload_len(values) < size_of::<Scalar>() * values.len() {
+        bytes.push(COMPACT_SCALAR_VEC_BYTE_PLANES_MODE);
+        write_scalar_byte_planes(bytes, values);
+        return;
+    }
+
     bytes.push(COMPACT_SCALAR_VEC_RAW_MODE);
     for value in values {
         write_scalar(bytes, *value);
@@ -363,6 +390,42 @@ fn repeated_scalar(values: &[Scalar]) -> Option<Scalar> {
         .iter()
         .all(|other| other.to_bits() == value.to_bits())
         .then_some(value)
+}
+
+fn compact_scalar_byte_plane_payload_len(values: &[Scalar]) -> usize {
+    (0..size_of::<Scalar>())
+        .map(|lane| {
+            if repeated_scalar_byte_lane(values, lane).is_some() {
+                2
+            } else {
+                1 + values.len()
+            }
+        })
+        .sum()
+}
+
+fn repeated_scalar_byte_lane(values: &[Scalar], lane: usize) -> Option<u8> {
+    let value = values.first()?.to_le_bytes()[lane];
+
+    values
+        .iter()
+        .all(|other| other.to_le_bytes()[lane] == value)
+        .then_some(value)
+}
+
+fn write_scalar_byte_planes(bytes: &mut Vec<u8>, values: &[Scalar]) {
+    for lane in 0..size_of::<Scalar>() {
+        if let Some(value) = repeated_scalar_byte_lane(values, lane) {
+            bytes.push(COMPACT_SCALAR_BYTE_PLANE_REPEATED_MODE);
+            bytes.push(value);
+        } else {
+            bytes.push(COMPACT_SCALAR_BYTE_PLANE_RAW_MODE);
+
+            for value in values {
+                bytes.push(value.to_le_bytes()[lane]);
+            }
+        }
+    }
 }
 
 fn write_scalar(bytes: &mut Vec<u8>, value: Scalar) {
@@ -618,8 +681,47 @@ impl<'a> ArchiveReader<'a> {
 
                 Ok(vec![value; length])
             }
+            COMPACT_SCALAR_VEC_BYTE_PLANES_MODE => self.read_byte_plane_scalar_vec(field, length),
             mode => Err(FSEArchiveCodecError::InvalidCompactScalarVectorMode { field, mode }),
         }
+    }
+
+    fn read_byte_plane_scalar_vec(
+        &mut self,
+        field: &'static str,
+        length: usize,
+    ) -> Result<Vec<Scalar>, FSEArchiveCodecError> {
+        let mut scalar_bytes = vec![[0_u8; 4]; length];
+
+        for lane in 0..size_of::<Scalar>() {
+            match self.read_u8(field)? {
+                COMPACT_SCALAR_BYTE_PLANE_REPEATED_MODE => {
+                    let value = self.read_u8(field)?;
+
+                    for bytes in &mut scalar_bytes {
+                        bytes[lane] = value;
+                    }
+                }
+                COMPACT_SCALAR_BYTE_PLANE_RAW_MODE => {
+                    let lane_bytes = self.read_exact(field, length)?;
+
+                    for (bytes, value) in scalar_bytes.iter_mut().zip(lane_bytes) {
+                        bytes[lane] = *value;
+                    }
+                }
+                mode => {
+                    return Err(FSEArchiveCodecError::InvalidCompactScalarBytePlaneMode {
+                        field,
+                        mode,
+                    });
+                }
+            }
+        }
+
+        Ok(scalar_bytes
+            .into_iter()
+            .map(Scalar::from_le_bytes)
+            .collect())
     }
 
     fn read_fixed_scalar_vec(
