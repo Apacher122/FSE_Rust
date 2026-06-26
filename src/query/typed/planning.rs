@@ -399,6 +399,9 @@ pub enum TypedQueryPlanningReason {
     /// The query region is broad relative to indexed root bounds.
     BroadGeometry,
 
+    /// A broad categorical equality predicate was estimated from observed category frequency.
+    BroadCategoricalEquality,
+
     /// A high-dimensional query constrains too few dimensions for a stable pruning estimate.
     HighDimensionalLowConstraintQuery,
 }
@@ -453,6 +456,9 @@ pub struct TypedQueryPlanningDiagnostics {
 
     /// Estimated retained leaves divided by total base-index leaves.
     pub estimated_retained_leaf_ratio: Scalar,
+
+    /// Whether category-frequency statistics contributed to the candidate estimate.
+    pub uses_categorical_frequency_estimate: bool,
 
     /// Whether append-delta records must be directly evaluated.
     pub requires_append_delta_scan: bool,
@@ -513,6 +519,7 @@ struct BasePlanningEstimate {
     estimated_candidate_ratio: Scalar,
     estimated_retained_leaf_count: usize,
     estimated_retained_leaf_ratio: Scalar,
+    uses_categorical_frequency_estimate: bool,
 }
 
 /// Produces planning diagnostics for a typed query index.
@@ -594,6 +601,7 @@ fn planning_diagnostics_from_estimate(
         selectivity_bucket,
         estimated_retained_leaf_count: base.estimated_retained_leaf_count,
         estimated_retained_leaf_ratio: base.estimated_retained_leaf_ratio,
+        uses_categorical_frequency_estimate: base.uses_categorical_frequency_estimate,
         requires_append_delta_scan,
         work_estimate,
         strategy_costs,
@@ -642,6 +650,16 @@ fn select_strategy(
         return (
             TypedQueryExecutionStrategy::Hybrid,
             TypedQueryPlanningReason::AppendDeltaScan,
+        );
+    }
+
+    if estimated_candidate_ratio >= BROAD_QUERY_CANDIDATE_RATIO
+        && base.uses_categorical_frequency_estimate
+        && !output_contract.materializes_records()
+    {
+        return (
+            TypedQueryExecutionStrategy::FlatScan,
+            TypedQueryPlanningReason::BroadCategoricalEquality,
         );
     }
 
@@ -701,6 +719,7 @@ fn estimate_base_index(index: &TypedQueryIndex, plan: &TypedQueryPlan) -> BasePl
             estimated_candidate_ratio: 0.0,
             estimated_retained_leaf_count: 0,
             estimated_retained_leaf_ratio: 0.0,
+            uses_categorical_frequency_estimate: false,
         };
     }
 
@@ -728,6 +747,7 @@ fn estimate_base_index(index: &TypedQueryIndex, plan: &TypedQueryPlan) -> BasePl
         estimated_candidate_ratio: estimate.candidate_ratio,
         estimated_retained_leaf_count,
         estimated_retained_leaf_ratio,
+        uses_categorical_frequency_estimate: estimate.uses_categorical_frequency_estimate,
     }
 }
 
@@ -867,6 +887,7 @@ fn risk_flags_from_estimate(
 struct CandidateRatioEstimate {
     candidate_ratio: Scalar,
     constrained_dimensions: usize,
+    uses_categorical_frequency_estimate: bool,
 }
 
 fn estimate_candidate_ratio(
@@ -877,19 +898,25 @@ fn estimate_candidate_ratio(
 ) -> CandidateRatioEstimate {
     let mut candidate_ratio = 1.0;
     let mut constrained_dimensions = 0;
+    let mut uses_categorical_frequency_estimate = false;
     let minimum_intersecting_fraction = minimum_intersecting_fraction(total_records);
 
     for dimension in 0..plan.query_region().dimensions() {
-        let fraction = categorical_equality_fraction_for_dimension(plan, statistics, dimension)
-            .unwrap_or_else(|| {
-                dimension_candidate_fraction(
-                    plan.query_region().min[dimension],
-                    plan.query_region().max[dimension],
-                    root_bounds.min[dimension],
-                    root_bounds.max[dimension],
-                    minimum_intersecting_fraction,
-                )
-            });
+        let categorical_fraction =
+            categorical_equality_fraction_for_dimension(plan, statistics, dimension);
+        let fraction = categorical_fraction.unwrap_or_else(|| {
+            dimension_candidate_fraction(
+                plan.query_region().min[dimension],
+                plan.query_region().max[dimension],
+                root_bounds.min[dimension],
+                root_bounds.max[dimension],
+                minimum_intersecting_fraction,
+            )
+        });
+
+        if categorical_fraction.is_some() {
+            uses_categorical_frequency_estimate = true;
+        }
 
         if fraction < 1.0 {
             constrained_dimensions += 1;
@@ -901,6 +928,7 @@ fn estimate_candidate_ratio(
     CandidateRatioEstimate {
         candidate_ratio: candidate_ratio.clamp(0.0, 1.0),
         constrained_dimensions,
+        uses_categorical_frequency_estimate,
     }
 }
 

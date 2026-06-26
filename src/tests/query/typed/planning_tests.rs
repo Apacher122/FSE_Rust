@@ -211,9 +211,13 @@ fn typed_query_planning_diagnostics_uses_category_frequency_for_broad_equality()
         plan_typed_query_execution(&query_index, &plan, TypedQueryOutputContract::RowIds);
 
     assert_eq!(diagnostics.strategy, TypedQueryExecutionStrategy::FlatScan);
-    assert_eq!(diagnostics.reason, TypedQueryPlanningReason::BroadGeometry);
+    assert_eq!(
+        diagnostics.reason,
+        TypedQueryPlanningReason::BroadCategoricalEquality
+    );
     assert_eq!(diagnostics.estimated_candidate_records, 3);
     assert_eq!(diagnostics.estimated_candidate_ratio, 0.75);
+    assert!(diagnostics.uses_categorical_frequency_estimate);
     assert_eq!(
         diagnostics.selectivity_bucket,
         TypedQuerySelectivityBucket::Broad
@@ -224,6 +228,37 @@ fn typed_query_planning_diagnostics_uses_category_frequency_for_broad_equality()
         diagnostics.cost_classification_against_flat_scan(),
         TypedQueryPlanningCostClassification::FlatScanEquivalent
     );
+}
+
+#[test]
+fn typed_query_planning_diagnostics_prioritizes_broad_category_frequency_reason() {
+    let schema = high_dimensional_categorical_schema();
+    let mapping = high_dimensional_categorical_mapping(&schema);
+    let batch = high_dimensional_categorical_batch(&schema);
+    let encoder = high_dimensional_categorical_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let plan = high_dimensional_category_equality_plan(&schema, &mapping, "ic");
+
+    let diagnostics =
+        plan_typed_query_execution(&query_index, &plan, TypedQueryOutputContract::RowIds);
+
+    assert_eq!(diagnostics.strategy, TypedQueryExecutionStrategy::FlatScan);
+    assert_eq!(
+        diagnostics.reason,
+        TypedQueryPlanningReason::BroadCategoricalEquality
+    );
+    assert_eq!(diagnostics.dimensions, 8);
+    assert_eq!(diagnostics.constrained_dimensions, 1);
+    assert_eq!(diagnostics.estimated_candidate_records, 3);
+    assert_eq!(diagnostics.estimated_candidate_ratio, 0.75);
+    assert!(diagnostics.uses_categorical_frequency_estimate);
+    assert_eq!(
+        diagnostics.selectivity_bucket,
+        TypedQuerySelectivityBucket::Broad
+    );
+    assert!(diagnostics.risk_flags.broad_predicate);
+    assert!(!diagnostics.risk_flags.high_dimensional_low_constraint);
 }
 
 #[test]
@@ -652,4 +687,91 @@ fn high_dimensional_low_constraint_plan(
         ))
         .build()
         .expect("valid high-dimensional predicate should produce a plan")
+}
+
+fn high_dimensional_categorical_schema() -> FSESchema {
+    let mut fields = vec![FSEField::new("status", FSEFieldType::Category, false)];
+    fields.extend(
+        (1..8)
+            .map(|dimension| {
+                FSEField::new(format!("metric_{dimension}"), FSEFieldType::Float, false)
+            })
+            .collect::<Vec<_>>(),
+    );
+
+    FSESchema::new(fields)
+}
+
+fn high_dimensional_categorical_mapping(schema: &FSESchema) -> FSESchemaDimensionMapping {
+    FSESchemaDimensionMapping::new(
+        schema,
+        (0..8)
+            .map(|dimension| FSEDimensionMapping::new(dimension, dimension))
+            .collect(),
+    )
+}
+
+fn high_dimensional_categorical_encoder(schema: &FSESchema) -> ComposedRecordEncoder {
+    let mut encoders: Vec<Box<dyn FSEFieldEncoder>> = vec![Box::new(status_encoder())];
+    encoders.extend(
+        (1..8)
+            .map(|_| Box::new(FloatEncoder) as Box<dyn FSEFieldEncoder>)
+            .collect::<Vec<_>>(),
+    );
+
+    ComposedRecordEncoder::new(schema, encoders)
+}
+
+fn high_dimensional_categorical_batch(schema: &FSESchema) -> FSERecordBatch {
+    FSERecordBatch::new(
+        schema.clone(),
+        vec![
+            RowId::new(300),
+            RowId::new(301),
+            RowId::new(302),
+            RowId::new(303),
+        ],
+        vec![
+            high_dimensional_categorical_record(schema, "ic", 10.0),
+            high_dimensional_categorical_record(schema, "ic", 11.0),
+            high_dimensional_categorical_record(schema, "aa", 12.0),
+            high_dimensional_categorical_record(schema, "ic", 13.0),
+        ],
+    )
+}
+
+fn high_dimensional_categorical_record(
+    schema: &FSESchema,
+    status: &str,
+    first_metric: f64,
+) -> FSERecord {
+    let mut values = vec![FSEValue::Category(status.to_string())];
+    values.extend((1..8).map(|dimension| {
+        if dimension == 1 {
+            FSEValue::Float(first_metric)
+        } else {
+            FSEValue::Float(dimension as f64)
+        }
+    }));
+
+    FSERecord::new(values, schema)
+}
+
+fn high_dimensional_category_equality_plan(
+    schema: &FSESchema,
+    mapping: &FSESchemaDimensionMapping,
+    status: &str,
+) -> TypedQueryPlan {
+    TypedQueryPlanBuilder::new(schema, mapping)
+        .with_categorical_encoder(0, status_encoder())
+        .with_predicate(FSEPredicate::equals(
+            FSEPredicateField::name("status"),
+            FSEValue::Category(status.to_string()),
+        ))
+        .build()
+        .expect("valid high-dimensional categorical predicate should produce a plan")
+}
+
+fn status_encoder() -> CategoricalDictionaryEncoder {
+    CategoricalDictionaryEncoder::new(vec!["aa".to_string(), "ic".to_string()])
 }

@@ -101,8 +101,9 @@ fn planned_typed_query_row_ids_uses_flat_scan_for_broad_categorical_plan() {
     );
     assert_eq!(
         report.diagnostics.reason,
-        TypedQueryPlanningReason::BroadGeometry
+        TypedQueryPlanningReason::BroadCategoricalEquality
     );
+    assert!(report.diagnostics.uses_categorical_frequency_estimate);
 }
 
 #[test]
