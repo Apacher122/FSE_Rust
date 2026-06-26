@@ -666,6 +666,32 @@ impl FSECsvArchiveQueryContext {
         builder.build()
     }
 
+    /// Queries matching row identifiers from a prebuilt typed query plan.
+    pub fn query_row_ids_from_plan(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<Vec<RowId>, FSECsvArchiveQueryError> {
+        Ok(self.query_index.query_row_ids(plan)?)
+    }
+
+    /// Queries matching row identifiers from a prebuilt typed query plan with
+    /// execution statistics.
+    pub fn query_row_ids_with_stats_from_plan(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<IndexedTypedQueryReport, FSECsvArchiveQueryError> {
+        Ok(self.query_index.query_row_ids_with_stats(plan)?)
+    }
+
+    /// Queries matching row identifiers from a prebuilt typed query plan using
+    /// typed query planning diagnostics.
+    pub fn query_row_ids_with_planning_from_plan(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<PlannedTypedQueryRowIdReport, FSECsvArchiveQueryError> {
+        Ok(self.query_index.query_row_ids_with_planning(plan)?)
+    }
+
     /// Queries matching row identifiers from predicates.
     pub fn query_row_ids<I>(&self, predicates: I) -> Result<Vec<RowId>, FSECsvArchiveQueryError>
     where
@@ -673,7 +699,7 @@ impl FSECsvArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self.query_index.query_row_ids(&plan)?)
+        self.query_row_ids_from_plan(&plan)
     }
 
     /// Queries matching row identifiers from predicates with execution statistics.
@@ -686,7 +712,7 @@ impl FSECsvArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self.query_index.query_row_ids_with_stats(&plan)?)
+        self.query_row_ids_with_stats_from_plan(&plan)
     }
 
     /// Queries matching row identifiers using typed query planning diagnostics.
@@ -699,7 +725,7 @@ impl FSECsvArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self.query_index.query_row_ids_with_planning(&plan)?)
+        self.query_row_ids_with_planning_from_plan(&plan)
     }
 
     /// Queries matching typed rows from predicates.
@@ -900,6 +926,35 @@ impl FSECsvTombstonedAppendDeltaArchiveQueryContext {
         self.context.try_plan(predicates)
     }
 
+    /// Queries matching row identifiers from a prebuilt typed query plan and
+    /// excludes tombstones.
+    pub fn query_row_ids_from_plan(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<Vec<RowId>, FSECsvAppendDeltaArchiveQueryError> {
+        Ok(self.append_delta_view()?.query_row_ids(plan)?)
+    }
+
+    /// Queries matching row identifiers from a prebuilt typed query plan with
+    /// execution statistics and excludes tombstones.
+    pub fn query_row_ids_with_stats_from_plan(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<IndexedTypedQueryReport, FSECsvAppendDeltaArchiveQueryError> {
+        Ok(self.append_delta_view()?.query_row_ids_with_stats(plan)?)
+    }
+
+    /// Queries matching row identifiers from a prebuilt typed query plan using
+    /// typed query planning diagnostics and excludes tombstones.
+    pub fn query_row_ids_with_planning_from_plan(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<PlannedTypedQueryRowIdReport, FSECsvAppendDeltaArchiveQueryError> {
+        Ok(self
+            .append_delta_view()?
+            .query_row_ids_with_planning(plan)?)
+    }
+
     /// Queries matching row identifiers and excludes tombstones.
     pub fn query_row_ids<I>(
         &self,
@@ -910,7 +965,7 @@ impl FSECsvTombstonedAppendDeltaArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self.append_delta_view()?.query_row_ids(&plan)?)
+        self.query_row_ids_from_plan(&plan)
     }
 
     /// Queries matching row identifiers with execution statistics and excludes tombstones.
@@ -923,7 +978,7 @@ impl FSECsvTombstonedAppendDeltaArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self.append_delta_view()?.query_row_ids_with_stats(&plan)?)
+        self.query_row_ids_with_stats_from_plan(&plan)
     }
 
     /// Queries matching row identifiers using typed query planning diagnostics
@@ -937,9 +992,7 @@ impl FSECsvTombstonedAppendDeltaArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self
-            .append_delta_view()?
-            .query_row_ids_with_planning(&plan)?)
+        self.query_row_ids_with_planning_from_plan(&plan)
     }
 
     /// Queries matching typed rows and excludes tombstones.
@@ -1117,6 +1170,35 @@ impl FSECsvAppendDeltaArchiveQueryContext {
         TypedAppendDeltaQueryView::try_new(&self.context.query_index, &self.appended)
     }
 
+    /// Queries matching row identifiers from a prebuilt typed query plan across
+    /// base and appended records.
+    pub fn query_row_ids_from_plan(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<Vec<RowId>, FSECsvAppendDeltaArchiveQueryError> {
+        Ok(self.append_delta_view()?.query_row_ids(plan)?)
+    }
+
+    /// Queries matching row identifiers from a prebuilt typed query plan with
+    /// execution statistics across base and appended records.
+    pub fn query_row_ids_with_stats_from_plan(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<IndexedTypedQueryReport, FSECsvAppendDeltaArchiveQueryError> {
+        Ok(self.append_delta_view()?.query_row_ids_with_stats(plan)?)
+    }
+
+    /// Queries matching row identifiers from a prebuilt typed query plan using
+    /// typed query planning diagnostics across base and appended records.
+    pub fn query_row_ids_with_planning_from_plan(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<PlannedTypedQueryRowIdReport, FSECsvAppendDeltaArchiveQueryError> {
+        Ok(self
+            .append_delta_view()?
+            .query_row_ids_with_planning(plan)?)
+    }
+
     /// Queries matching row identifiers from predicates across base and appended records.
     pub fn query_row_ids<I>(
         &self,
@@ -1127,7 +1209,7 @@ impl FSECsvAppendDeltaArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self.append_delta_view()?.query_row_ids(&plan)?)
+        self.query_row_ids_from_plan(&plan)
     }
 
     /// Queries matching row identifiers with execution statistics across base
@@ -1141,7 +1223,7 @@ impl FSECsvAppendDeltaArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self.append_delta_view()?.query_row_ids_with_stats(&plan)?)
+        self.query_row_ids_with_stats_from_plan(&plan)
     }
 
     /// Queries matching row identifiers using typed query planning diagnostics
@@ -1155,9 +1237,7 @@ impl FSECsvAppendDeltaArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self
-            .append_delta_view()?
-            .query_row_ids_with_planning(&plan)?)
+        self.query_row_ids_with_planning_from_plan(&plan)
     }
 
     /// Queries matching typed rows from predicates across base and appended records.
@@ -1338,6 +1418,33 @@ impl FSECsvTombstonedArchiveQueryContext {
         self.context.try_plan(predicates)
     }
 
+    /// Queries matching row identifiers from a prebuilt typed query plan and
+    /// excludes tombstones.
+    pub fn query_row_ids_from_plan(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<Vec<RowId>, FSECsvArchiveQueryError> {
+        Ok(self.query_index_view().query_row_ids(plan)?)
+    }
+
+    /// Queries matching row identifiers from a prebuilt typed query plan with
+    /// execution statistics and excludes tombstones.
+    pub fn query_row_ids_with_stats_from_plan(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<IndexedTypedQueryReport, FSECsvArchiveQueryError> {
+        Ok(self.query_index_view().query_row_ids_with_stats(plan)?)
+    }
+
+    /// Queries matching row identifiers from a prebuilt typed query plan using
+    /// typed query planning diagnostics and excludes tombstones.
+    pub fn query_row_ids_with_planning_from_plan(
+        &self,
+        plan: &TypedQueryPlan,
+    ) -> Result<PlannedTypedQueryRowIdReport, FSECsvArchiveQueryError> {
+        Ok(self.query_index_view().query_row_ids_with_planning(plan)?)
+    }
+
     /// Queries matching row identifiers from predicates and excludes tombstones.
     pub fn query_row_ids<I>(&self, predicates: I) -> Result<Vec<RowId>, FSECsvArchiveQueryError>
     where
@@ -1345,7 +1452,7 @@ impl FSECsvTombstonedArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self.query_index_view().query_row_ids(&plan)?)
+        self.query_row_ids_from_plan(&plan)
     }
 
     /// Queries matching row identifiers with execution statistics and excludes tombstones.
@@ -1358,7 +1465,7 @@ impl FSECsvTombstonedArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self.query_index_view().query_row_ids_with_stats(&plan)?)
+        self.query_row_ids_with_stats_from_plan(&plan)
     }
 
     /// Queries matching row identifiers using typed query planning diagnostics
@@ -1372,7 +1479,7 @@ impl FSECsvTombstonedArchiveQueryContext {
     {
         let plan = self.try_plan(predicates)?;
 
-        Ok(self.query_index_view().query_row_ids_with_planning(&plan)?)
+        self.query_row_ids_with_planning_from_plan(&plan)
     }
 
     /// Queries matching typed rows from predicates and excludes tombstones.

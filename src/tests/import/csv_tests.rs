@@ -283,9 +283,11 @@ fn csv_archive_query_context_reports_execution_stats_and_planning_from_fse_file(
     .unwrap();
 
     let context = load_csv_typed_query_index_archive_context(&archive_path).unwrap();
+    let plan = context.try_plan(score_and_class_predicates()).unwrap();
     let row_report = context
         .query_row_ids_with_stats(score_and_class_predicates())
         .unwrap();
+    let row_report_from_plan = context.query_row_ids_with_stats_from_plan(&plan).unwrap();
     let row_result_report = context
         .query_rows_with_stats(score_and_class_predicates())
         .unwrap();
@@ -297,6 +299,9 @@ fn csv_archive_query_context_reports_execution_stats_and_planning_from_fse_file(
         .unwrap();
     let planned_row_report = context
         .query_row_ids_with_planning(score_and_class_predicates())
+        .unwrap();
+    let planned_row_report_from_plan = context
+        .query_row_ids_with_planning_from_plan(&plan)
         .unwrap();
     let planned_row_result_report = context
         .query_rows_with_planning(score_and_class_predicates())
@@ -324,6 +329,11 @@ fn csv_archive_query_context_reports_execution_stats_and_planning_from_fse_file(
         .unwrap();
 
     assert_eq!(row_report.row_ids, vec![RowId::new(100), RowId::new(103)]);
+    assert_eq!(
+        context.query_row_ids_from_plan(&plan).unwrap(),
+        row_report.row_ids
+    );
+    assert_eq!(row_report_from_plan, row_report);
     assert_eq!(row_report.stats.matched_records, 2);
     assert_eq!(
         row_result_report
@@ -340,6 +350,7 @@ fn csv_archive_query_context_reports_execution_stats_and_planning_from_fse_file(
     assert!(existence_report.inspected_records >= 1);
     assert_eq!(existence_report.stats.matched_records, 1);
     assert_eq!(planned_row_report.row_ids, row_report.row_ids);
+    assert_eq!(planned_row_report_from_plan, planned_row_report);
     assert_eq!(
         planned_row_report.diagnostics.output_contract,
         TypedQueryOutputContract::RowIds
@@ -428,11 +439,13 @@ fn csv_append_delta_archive_query_context_queries_base_and_append_archives() {
     let context =
         load_csv_append_delta_typed_query_index_archive_context(&archive_path, &append_path)
             .unwrap();
+    let plan = context.try_plan(score_and_class_predicates()).unwrap();
     let row_ids = context.query_row_ids(score_and_class_predicates()).unwrap();
     let rows = context.query_rows(score_and_class_predicates()).unwrap();
     let row_report = context
         .query_row_ids_with_stats(score_and_class_predicates())
         .unwrap();
+    let row_report_from_plan = context.query_row_ids_with_stats_from_plan(&plan).unwrap();
     let row_result_report = context
         .query_rows_with_stats(score_and_class_predicates())
         .unwrap();
@@ -444,6 +457,9 @@ fn csv_append_delta_archive_query_context_queries_base_and_append_archives() {
         .unwrap();
     let planned_row_report = context
         .query_row_ids_with_planning(score_and_class_predicates())
+        .unwrap();
+    let planned_row_report_from_plan = context
+        .query_row_ids_with_planning_from_plan(&plan)
         .unwrap();
     let planned_row_result_report = context
         .query_rows_with_planning(score_and_class_predicates())
@@ -476,7 +492,9 @@ fn csv_append_delta_archive_query_context_queries_base_and_append_archives() {
         row_ids,
         vec![RowId::new(100), RowId::new(103), RowId::new(104)]
     );
+    assert_eq!(context.query_row_ids_from_plan(&plan).unwrap(), row_ids);
     assert_eq!(row_report.row_ids, row_ids);
+    assert_eq!(row_report_from_plan, row_report);
     assert_eq!(
         rows.iter().map(|row| row.row_id()).collect::<Vec<_>>(),
         row_ids
@@ -504,6 +522,7 @@ fn csv_append_delta_archive_query_context_queries_base_and_append_archives() {
     assert!(existence_report.has_match);
     assert_eq!(existence_report.stats.total_records, 6);
     assert_eq!(planned_row_report.row_ids, row_ids);
+    assert_eq!(planned_row_report_from_plan, planned_row_report);
     assert_eq!(
         planned_row_report.diagnostics.output_contract,
         TypedQueryOutputContract::RowIds
@@ -948,6 +967,7 @@ fn csv_tombstoned_append_delta_archive_query_context_excludes_tombstones() {
     let row_report = context
         .query_row_ids_with_stats(score_and_class_predicates())
         .unwrap();
+    let row_report_from_plan = context.query_row_ids_with_stats_from_plan(&plan).unwrap();
     let row_result_report = context
         .query_rows_with_stats(score_and_class_predicates())
         .unwrap();
@@ -959,6 +979,9 @@ fn csv_tombstoned_append_delta_archive_query_context_excludes_tombstones() {
         .unwrap();
     let planned_row_report = context
         .query_row_ids_with_planning(score_and_class_predicates())
+        .unwrap();
+    let planned_row_report_from_plan = context
+        .query_row_ids_with_planning_from_plan(&plan)
         .unwrap();
     let planned_row_result_report = context
         .query_rows_with_planning(score_and_class_predicates())
@@ -1002,7 +1025,9 @@ fn csv_tombstoned_append_delta_archive_query_context_excludes_tombstones() {
         &[RowId::new(103), RowId::new(104)]
     );
     assert_eq!(row_ids, vec![RowId::new(100)]);
+    assert_eq!(context.query_row_ids_from_plan(&plan).unwrap(), row_ids);
     assert_eq!(view_row_ids, row_ids);
+    assert_eq!(row_report_from_plan, row_report);
     assert_eq!(view_planned_row_report.row_ids, row_ids);
     assert_eq!(
         view_planned_row_report.diagnostics.output_contract,
@@ -1034,6 +1059,7 @@ fn csv_tombstoned_append_delta_archive_query_context_excludes_tombstones() {
     assert!(existence_report.has_match);
     assert_eq!(existence_report.stats.total_records, 6);
     assert_eq!(planned_row_report.row_ids, row_ids);
+    assert_eq!(planned_row_report_from_plan, planned_row_report);
     assert_eq!(
         planned_row_report.diagnostics.output_contract,
         TypedQueryOutputContract::RowIds
@@ -1249,6 +1275,9 @@ fn csv_tombstoned_archive_query_context_reports_execution_stats_and_planning_fro
     let row_report = tombstoned
         .query_row_ids_with_stats(score_and_class_predicates())
         .unwrap();
+    let row_report_from_plan = tombstoned
+        .query_row_ids_with_stats_from_plan(&plan)
+        .unwrap();
     let row_result_report = tombstoned
         .query_rows_with_stats(score_and_class_predicates())
         .unwrap();
@@ -1260,6 +1289,9 @@ fn csv_tombstoned_archive_query_context_reports_execution_stats_and_planning_fro
         .unwrap();
     let planned_row_report = tombstoned
         .query_row_ids_with_planning(score_and_class_predicates())
+        .unwrap();
+    let planned_row_report_from_plan = tombstoned
+        .query_row_ids_with_planning_from_plan(&plan)
         .unwrap();
     let planned_row_result_report = tombstoned
         .query_rows_with_planning(score_and_class_predicates())
@@ -1294,6 +1326,11 @@ fn csv_tombstoned_archive_query_context_reports_execution_stats_and_planning_fro
         .unwrap();
 
     assert_eq!(row_report.row_ids, vec![RowId::new(100)]);
+    assert_eq!(
+        tombstoned.query_row_ids_from_plan(&plan).unwrap(),
+        row_report.row_ids
+    );
+    assert_eq!(row_report_from_plan, row_report);
     assert_eq!(view_row_ids, row_report.row_ids);
     assert_eq!(view_planned_row_report.row_ids, row_report.row_ids);
     assert_eq!(
@@ -1315,6 +1352,7 @@ fn csv_tombstoned_archive_query_context_reports_execution_stats_and_planning_fro
     assert!(!existence_report.has_match);
     assert_eq!(existence_report.stats.matched_records, 0);
     assert_eq!(planned_row_report.row_ids, row_report.row_ids);
+    assert_eq!(planned_row_report_from_plan, planned_row_report);
     assert_eq!(
         planned_row_report.diagnostics.output_contract,
         TypedQueryOutputContract::RowIds
