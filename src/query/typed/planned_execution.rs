@@ -5,7 +5,9 @@ use crate::data::{FSERecord, FSERecordBatch, RowId};
 use super::append_delta::TypedAppendDeltaQueryView;
 use super::execution::{
     IndexedTypedQueryError, TypedQueryResultRow, count_typed_query_matches,
-    evaluate_typed_query_plan, evaluate_typed_query_plan_rows, typed_query_has_match,
+    evaluate_typed_query_plan, evaluate_typed_query_plan_rows,
+    evaluate_typed_query_plan_rows_with_capacity, evaluate_typed_query_plan_with_capacity,
+    typed_query_has_match,
 };
 use super::index::TypedQueryIndex;
 use super::plan::TypedQueryPlan;
@@ -71,7 +73,12 @@ pub fn planned_typed_query_row_ids(
     plan: &TypedQueryPlan,
 ) -> Result<PlannedTypedQueryRowIdReport, IndexedTypedQueryError> {
     let diagnostics = plan_typed_query_execution(index, plan, TypedQueryOutputContract::RowIds);
-    let row_ids = execute_index_strategy(index, plan, diagnostics.strategy)?;
+    let row_ids = execute_index_strategy(
+        index,
+        plan,
+        diagnostics.strategy,
+        diagnostics.estimated_candidate_records,
+    )?;
 
     Ok(PlannedTypedQueryRowIdReport {
         row_ids,
@@ -101,7 +108,12 @@ pub fn planned_typed_query_rows(
     plan: &TypedQueryPlan,
 ) -> Result<PlannedTypedQueryRowReport, IndexedTypedQueryError> {
     let diagnostics = plan_typed_query_execution(index, plan, TypedQueryOutputContract::Rows);
-    let rows = execute_index_row_strategy(index, plan, diagnostics.strategy)?;
+    let rows = execute_index_row_strategy(
+        index,
+        plan,
+        diagnostics.strategy,
+        diagnostics.estimated_candidate_records,
+    )?;
 
     Ok(PlannedTypedQueryRowReport { rows, diagnostics })
 }
@@ -515,10 +527,15 @@ fn execute_index_strategy(
     index: &TypedQueryIndex,
     plan: &TypedQueryPlan,
     strategy: TypedQueryExecutionStrategy,
+    estimated_candidate_records: usize,
 ) -> Result<Vec<RowId>, IndexedTypedQueryError> {
     match strategy {
         TypedQueryExecutionStrategy::NoOp => Ok(Vec::new()),
-        TypedQueryExecutionStrategy::FlatScan => Ok(evaluate_typed_query_plan(index.batch(), plan)),
+        TypedQueryExecutionStrategy::FlatScan => Ok(evaluate_typed_query_plan_with_capacity(
+            index.batch(),
+            plan,
+            estimated_candidate_records,
+        )),
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
             index.query_row_ids(plan)
         }
@@ -607,12 +624,15 @@ fn execute_index_row_strategy(
     index: &TypedQueryIndex,
     plan: &TypedQueryPlan,
     strategy: TypedQueryExecutionStrategy,
+    estimated_candidate_records: usize,
 ) -> Result<Vec<TypedQueryResultRow>, IndexedTypedQueryError> {
     match strategy {
         TypedQueryExecutionStrategy::NoOp => Ok(Vec::new()),
-        TypedQueryExecutionStrategy::FlatScan => {
-            Ok(evaluate_typed_query_plan_rows(index.batch(), plan))
-        }
+        TypedQueryExecutionStrategy::FlatScan => Ok(evaluate_typed_query_plan_rows_with_capacity(
+            index.batch(),
+            plan,
+            estimated_candidate_records,
+        )),
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
             index.query_rows(plan)
         }

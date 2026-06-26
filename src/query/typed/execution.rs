@@ -123,11 +123,19 @@ impl TypedQueryResultRow {
 /// Returns row identifiers for records that satisfy the validated predicates
 /// stored in the plan. Row identifiers are returned in batch order.
 pub fn evaluate_typed_query_plan(batch: &FSERecordBatch, plan: &TypedQueryPlan) -> Vec<RowId> {
+    evaluate_typed_query_plan_with_capacity(batch, plan, 0)
+}
+
+pub(super) fn evaluate_typed_query_plan_with_capacity(
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    expected_matches: usize,
+) -> Vec<RowId> {
     if plan.is_unsatisfiable() {
         return Vec::new();
     }
 
-    let mut matches = Vec::new();
+    let mut matches = Vec::with_capacity(expected_matches.min(batch.len()));
 
     for (row_id, record) in batch.row_ids().iter().zip(batch.records()) {
         if record_matches_plan(record, plan) {
@@ -176,11 +184,19 @@ pub fn evaluate_typed_query_plan_rows(
     batch: &FSERecordBatch,
     plan: &TypedQueryPlan,
 ) -> Vec<TypedQueryResultRow> {
+    evaluate_typed_query_plan_rows_with_capacity(batch, plan, 0)
+}
+
+pub(super) fn evaluate_typed_query_plan_rows_with_capacity(
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    expected_matches: usize,
+) -> Vec<TypedQueryResultRow> {
     if plan.is_unsatisfiable() {
         return Vec::new();
     }
 
-    let mut matches = Vec::new();
+    let mut matches = Vec::with_capacity(expected_matches.min(batch.len()));
 
     for (row_id, record) in batch.row_ids().iter().zip(batch.records()) {
         if record_matches_plan(record, plan) {
