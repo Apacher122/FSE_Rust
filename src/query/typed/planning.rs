@@ -1,12 +1,15 @@
 //! Planning diagnostics for typed query execution.
 
+use std::collections::HashMap;
+
+use crate::data::{FSERecordBatch, FSEValue};
 use crate::math::{BoundingBox, Scalar};
 
 use super::append_delta::TypedAppendDeltaQueryView;
 use super::index::TypedQueryIndex;
 use super::plan::TypedQueryPlan;
 
-const BROAD_QUERY_CANDIDATE_RATIO: Scalar = 0.80;
+const BROAD_QUERY_CANDIDATE_RATIO: Scalar = 0.75;
 const SELECTIVE_QUERY_CANDIDATE_RATIO: Scalar = 0.35;
 const HIGH_DIMENSION_COUNT: usize = 8;
 const LOW_CONSTRAINED_DIMENSION_COUNT: usize = 1;
@@ -287,6 +290,66 @@ impl TypedQueryPlanningRiskFlags {
             || self.materialization_pressure
             || self.high_dimensional_low_constraint
             || self.append_delta_scan
+    }
+}
+
+/// Distribution metadata used by typed query planning estimates.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct TypedQueryPlanningStatistics {
+    total_records: usize,
+    categorical_counts: HashMap<TypedCategoricalStatisticsKey, usize>,
+}
+
+impl TypedQueryPlanningStatistics {
+    /// Derives planning statistics from a typed record batch.
+    pub(super) fn from_batch(batch: &FSERecordBatch) -> Self {
+        let mut categorical_counts = HashMap::new();
+
+        for record in batch.records() {
+            for (field, value) in record.values().iter().enumerate() {
+                let FSEValue::Category(category) = value else {
+                    continue;
+                };
+
+                *categorical_counts
+                    .entry(TypedCategoricalStatisticsKey::new(field, category.clone()))
+                    .or_insert(0) += 1;
+            }
+        }
+
+        Self {
+            total_records: batch.len(),
+            categorical_counts,
+        }
+    }
+
+    fn categorical_equality_ratio(&self, field: usize, category: &str) -> Option<Scalar> {
+        if self.total_records == 0 {
+            return Some(0.0);
+        }
+
+        let count = self
+            .categorical_counts
+            .get(&TypedCategoricalStatisticsKey::new(
+                field,
+                category.to_string(),
+            ))
+            .copied()
+            .unwrap_or(0);
+
+        Some(ratio(count, self.total_records))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct TypedCategoricalStatisticsKey {
+    field: usize,
+    category: String,
+}
+
+impl TypedCategoricalStatisticsKey {
+    fn new(field: usize, category: String) -> Self {
+        Self { field, category }
     }
 }
 
@@ -641,7 +704,12 @@ fn estimate_base_index(index: &TypedQueryIndex, plan: &TypedQueryPlan) -> BasePl
         };
     }
 
-    let estimate = estimate_candidate_ratio(plan, &root.bounds, base_record_count);
+    let estimate = estimate_candidate_ratio(
+        plan,
+        &root.bounds,
+        base_record_count,
+        index.planning_statistics(),
+    );
     let estimated_candidate_records =
         estimated_count_from_ratio(estimate.candidate_ratio, base_record_count);
     let estimated_retained_leaf_count =
@@ -805,19 +873,23 @@ fn estimate_candidate_ratio(
     plan: &TypedQueryPlan,
     root_bounds: &BoundingBox,
     total_records: usize,
+    statistics: &TypedQueryPlanningStatistics,
 ) -> CandidateRatioEstimate {
     let mut candidate_ratio = 1.0;
     let mut constrained_dimensions = 0;
     let minimum_intersecting_fraction = minimum_intersecting_fraction(total_records);
 
     for dimension in 0..plan.query_region().dimensions() {
-        let fraction = dimension_candidate_fraction(
-            plan.query_region().min[dimension],
-            plan.query_region().max[dimension],
-            root_bounds.min[dimension],
-            root_bounds.max[dimension],
-            minimum_intersecting_fraction,
-        );
+        let fraction = categorical_equality_fraction_for_dimension(plan, statistics, dimension)
+            .unwrap_or_else(|| {
+                dimension_candidate_fraction(
+                    plan.query_region().min[dimension],
+                    plan.query_region().max[dimension],
+                    root_bounds.min[dimension],
+                    root_bounds.max[dimension],
+                    minimum_intersecting_fraction,
+                )
+            });
 
         if fraction < 1.0 {
             constrained_dimensions += 1;
@@ -830,6 +902,24 @@ fn estimate_candidate_ratio(
         candidate_ratio: candidate_ratio.clamp(0.0, 1.0),
         constrained_dimensions,
     }
+}
+
+fn categorical_equality_fraction_for_dimension(
+    plan: &TypedQueryPlan,
+    statistics: &TypedQueryPlanningStatistics,
+    dimension: usize,
+) -> Option<Scalar> {
+    if plan.predicates().len() != 1 {
+        return None;
+    }
+
+    plan.categorical_equality_dimensions()
+        .iter()
+        .filter(|constraint| constraint.dimension() == dimension)
+        .filter_map(|constraint| {
+            statistics.categorical_equality_ratio(constraint.field(), constraint.category())
+        })
+        .reduce(Scalar::min)
 }
 
 fn dimension_candidate_fraction(

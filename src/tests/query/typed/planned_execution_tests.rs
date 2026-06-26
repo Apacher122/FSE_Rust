@@ -78,6 +78,34 @@ fn planned_typed_query_row_ids_uses_flat_scan_for_broad_plan() {
 }
 
 #[test]
+fn planned_typed_query_row_ids_uses_flat_scan_for_broad_categorical_plan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = broad_class_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let plan = class_equality_plan(&schema, &mapping, "alpha");
+
+    let report = query_index
+        .query_row_ids_with_planning(&plan)
+        .expect("planned typed query should execute");
+
+    assert_eq!(
+        report.row_ids,
+        vec![RowId::new(100), RowId::new(101), RowId::new(102)]
+    );
+    assert_eq!(
+        report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::FlatScan
+    );
+    assert_eq!(
+        report.diagnostics.reason,
+        TypedQueryPlanningReason::BroadGeometry
+    );
+}
+
+#[test]
 fn planned_typed_query_row_ids_returns_noop_for_unsatisfiable_plan() {
     let schema = entity_schema();
     let mapping = entity_mapping(&schema);
@@ -688,6 +716,21 @@ fn score_range_plan(
         .expect("valid predicate should produce a plan")
 }
 
+fn class_equality_plan(
+    schema: &FSESchema,
+    mapping: &FSESchemaDimensionMapping,
+    class: &str,
+) -> TypedQueryPlan {
+    TypedQueryPlanBuilder::new(schema, mapping)
+        .with_categorical_encoder(2, class_encoder())
+        .with_predicate(FSEPredicate::equals(
+            FSEPredicateField::name("class"),
+            FSEValue::Category(class.to_string()),
+        ))
+        .build()
+        .expect("valid predicate should produce a plan")
+}
+
 fn entity_schema() -> FSESchema {
     FSESchema::new(vec![
         FSEField::new("entity_id", FSEFieldType::Integer, false),
@@ -735,6 +778,24 @@ fn entity_batch(schema: &FSESchema) -> FSERecordBatch {
             entity_record(schema, 2, 12.5, "beta", 1_100),
             entity_record(schema, 3, 25.0, "alpha", 1_200),
             entity_record(schema, 4, 18.0, "alpha", 1_300),
+        ],
+    )
+}
+
+fn broad_class_batch(schema: &FSESchema) -> FSERecordBatch {
+    FSERecordBatch::new(
+        schema.clone(),
+        vec![
+            RowId::new(100),
+            RowId::new(101),
+            RowId::new(102),
+            RowId::new(103),
+        ],
+        vec![
+            entity_record(schema, 1, 12.5, "alpha", 1_000),
+            entity_record(schema, 2, 13.0, "alpha", 1_100),
+            entity_record(schema, 3, 25.0, "alpha", 1_200),
+            entity_record(schema, 4, 18.0, "beta", 1_300),
         ],
     )
 }

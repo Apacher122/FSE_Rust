@@ -35,6 +35,7 @@ use super::planned_execution::{
     planned_typed_query_visit_row_ids_excluding_tombstones, planned_typed_query_visit_rows,
     planned_typed_query_visit_rows_excluding_tombstones,
 };
+use super::planning::TypedQueryPlanningStatistics;
 use super::tombstone::TypedRowTombstoneSet;
 
 /// Error returned when typed indexed query construction fails.
@@ -128,12 +129,19 @@ impl From<TypedQueryIndexBuildError> for TypedQueryIndexAppendError {
 pub struct TypedQueryIndex {
     batch: FSERecordBatch,
     index: RowMappedFSEIndex,
+    planning_statistics: TypedQueryPlanningStatistics,
 }
 
 impl TypedQueryIndex {
     /// Creates a typed query index from existing parts.
     pub fn from_parts(batch: FSERecordBatch, index: RowMappedFSEIndex) -> Self {
-        Self { batch, index }
+        let planning_statistics = TypedQueryPlanningStatistics::from_batch(&batch);
+
+        Self {
+            batch,
+            index,
+            planning_statistics,
+        }
     }
 
     /// Encodes a record batch and builds a row-mapped index for typed queries.
@@ -145,7 +153,7 @@ impl TypedQueryIndex {
         let encoded = encode_record_batch(&batch, encoder)?;
         let index = builder.try_build_row_mapped_encoded_batch(&encoded)?;
 
-        Ok(Self { batch, index })
+        Ok(Self::from_parts(batch, index))
     }
 
     /// Appends records and rebuilds the row-mapped index.
@@ -168,6 +176,10 @@ impl TypedQueryIndex {
     /// Returns the row-mapped FSE index.
     pub fn index(&self) -> &RowMappedFSEIndex {
         &self.index
+    }
+
+    pub(super) fn planning_statistics(&self) -> &TypedQueryPlanningStatistics {
+        &self.planning_statistics
     }
 
     /// Evaluates a typed query plan and returns matching row identifiers.

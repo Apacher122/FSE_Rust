@@ -3,15 +3,17 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::data::{FSESchema, FSESchemaDimensionMapping};
+use crate::data::{FSESchema, FSESchemaDimensionMapping, FSEValue};
 use crate::encoding::{CategoricalDictionaryEncoder, FSERecordEncoderMetadataError};
 
 use super::super::region::{QueryRegion, QueryRegionError};
 use super::compiler::{
     FSEPredicateCompileError, compile_categorical_equality_predicate_to_query_region,
-    compile_numeric_predicate_to_query_region,
+    compile_numeric_predicate_to_query_region, mapped_dimension,
 };
-use super::predicate::{FSEPredicate, FSEPredicateError, ValidatedFSEPredicate};
+use super::predicate::{
+    FSEPredicate, FSEPredicateError, ValidatedFSEPredicate, ValidatedFSEPredicateOperator,
+};
 
 /// Error returned when typed query planning fails.
 #[derive(Clone, Debug, PartialEq)]
@@ -97,6 +99,7 @@ pub struct TypedQueryPlan {
     predicates: Vec<ValidatedFSEPredicate>,
     query_region: QueryRegion,
     unsatisfiable: bool,
+    categorical_equality_dimensions: Vec<TypedCategoricalEqualityDimension>,
 }
 
 impl TypedQueryPlan {
@@ -106,6 +109,7 @@ impl TypedQueryPlan {
             predicates: vec![predicate],
             query_region,
             unsatisfiable: false,
+            categorical_equality_dimensions: Vec::new(),
         }
     }
 
@@ -121,6 +125,7 @@ impl TypedQueryPlan {
         }
 
         let mut predicates = Vec::new();
+        let mut categorical_equality_dimensions = Vec::new();
         let mut query_region = None;
         let mut unsatisfiable = false;
 
@@ -136,12 +141,14 @@ impl TypedQueryPlan {
             });
 
             predicates.append(&mut plan.predicates);
+            categorical_equality_dimensions.append(&mut plan.categorical_equality_dimensions);
         }
 
         Ok(Self {
             predicates,
             query_region: query_region.expect("non-empty plan list should produce query region"),
             unsatisfiable,
+            categorical_equality_dimensions,
         })
     }
 
@@ -165,10 +172,17 @@ impl TypedQueryPlan {
         encoder: &CategoricalDictionaryEncoder,
     ) -> Result<Self, TypedQueryPlanError> {
         let predicate = predicate.validate(schema)?;
+        let field = predicate.field();
+        let dimension = mapped_dimension(&predicate, mapping)?;
+        let category = categorical_equality_category(&predicate).to_string();
         let query_region =
             compile_categorical_equality_predicate_to_query_region(&predicate, mapping, encoder)?;
 
-        Ok(Self::new(predicate, query_region))
+        Ok(
+            Self::new(predicate, query_region).with_categorical_equality_dimension(
+                TypedCategoricalEqualityDimension::new(field, dimension, category),
+            ),
+        )
     }
 
     /// Returns the validated typed predicate.
@@ -189,6 +203,49 @@ impl TypedQueryPlan {
     /// Returns the geometric query region used for pruning.
     pub fn query_region(&self) -> &QueryRegion {
         &self.query_region
+    }
+
+    pub(super) fn with_categorical_equality_dimension(
+        mut self,
+        categorical_equality_dimension: TypedCategoricalEqualityDimension,
+    ) -> Self {
+        self.categorical_equality_dimensions
+            .push(categorical_equality_dimension);
+        self
+    }
+
+    pub(super) fn categorical_equality_dimensions(&self) -> &[TypedCategoricalEqualityDimension] {
+        &self.categorical_equality_dimensions
+    }
+}
+
+/// Categorical equality predicate metadata used by planning estimates.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct TypedCategoricalEqualityDimension {
+    field: usize,
+    dimension: usize,
+    category: String,
+}
+
+impl TypedCategoricalEqualityDimension {
+    pub(super) fn new(field: usize, dimension: usize, category: String) -> Self {
+        Self {
+            field,
+            dimension,
+            category,
+        }
+    }
+
+    pub(super) fn field(&self) -> usize {
+        self.field
+    }
+
+    pub(super) fn dimension(&self) -> usize {
+        self.dimension
+    }
+
+    pub(super) fn category(&self) -> &str {
+        &self.category
     }
 }
 
@@ -238,4 +295,11 @@ fn intersect_query_regions(
         query_region: QueryRegion::try_new(min, max).map_err(FSEPredicateCompileError::from)?,
         unsatisfiable,
     })
+}
+
+pub(super) fn categorical_equality_category(predicate: &ValidatedFSEPredicate) -> &str {
+    match predicate.operator() {
+        ValidatedFSEPredicateOperator::Equal(FSEValue::Category(category)) => category,
+        _ => unreachable!("validated categorical equality predicate should contain a category"),
+    }
 }

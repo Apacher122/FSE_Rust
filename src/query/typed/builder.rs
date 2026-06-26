@@ -9,9 +9,12 @@ use crate::encoding::{
 
 use super::compiler::{
     FSEPredicateCompileError, compile_categorical_equality_predicate_to_query_region,
-    compile_numeric_predicate_to_query_region,
+    compile_numeric_predicate_to_query_region, mapped_dimension,
 };
-use super::plan::{TypedQueryPlan, TypedQueryPlanError};
+use super::plan::{
+    TypedCategoricalEqualityDimension, TypedQueryPlan, TypedQueryPlanError,
+    categorical_equality_category,
+};
 use super::predicate::FSEPredicate;
 
 /// Builder for typed query plans.
@@ -87,11 +90,15 @@ impl<'a> TypedQueryPlanBuilder<'a> {
 
         for predicate in self.predicates {
             let predicate = predicate.validate(self.schema)?;
-            let query_region = match predicate.field_type() {
+            let plan = match predicate.field_type() {
                 FSEFieldType::Integer | FSEFieldType::Float | FSEFieldType::TimestampMillis => {
-                    compile_numeric_predicate_to_query_region(&predicate, self.mapping)?
+                    let query_region =
+                        compile_numeric_predicate_to_query_region(&predicate, self.mapping)?;
+
+                    TypedQueryPlan::new(predicate, query_region)
                 }
                 FSEFieldType::Category => {
+                    let field = predicate.field();
                     let Some(encoder) = self.categorical_encoders.get(&predicate.field()) else {
                         return Err(TypedQueryPlanError::MissingCategoricalEncoder {
                             field: predicate.field(),
@@ -99,11 +106,18 @@ impl<'a> TypedQueryPlanBuilder<'a> {
                         });
                     };
 
-                    compile_categorical_equality_predicate_to_query_region(
+                    let dimension = mapped_dimension(&predicate, self.mapping)?;
+                    let category = categorical_equality_category(&predicate).to_string();
+                    let query_region = compile_categorical_equality_predicate_to_query_region(
                         &predicate,
                         self.mapping,
                         encoder,
-                    )?
+                    )?;
+
+                    TypedQueryPlan::new(predicate, query_region)
+                        .with_categorical_equality_dimension(
+                            TypedCategoricalEqualityDimension::new(field, dimension, category),
+                        )
                 }
                 field_type => {
                     return Err(FSEPredicateCompileError::UnsupportedFieldType {
@@ -115,7 +129,7 @@ impl<'a> TypedQueryPlanBuilder<'a> {
                 }
             };
 
-            plans.push(TypedQueryPlan::new(predicate, query_region));
+            plans.push(plan);
         }
 
         TypedQueryPlan::conjunctive(plans)

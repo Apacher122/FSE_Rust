@@ -242,7 +242,7 @@ fn ensure_categorical_field(
     })
 }
 
-fn mapped_dimension(
+pub(super) fn mapped_dimension(
     predicate: &ValidatedFSEPredicate,
     mapping: &FSESchemaDimensionMapping,
 ) -> Result<usize, FSEPredicateCompileError> {
