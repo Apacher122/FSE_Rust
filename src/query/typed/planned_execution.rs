@@ -7,7 +7,7 @@ use super::execution::{
     IndexedTypedQueryError, TypedQueryResultRow, count_typed_query_matches,
     evaluate_typed_query_plan, evaluate_typed_query_plan_rows,
     evaluate_typed_query_plan_rows_with_capacity, evaluate_typed_query_plan_with_capacity,
-    typed_query_has_match,
+    record_matches_plan, typed_query_has_match,
 };
 use super::index::TypedQueryIndex;
 use super::plan::TypedQueryPlan;
@@ -739,9 +739,11 @@ fn execute_index_count_strategy_excluding_tombstones(
 ) -> Result<usize, IndexedTypedQueryError> {
     match strategy {
         TypedQueryExecutionStrategy::NoOp => Ok(0),
-        TypedQueryExecutionStrategy::FlatScan => {
-            Ok(visible_row_ids_from_batch(index.batch(), plan, tombstones).len())
-        }
+        TypedQueryExecutionStrategy::FlatScan => Ok(count_visible_matches_in_batch(
+            index.batch(),
+            plan,
+            tombstones,
+        )),
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
             index.count_matches_excluding_tombstones(plan, tombstones)
         }
@@ -771,9 +773,7 @@ fn execute_index_existence_strategy_excluding_tombstones(
     match strategy {
         TypedQueryExecutionStrategy::NoOp => Ok(false),
         TypedQueryExecutionStrategy::FlatScan => {
-            Ok(visible_row_ids_from_batch(index.batch(), plan, tombstones)
-                .first()
-                .is_some())
+            Ok(has_visible_match_in_batch(index.batch(), plan, tombstones))
         }
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
             index.has_match_excluding_tombstones(plan, tombstones)
@@ -1028,8 +1028,8 @@ fn execute_append_delta_count_strategy_excluding_tombstones(
         TypedQueryExecutionStrategy::NoOp => Ok(0),
         TypedQueryExecutionStrategy::FlatScan => {
             Ok(
-                visible_row_ids_from_batch(view.base().batch(), plan, tombstones).len()
-                    + visible_row_ids_from_batch(view.appended(), plan, tombstones).len(),
+                count_visible_matches_in_batch(view.base().batch(), plan, tombstones)
+                    + count_visible_matches_in_batch(view.appended(), plan, tombstones),
             )
         }
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
@@ -1064,14 +1064,10 @@ fn execute_append_delta_existence_strategy_excluding_tombstones(
     match strategy {
         TypedQueryExecutionStrategy::NoOp => Ok(false),
         TypedQueryExecutionStrategy::FlatScan => {
-            let base_has_match = visible_row_ids_from_batch(view.base().batch(), plan, tombstones)
-                .first()
-                .is_some();
-            let appended_has_match = visible_row_ids_from_batch(view.appended(), plan, tombstones)
-                .first()
-                .is_some();
-
-            Ok(base_has_match || appended_has_match)
+            Ok(
+                has_visible_match_in_batch(view.base().batch(), plan, tombstones)
+                    || has_visible_match_in_batch(view.appended(), plan, tombstones),
+            )
         }
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
             view.has_match_excluding_tombstones(plan, tombstones)
@@ -1099,4 +1095,39 @@ fn visible_rows_from_batch(
         .into_iter()
         .filter(|row| !tombstones.contains(row.row_id()))
         .collect()
+}
+
+fn count_visible_matches_in_batch(
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> usize {
+    if plan.is_unsatisfiable() {
+        return 0;
+    }
+
+    batch
+        .row_ids()
+        .iter()
+        .zip(batch.records())
+        .filter(|(row_id, record)| {
+            !tombstones.contains(**row_id) && record_matches_plan(record, plan)
+        })
+        .count()
+}
+
+fn has_visible_match_in_batch(
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+) -> bool {
+    if plan.is_unsatisfiable() {
+        return false;
+    }
+
+    batch
+        .row_ids()
+        .iter()
+        .zip(batch.records())
+        .any(|(row_id, record)| !tombstones.contains(*row_id) && record_matches_plan(record, plan))
 }

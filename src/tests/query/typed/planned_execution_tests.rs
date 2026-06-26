@@ -326,6 +326,67 @@ fn planned_typed_query_existence_returns_false_when_all_matches_are_tombstoned()
 }
 
 #[test]
+fn planned_typed_query_count_excludes_tombstones_on_flat_scan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = broad_class_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let plan = class_equality_plan(&schema, &mapping, "alpha");
+    let tombstones = TypedRowTombstoneSet::from_row_ids(vec![RowId::new(100), RowId::new(102)]);
+
+    let report = query_index
+        .count_matches_with_planning_excluding_tombstones(&plan, &tombstones)
+        .expect("planned tombstone count query should execute");
+
+    assert_eq!(report.matched_records, 1);
+    assert_eq!(
+        report.diagnostics.output_contract,
+        TypedQueryOutputContract::Count
+    );
+    assert_eq!(
+        report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::FlatScan
+    );
+    assert_eq!(
+        report.diagnostics.reason,
+        TypedQueryPlanningReason::BroadCategoricalEquality
+    );
+}
+
+#[test]
+fn planned_typed_query_existence_excludes_tombstones_on_flat_scan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = broad_class_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let plan = class_equality_plan(&schema, &mapping, "alpha");
+    let tombstones =
+        TypedRowTombstoneSet::from_row_ids(vec![RowId::new(100), RowId::new(101), RowId::new(102)]);
+
+    let report = query_index
+        .has_match_with_planning_excluding_tombstones(&plan, &tombstones)
+        .expect("planned tombstone existence query should execute");
+
+    assert!(!report.has_match);
+    assert_eq!(
+        report.diagnostics.output_contract,
+        TypedQueryOutputContract::Existence
+    );
+    assert_eq!(
+        report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::FlatScan
+    );
+    assert_eq!(
+        report.diagnostics.reason,
+        TypedQueryPlanningReason::BroadCategoricalEquality
+    );
+}
+
+#[test]
 fn planned_typed_query_count_matches_uses_flat_scan_for_broad_plan() {
     let schema = entity_schema();
     let mapping = entity_mapping(&schema);

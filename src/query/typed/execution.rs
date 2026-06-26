@@ -699,7 +699,7 @@ fn unsatisfiable_plan_stats(index: &RowMappedFSEIndex) -> QueryExecutionStats {
     }
 }
 
-fn record_matches_plan(record: &FSERecord, plan: &TypedQueryPlan) -> bool {
+pub(super) fn record_matches_plan(record: &FSERecord, plan: &TypedQueryPlan) -> bool {
     plan.predicates()
         .iter()
         .all(|predicate| evaluate_typed_predicate(record, predicate))
