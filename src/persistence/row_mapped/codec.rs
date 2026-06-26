@@ -221,8 +221,13 @@ fn write_compact_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
         .iter()
         .map(|value| var_u64_len(*value))
         .sum::<usize>();
+    let delta_varint_len = delta_varint_u64_len(values);
 
-    if varint_len < raw_len {
+    if delta_varint_len < raw_len && delta_varint_len < varint_len {
+        bytes.push(COMPACT_U64_VEC_DELTA_VARINT_MODE);
+        write_u64(bytes, values.len() as u64);
+        write_delta_varint_u64_vec(bytes, values);
+    } else if varint_len < raw_len {
         bytes.push(COMPACT_U64_VEC_VARINT_MODE);
         write_u64(bytes, values.len() as u64);
 
@@ -232,6 +237,18 @@ fn write_compact_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
     } else {
         bytes.push(COMPACT_U64_VEC_RAW_MODE);
         write_u64_vec(bytes, values);
+    }
+}
+
+fn write_delta_varint_u64_vec(bytes: &mut Vec<u8>, values: &[u64]) {
+    let mut previous = 0_i64;
+
+    for value in values {
+        debug_assert!(*value <= i64::MAX as u64);
+        let current = *value as i64;
+        let delta = current - previous;
+        write_var_u64(bytes, zig_zag_encode_i64(delta));
+        previous = current;
     }
 }
 
@@ -267,9 +284,38 @@ fn var_u64_len(mut value: u64) -> usize {
     len
 }
 
+fn delta_varint_u64_len(values: &[u64]) -> usize {
+    let mut previous = 0_i64;
+    let mut len = 0;
+
+    for value in values {
+        if *value > i64::MAX as u64 {
+            return usize::MAX;
+        }
+
+        let current = *value as i64;
+        let Some(delta) = current.checked_sub(previous) else {
+            return usize::MAX;
+        };
+        len += var_u64_len(zig_zag_encode_i64(delta));
+        previous = current;
+    }
+
+    len
+}
+
+fn zig_zag_encode_i64(value: i64) -> u64 {
+    ((value as u64) << 1) ^ ((value >> 63) as u64)
+}
+
+fn zig_zag_decode_i64(value: u64) -> i64 {
+    ((value >> 1) as i64) ^ -((value & 1) as i64)
+}
+
 const ROW_MAPPED_ARCHIVE_V2_MAGIC: [u8; 8] = *b"FSERMV02";
 const COMPACT_U64_VEC_RAW_MODE: u8 = 0;
 const COMPACT_U64_VEC_VARINT_MODE: u8 = 1;
+const COMPACT_U64_VEC_DELTA_VARINT_MODE: u8 = 2;
 
 struct RowMappedArchiveReader<'a> {
     bytes: &'a [u8],
@@ -339,10 +385,45 @@ impl<'a> RowMappedArchiveReader<'a> {
 
                 Ok(values)
             }
+            COMPACT_U64_VEC_DELTA_VARINT_MODE => {
+                let length = self.read_len(field)?;
+                self.read_delta_varint_u64_vec(field, length)
+            }
             mode => {
                 Err(FSERowMappedArchiveCodecError::InvalidCompactIntegerVectorMode { field, mode })
             }
         }
+    }
+
+    fn read_delta_varint_u64_vec(
+        &mut self,
+        field: &'static str,
+        length: usize,
+    ) -> Result<Vec<u64>, FSERowMappedArchiveCodecError> {
+        let mut values = Vec::with_capacity(length);
+        let mut previous = 0_i64;
+
+        for _ in 0..length {
+            let delta = zig_zag_decode_i64(self.read_var_u64(field)?);
+            let Some(current) = previous.checked_add(delta) else {
+                return Err(FSERowMappedArchiveCodecError::LengthOutOfRange {
+                    field,
+                    length: u64::MAX,
+                });
+            };
+
+            if current < 0 {
+                return Err(FSERowMappedArchiveCodecError::LengthOutOfRange {
+                    field,
+                    length: current as u64,
+                });
+            }
+
+            values.push(current as u64);
+            previous = current;
+        }
+
+        Ok(values)
     }
 
     fn read_len(&mut self, field: &'static str) -> Result<usize, FSERowMappedArchiveCodecError> {

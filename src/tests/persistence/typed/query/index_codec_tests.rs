@@ -171,7 +171,7 @@ fn typed_query_index_archive_codec_rejects_invalid_snapshot_on_encode() {
         encode_typed_query_index_archive_snapshot(&snapshot),
         Err(FSETypedQueryIndexArchiveCodecError::Snapshot(
             FSETypedQueryIndexArchiveSnapshotError::RowIdMismatch {
-                indexed_row_id: 103,
+                indexed_row_id: 211_507_896,
                 batch_row_id: 999,
             },
         ))
@@ -355,10 +355,10 @@ fn entity_batch(schema: &FSESchema) -> FSERecordBatch {
     FSERecordBatch::new(
         schema.clone(),
         vec![
-            RowId::new(100),
-            RowId::new(101),
-            RowId::new(102),
-            RowId::new(103),
+            RowId::new(211_507_896),
+            RowId::new(211_507_897),
+            RowId::new(211_507_898),
+            RowId::new(211_507_899),
         ],
         vec![
             entity_record(schema, 1, 12.5, "alpha", 1_000),
@@ -440,7 +440,7 @@ fn compact_entity_batch_section_len() -> usize {
         + compact_field_len("score")
         + compact_field_len("class")
         + compact_field_len("observed_at");
-    let row_id_bytes = 1 + 8 + 4;
+    let row_id_bytes = 1 + 8 + 8;
     let column_bytes = (1 + 4) + (1 + (4 * 8)) + (1 + 4) + (1 + (4 * 2));
 
     8 + 8 + schema_field_bytes + row_id_bytes + 8 + column_bytes
