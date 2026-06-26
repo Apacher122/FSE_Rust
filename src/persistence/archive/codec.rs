@@ -13,10 +13,12 @@ const MIN_ARCHIVE_NODE_BYTES: usize = 57;
 const INDEX_ARCHIVE_V2_MAGIC: [u8; 8] = *b"FSEIDX02";
 const INDEX_ARCHIVE_V3_MAGIC: [u8; 8] = *b"FSEIDX03";
 const INDEX_ARCHIVE_V4_MAGIC: [u8; 8] = *b"FSEIDX04";
+const INDEX_ARCHIVE_V5_MAGIC: [u8; 8] = *b"FSEIDX05";
 const COMPACT_SCALAR_VEC_RAW_MODE: u8 = 0;
 const COMPACT_SCALAR_VEC_EMPTY_MODE: u8 = 1;
 const COMPACT_SCALAR_VEC_REPEATED_MODE: u8 = 2;
 const COMPACT_SCALAR_VEC_BYTE_PLANES_MODE: u8 = 3;
+const COMPACT_SCALAR_VEC_INTEGER_VARINT_MODE: u8 = 4;
 const COMPACT_SCALAR_BYTE_PLANE_REPEATED_MODE: u8 = 0;
 const COMPACT_SCALAR_BYTE_PLANE_RAW_MODE: u8 = 1;
 const COMPACT_U64_VEC_RAW_MODE: u8 = 0;
@@ -153,7 +155,7 @@ pub fn encode_archive_snapshot(
     snapshot.validate()?;
 
     let mut bytes = Vec::new();
-    bytes.extend_from_slice(&INDEX_ARCHIVE_V4_MAGIC);
+    bytes.extend_from_slice(&INDEX_ARCHIVE_V5_MAGIC);
     write_manifest(&mut bytes, &snapshot.manifest);
 
     for node in &snapshot.nodes {
@@ -167,6 +169,10 @@ pub fn encode_archive_snapshot(
 pub fn decode_archive_snapshot(
     bytes: &[u8],
 ) -> Result<FSEIndexArchiveSnapshot, FSEArchiveCodecError> {
+    if bytes.starts_with(&INDEX_ARCHIVE_V5_MAGIC) {
+        return decode_fixed_shape_archive_snapshot(bytes, &INDEX_ARCHIVE_V5_MAGIC);
+    }
+
     if bytes.starts_with(&INDEX_ARCHIVE_V4_MAGIC) {
         return decode_fixed_shape_archive_snapshot(bytes, &INDEX_ARCHIVE_V4_MAGIC);
     }
@@ -342,7 +348,18 @@ fn write_fixed_compact_scalar_vec(bytes: &mut Vec<u8>, values: &[Scalar], expect
         return;
     }
 
-    if compact_scalar_byte_plane_payload_len(values) < size_of::<Scalar>() * values.len() {
+    let raw_len = size_of::<Scalar>() * values.len();
+    let byte_plane_len = compact_scalar_byte_plane_payload_len(values);
+
+    if let Some(integer_varint_len) = compact_scalar_integer_varint_payload_len(values) {
+        if integer_varint_len < raw_len && integer_varint_len <= byte_plane_len {
+            bytes.push(COMPACT_SCALAR_VEC_INTEGER_VARINT_MODE);
+            write_scalar_integer_varints(bytes, values);
+            return;
+        }
+    }
+
+    if byte_plane_len < raw_len {
         bytes.push(COMPACT_SCALAR_VEC_BYTE_PLANES_MODE);
         write_scalar_byte_planes(bytes, values);
         return;
@@ -404,6 +421,31 @@ fn compact_scalar_byte_plane_payload_len(values: &[Scalar]) -> usize {
         .sum()
 }
 
+fn compact_scalar_integer_varint_payload_len(values: &[Scalar]) -> Option<usize> {
+    let mut len = 0;
+
+    for value in values {
+        let integer = scalar_to_compact_integer(*value)?;
+        len += var_u64_len(zigzag_i64(integer));
+    }
+
+    Some(len)
+}
+
+fn scalar_to_compact_integer(value: Scalar) -> Option<i64> {
+    if !value.is_finite() || value.to_bits() == (-0.0_f32).to_bits() || value.fract() != 0.0 {
+        return None;
+    }
+
+    if value < i64::MIN as Scalar || value > i64::MAX as Scalar {
+        return None;
+    }
+
+    let integer = value as i64;
+
+    ((integer as Scalar).to_bits() == value.to_bits()).then_some(integer)
+}
+
 fn repeated_scalar_byte_lane(values: &[Scalar], lane: usize) -> Option<u8> {
     let value = values.first()?.to_le_bytes()[lane];
 
@@ -411,6 +453,14 @@ fn repeated_scalar_byte_lane(values: &[Scalar], lane: usize) -> Option<u8> {
         .iter()
         .all(|other| other.to_le_bytes()[lane] == value)
         .then_some(value)
+}
+
+fn write_scalar_integer_varints(bytes: &mut Vec<u8>, values: &[Scalar]) {
+    for value in values {
+        if let Some(integer) = scalar_to_compact_integer(*value) {
+            write_var_u64(bytes, zigzag_i64(integer));
+        }
+    }
 }
 
 fn write_scalar_byte_planes(bytes: &mut Vec<u8>, values: &[Scalar]) {
@@ -426,6 +476,14 @@ fn write_scalar_byte_planes(bytes: &mut Vec<u8>, values: &[Scalar]) {
             }
         }
     }
+}
+
+fn zigzag_i64(value: i64) -> u64 {
+    ((value as u64) << 1) ^ ((value >> 63) as u64)
+}
+
+fn unzigzag_i64(value: u64) -> i64 {
+    ((value >> 1) as i64) ^ (-((value & 1) as i64))
 }
 
 fn write_scalar(bytes: &mut Vec<u8>, value: Scalar) {
@@ -682,8 +740,25 @@ impl<'a> ArchiveReader<'a> {
                 Ok(vec![value; length])
             }
             COMPACT_SCALAR_VEC_BYTE_PLANES_MODE => self.read_byte_plane_scalar_vec(field, length),
+            COMPACT_SCALAR_VEC_INTEGER_VARINT_MODE => {
+                self.read_integer_varint_scalar_vec(field, length)
+            }
             mode => Err(FSEArchiveCodecError::InvalidCompactScalarVectorMode { field, mode }),
         }
+    }
+
+    fn read_integer_varint_scalar_vec(
+        &mut self,
+        field: &'static str,
+        length: usize,
+    ) -> Result<Vec<Scalar>, FSEArchiveCodecError> {
+        let mut values = Vec::with_capacity(length);
+
+        for _ in 0..length {
+            values.push(unzigzag_i64(self.read_var_u64(field)?) as Scalar);
+        }
+
+        Ok(values)
     }
 
     fn read_byte_plane_scalar_vec(

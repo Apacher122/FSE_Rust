@@ -32,12 +32,25 @@ fn archive_snapshot_codec_uses_versioned_compact_container() {
     let fixture = small_benchmark_fixture();
     let snapshot = FSEIndexArchiveSnapshot::from_index(&fixture.index).unwrap();
     let bytes = encode_archive_snapshot(&snapshot).unwrap();
+    let v4_bytes = encode_v4_archive_snapshot_for_test(&snapshot);
     let v3_bytes = encode_v3_archive_snapshot_for_test(&snapshot);
     let v2_bytes = encode_v2_archive_snapshot_for_test(&snapshot);
 
-    assert_eq!(&bytes[..8], b"FSEIDX04");
+    assert_eq!(&bytes[..8], b"FSEIDX05");
+    assert!(bytes.len() <= v4_bytes.len());
     assert!(bytes.len() <= v3_bytes.len());
     assert!(bytes.len() < v2_bytes.len());
+}
+
+#[test]
+fn archive_snapshot_codec_decodes_v4_byte_plane_snapshot_bytes() {
+    let fixture = small_benchmark_fixture();
+    let snapshot = FSEIndexArchiveSnapshot::from_index(&fixture.index).unwrap();
+    let bytes = encode_v4_archive_snapshot_for_test(&snapshot);
+    let decoded = decode_archive_snapshot(&bytes).unwrap();
+
+    assert!(bytes.starts_with(b"FSEIDX04"));
+    assert_eq!(decoded, snapshot);
 }
 
 #[test]
@@ -87,11 +100,22 @@ fn archive_snapshot_codec_compacts_empty_and_repeated_vectors() {
 #[test]
 fn archive_snapshot_codec_byte_plane_scalars_reduce_fixed_shape_bytes() {
     let snapshot = byte_plane_archive_snapshot_for_test();
-    let byte_plane_bytes = encode_archive_snapshot(&snapshot).unwrap();
+    let byte_plane_bytes = encode_v4_archive_snapshot_for_test(&snapshot);
     let fixed_shape_bytes = encode_v3_archive_snapshot_for_test(&snapshot);
     let decoded = decode_archive_snapshot(&byte_plane_bytes).unwrap();
 
     assert!(byte_plane_bytes.len() < fixed_shape_bytes.len());
+    assert_eq!(decoded, snapshot);
+}
+
+#[test]
+fn archive_snapshot_codec_integer_scalars_reduce_byte_plane_bytes() {
+    let snapshot = integer_varint_archive_snapshot_for_test();
+    let integer_varint_bytes = encode_archive_snapshot(&snapshot).unwrap();
+    let byte_plane_bytes = encode_v4_archive_snapshot_for_test(&snapshot);
+    let decoded = decode_archive_snapshot(&integer_varint_bytes).unwrap();
+
+    assert!(integer_varint_bytes.len() < byte_plane_bytes.len());
     assert_eq!(decoded, snapshot);
 }
 
@@ -200,14 +224,38 @@ fn byte_plane_archive_snapshot_for_test() -> FSEIndexArchiveSnapshot {
         manifest: FSEArchiveManifest::try_new(4, 4, 1, 0, FSEArchiveSections::empty()).unwrap(),
         nodes: vec![FSEPartitionNodeArchiveRecord {
             id: 0,
+            centroid: vec![1.25, 2.25, 3.25, 4.25],
+            bounds_min: vec![0.125, 0.125, 0.125, 0.125],
+            bounds_max: vec![8.5, 8.5, 8.5, 8.5],
+            residual_dimensions: vec![
+                vec![1.25, 2.25, 3.25, 4.25],
+                vec![2.5, 3.5, 4.5, 5.5],
+                vec![3.75, 4.75, 5.75, 6.75],
+                vec![4.875, 5.875, 6.875, 7.875],
+            ],
+            cardinality: 4,
+            children: Vec::new(),
+            is_leaf: true,
+        }],
+    };
+
+    snapshot.validate().unwrap();
+    snapshot
+}
+
+fn integer_varint_archive_snapshot_for_test() -> FSEIndexArchiveSnapshot {
+    let snapshot = FSEIndexArchiveSnapshot {
+        manifest: FSEArchiveManifest::try_new(4, 4, 1, 0, FSEArchiveSections::empty()).unwrap(),
+        nodes: vec![FSEPartitionNodeArchiveRecord {
+            id: 0,
             centroid: vec![1.0, 2.0, 3.0, 4.0],
             bounds_min: vec![0.0, 0.0, 0.0, 0.0],
-            bounds_max: vec![8.0, 8.0, 8.0, 8.0],
+            bounds_max: vec![255.0, 255.0, 255.0, 255.0],
             residual_dimensions: vec![
                 vec![1.0, 2.0, 3.0, 4.0],
-                vec![2.0, 3.0, 4.0, 5.0],
-                vec![3.0, 4.0, 5.0, 6.0],
-                vec![4.0, 5.0, 6.0, 7.0],
+                vec![10.0, 20.0, 30.0, 40.0],
+                vec![100.0, 200.0, 300.0, 400.0],
+                vec![-1.0, -2.0, -3.0, -4.0],
             ],
             cardinality: 4,
             children: Vec::new(),
@@ -231,6 +279,19 @@ fn encode_legacy_archive_snapshot_for_test(snapshot: &FSEIndexArchiveSnapshot) -
     bytes
 }
 
+fn encode_v4_archive_snapshot_for_test(snapshot: &FSEIndexArchiveSnapshot) -> Vec<u8> {
+    let mut bytes = Vec::new();
+
+    bytes.extend_from_slice(b"FSEIDX04");
+    write_legacy_manifest_for_test(&mut bytes, &snapshot.manifest);
+
+    for node in &snapshot.nodes {
+        write_v4_node_for_test(&mut bytes, node, snapshot.manifest.dimensions as usize);
+    }
+
+    bytes
+}
+
 fn encode_v3_archive_snapshot_for_test(snapshot: &FSEIndexArchiveSnapshot) -> Vec<u8> {
     let mut bytes = Vec::new();
 
@@ -242,6 +303,30 @@ fn encode_v3_archive_snapshot_for_test(snapshot: &FSEIndexArchiveSnapshot) -> Ve
     }
 
     bytes
+}
+
+fn write_v4_node_for_test(
+    bytes: &mut Vec<u8>,
+    node: &FSEPartitionNodeArchiveRecord,
+    dimensions: usize,
+) {
+    write_var_u64_for_test(bytes, node.id);
+    write_byte_plane_compact_scalar_vec_for_test(bytes, &node.centroid, dimensions);
+    write_byte_plane_compact_scalar_vec_for_test(bytes, &node.bounds_min, dimensions);
+    write_byte_plane_compact_scalar_vec_for_test(bytes, &node.bounds_max, dimensions);
+
+    let residual_rows = node.residual_dimensions.first().map_or(0, Vec::len);
+    write_var_u64_for_test(bytes, residual_rows as u64);
+
+    if residual_rows > 0 {
+        for dimension in &node.residual_dimensions {
+            write_byte_plane_compact_scalar_vec_for_test(bytes, dimension, residual_rows);
+        }
+    }
+
+    write_var_u64_for_test(bytes, node.cardinality);
+    write_compact_u64_vec_for_test(bytes, &node.children);
+    write_legacy_bool_for_test(bytes, node.is_leaf);
 }
 
 fn encode_v2_archive_snapshot_for_test(snapshot: &FSEIndexArchiveSnapshot) -> Vec<u8> {
@@ -295,6 +380,38 @@ fn write_legacy_manifest_for_test(bytes: &mut Vec<u8>, manifest: &FSEArchiveMani
     write_legacy_bool_for_test(bytes, manifest.sections.encoder_metadata);
 }
 
+fn write_byte_plane_compact_scalar_vec_for_test(
+    bytes: &mut Vec<u8>,
+    values: &[Scalar],
+    expected_len: usize,
+) {
+    if expected_len == 0 {
+        bytes.push(1);
+        return;
+    }
+
+    if let Some(value) = repeated_scalar_for_test(values) {
+        bytes.push(2);
+        bytes.extend_from_slice(&value.to_le_bytes());
+        return;
+    }
+
+    let raw_len = std::mem::size_of::<Scalar>() * values.len();
+    let byte_plane_len = byte_plane_scalar_vec_payload_len_for_test(values);
+
+    if byte_plane_len < raw_len {
+        bytes.push(3);
+        write_byte_plane_scalar_vec_for_test(bytes, values);
+        return;
+    }
+
+    bytes.push(0);
+
+    for value in values {
+        bytes.extend_from_slice(&value.to_le_bytes());
+    }
+}
+
 fn write_fixed_compact_scalar_vec_for_test(
     bytes: &mut Vec<u8>,
     values: &[Scalar],
@@ -315,6 +432,42 @@ fn write_fixed_compact_scalar_vec_for_test(
 
     for value in values {
         bytes.extend_from_slice(&value.to_le_bytes());
+    }
+}
+
+fn byte_plane_scalar_vec_payload_len_for_test(values: &[Scalar]) -> usize {
+    (0..std::mem::size_of::<Scalar>())
+        .map(|lane| {
+            if repeated_scalar_byte_lane_for_test(values, lane).is_some() {
+                2
+            } else {
+                1 + values.len()
+            }
+        })
+        .sum()
+}
+
+fn repeated_scalar_byte_lane_for_test(values: &[Scalar], lane: usize) -> Option<u8> {
+    let value = values.first()?.to_le_bytes()[lane];
+
+    values
+        .iter()
+        .all(|other| other.to_le_bytes()[lane] == value)
+        .then_some(value)
+}
+
+fn write_byte_plane_scalar_vec_for_test(bytes: &mut Vec<u8>, values: &[Scalar]) {
+    for lane in 0..std::mem::size_of::<Scalar>() {
+        if let Some(value) = repeated_scalar_byte_lane_for_test(values, lane) {
+            bytes.push(0);
+            bytes.push(value);
+        } else {
+            bytes.push(1);
+
+            for value in values {
+                bytes.push(value.to_le_bytes()[lane]);
+            }
+        }
     }
 }
 
