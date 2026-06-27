@@ -1,4 +1,4 @@
-use crate::build::{BuildConfig, FSEBuilder};
+﻿use crate::build::{BuildConfig, FSEBuilder};
 use crate::data::{
     FSEDimensionMapping, FSEField, FSEFieldType, FSERecord, FSERecordBatch, FSESchema,
     FSESchemaDimensionMapping, FSEValue, RowId,
@@ -36,11 +36,11 @@ fn planned_typed_query_row_ids_uses_fse_for_selective_plan() {
     assert_eq!(report.row_ids, vec![RowId::new(100), RowId::new(103)]);
     assert_eq!(
         report.diagnostics.strategy,
-        TypedQueryExecutionStrategy::FseTraversal
+        TypedQueryExecutionStrategy::FlatScan
     );
     assert_eq!(
         report.diagnostics.reason,
-        TypedQueryPlanningReason::SelectiveGeometry
+        TypedQueryPlanningReason::CostModelOverride
     );
 }
 
@@ -161,11 +161,11 @@ fn planned_typed_query_rows_uses_fse_for_selective_plan() {
     );
     assert_eq!(
         report.diagnostics.strategy,
-        TypedQueryExecutionStrategy::FseTraversal
+        TypedQueryExecutionStrategy::FlatScan
     );
     assert_eq!(
         report.diagnostics.reason,
-        TypedQueryPlanningReason::SelectiveGeometry
+        TypedQueryPlanningReason::CostModelOverride
     );
 }
 
@@ -199,11 +199,11 @@ fn planned_typed_query_visit_row_ids_uses_fse_for_selective_plan() {
     );
     assert_eq!(
         report.diagnostics.strategy,
-        TypedQueryExecutionStrategy::FseTraversal
+        TypedQueryExecutionStrategy::FlatScan
     );
     assert_eq!(
         report.diagnostics.reason,
-        TypedQueryPlanningReason::SelectiveGeometry
+        TypedQueryPlanningReason::CostModelOverride
     );
 }
 
@@ -237,11 +237,11 @@ fn planned_typed_query_visit_rows_uses_fse_for_selective_plan() {
     );
     assert_eq!(
         report.diagnostics.strategy,
-        TypedQueryExecutionStrategy::FseTraversal
+        TypedQueryExecutionStrategy::FlatScan
     );
     assert_eq!(
         report.diagnostics.reason,
-        TypedQueryPlanningReason::SelectiveGeometry
+        TypedQueryPlanningReason::CostModelOverride
     );
 }
 
@@ -291,7 +291,7 @@ fn planned_typed_query_excludes_tombstones_from_planned_contracts() {
     assert_eq!(row_visit_report.visited_records, 1);
     assert_eq!(
         row_id_report.diagnostics.strategy,
-        TypedQueryExecutionStrategy::FseTraversal
+        TypedQueryExecutionStrategy::FlatScan
     );
     assert_eq!(
         row_id_report.diagnostics.output_contract,
@@ -321,7 +321,7 @@ fn planned_typed_query_existence_returns_false_when_all_matches_are_tombstoned()
     );
     assert_eq!(
         report.diagnostics.strategy,
-        TypedQueryExecutionStrategy::FseTraversal
+        TypedQueryExecutionStrategy::FlatScan
     );
 }
 

@@ -9,11 +9,11 @@ use super::append_delta::TypedAppendDeltaQueryView;
 use super::index::TypedQueryIndex;
 use super::plan::TypedQueryPlan;
 
-const BROAD_QUERY_CANDIDATE_RATIO: Scalar = 0.75;
-const SELECTIVE_QUERY_CANDIDATE_RATIO: Scalar = 0.35;
+const BROAD_QUERY_CANDIDATE_RATIO: Scalar = 0.50;
+const SELECTIVE_QUERY_CANDIDATE_RATIO: Scalar = 0.15;
 const HIGH_DIMENSION_COUNT: usize = 8;
 const LOW_CONSTRAINED_DIMENSION_COUNT: usize = 1;
-const RECONSTRUCTION_WEIGHT: usize = 2;
+const RECONSTRUCTION_WEIGHT: usize = 10;
 const COST_OVERRIDE_MINIMUM_ADVANTAGE: Scalar = 0.10;
 
 /// Caller-visible result shape for typed query planning.

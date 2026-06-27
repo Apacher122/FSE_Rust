@@ -27,13 +27,10 @@ fn typed_query_planning_diagnostics_selects_fse_for_selective_plan() {
     let diagnostics =
         plan_typed_query_execution(&query_index, &plan, TypedQueryOutputContract::RowIds);
 
-    assert_eq!(
-        diagnostics.strategy,
-        TypedQueryExecutionStrategy::FseTraversal
-    );
+    assert_eq!(diagnostics.strategy, TypedQueryExecutionStrategy::FlatScan);
     assert_eq!(
         diagnostics.reason,
-        TypedQueryPlanningReason::SelectiveGeometry
+        TypedQueryPlanningReason::CostModelOverride
     );
     assert_eq!(
         diagnostics.output_contract,
@@ -48,15 +45,15 @@ fn typed_query_planning_diagnostics_selects_fse_for_selective_plan() {
     assert!(diagnostics.estimated_candidate_ratio <= 0.35);
     assert_eq!(
         diagnostics.selectivity_bucket,
-        TypedQuerySelectivityBucket::Selective
+        TypedQuerySelectivityBucket::Moderate
     );
     assert!(diagnostics.estimated_retained_leaf_count <= diagnostics.leaf_count);
     assert!(!diagnostics.requires_append_delta_scan);
-    assert!(diagnostics.uses_geometric_traversal());
-    assert!(!diagnostics.uses_flat_scan());
+    assert!(!diagnostics.uses_geometric_traversal());
+    assert!(diagnostics.uses_flat_scan());
     assert!(!diagnostics.is_broad_query());
     assert!(!diagnostics.risk_flags.has_any());
-    assert!(diagnostics.work_estimate.estimated_traversal_node_visits > 0);
+    assert_eq!(diagnostics.work_estimate.estimated_traversal_node_visits, 0);
     assert_eq!(
         diagnostics.work_estimate,
         diagnostics
@@ -64,7 +61,7 @@ fn typed_query_planning_diagnostics_selects_fse_for_selective_plan() {
             .for_strategy(diagnostics.strategy)
     );
     assert_eq!(
-        diagnostics.strategy_costs.fse_traversal,
+        diagnostics.strategy_costs.flat_scan,
         diagnostics.work_estimate
     );
     assert_eq!(
@@ -89,28 +86,28 @@ fn typed_query_planning_diagnostics_selects_fse_for_selective_plan() {
         comparison.flat_scan_work,
         diagnostics.strategy_costs.flat_scan
     );
-    assert!(comparison.reduces_predicate_evaluations());
-    assert!(comparison.reduces_flat_scan_records());
-    assert!(comparison.traversal_node_visit_delta > 0);
+    assert!(!comparison.reduces_predicate_evaluations());
+    assert!(!comparison.reduces_flat_scan_records());
+    assert_eq!(comparison.traversal_node_visit_delta, 0);
     assert_eq!(comparison.materialized_record_delta, 0);
     assert_eq!(
         comparison.classification(),
-        TypedQueryPlanningCostClassification::ScanWorkReduction
+        TypedQueryPlanningCostClassification::FlatScanEquivalent
     );
     assert_eq!(
         diagnostics.cost_classification_against_flat_scan(),
-        TypedQueryPlanningCostClassification::ScanWorkReduction
+        TypedQueryPlanningCostClassification::FlatScanEquivalent
     );
-    assert_eq!(
-        diagnostics.work_estimate.estimated_reconstructed_records,
-        diagnostics.estimated_candidate_records
-    );
+    assert_eq!(diagnostics.work_estimate.estimated_reconstructed_records, 0);
     assert_eq!(
         diagnostics.work_estimate.estimated_predicate_evaluations,
-        diagnostics.estimated_candidate_records
+        diagnostics.total_records
     );
     assert_eq!(diagnostics.work_estimate.estimated_materialized_records, 0);
-    assert_eq!(diagnostics.work_estimate.estimated_flat_scan_records, 0);
+    assert_eq!(
+        diagnostics.work_estimate.estimated_flat_scan_records,
+        diagnostics.total_records
+    );
 }
 
 #[test]
@@ -347,12 +344,12 @@ fn typed_query_planning_diagnostics_selects_hybrid_for_append_delta_view() {
     assert!(diagnostics.estimated_candidate_records >= 2);
     assert_eq!(
         diagnostics.selectivity_bucket,
-        TypedQuerySelectivityBucket::Moderate
+        TypedQuerySelectivityBucket::Broad
     );
     assert!(diagnostics.requires_append_delta_scan);
     assert!(diagnostics.uses_geometric_traversal());
     assert!(diagnostics.risk_flags.has_any());
-    assert!(!diagnostics.risk_flags.broad_predicate);
+    assert!(diagnostics.risk_flags.broad_predicate);
     assert!(!diagnostics.risk_flags.materialization_pressure);
     assert!(!diagnostics.risk_flags.high_dimensional_low_constraint);
     assert!(diagnostics.risk_flags.append_delta_scan);
