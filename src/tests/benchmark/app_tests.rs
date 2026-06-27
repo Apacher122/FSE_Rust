@@ -304,10 +304,19 @@ fn benchmark_application_renderer_uses_detailed_output_for_debug_report() {
     assert!(output.contains("planner predicate evaluation delta vs flat scan"));
     assert!(output.contains("planner flat scan record delta vs flat scan"));
     assert!(output.contains("planner traversal node visit delta vs flat scan"));
+    assert!(output.contains("baseline typed existence has match"));
+    assert!(output.contains("planned typed existence has match"));
+    assert!(output.contains("typed scan existence average elapsed"));
+    assert!(output.contains("planned typed existence average elapsed"));
+    assert!(output.contains("existence planner strategy"));
+    assert!(output.contains("existence planner reason"));
+    assert!(output.contains("existence planner cost classification"));
+    assert!(output.contains("typed existence comparison agreement"));
     assert!(output.contains("logical archive bytes before maintenance"));
     assert!(output.contains("append archive bytes before maintenance"));
     assert!(output.contains("maintenance status requires archive write"));
     assert!(output.contains("Workload typed indexed comparison summary"));
+    assert!(output.contains("Workload typed indexed existence comparison summary"));
     assert!(output.contains("Workload typed archive load timing summary"));
     assert!(output.contains("Workload typed archive append rebuild timing summary"));
     assert!(output.contains("Workload typed archive append-delta query timing summary"));
@@ -505,11 +514,52 @@ fn benchmark_application_runs_debug_report_configuration() {
             .terminal_output
             .contains("planner traversal node visit delta vs flat scan")
     );
+    assert!(
+        output
+            .terminal_output
+            .contains("baseline typed existence has match")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("planned typed existence has match")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("typed scan existence average elapsed")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("planned typed existence average elapsed")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("existence planner strategy")
+    );
+    assert!(output.terminal_output.contains("existence planner reason"));
+    assert!(
+        output
+            .terminal_output
+            .contains("existence planner cost classification")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("typed existence comparison agreement")
+    );
     assert!(output.terminal_output.contains("rebuilt/append-delta"));
     assert!(
         output
             .terminal_output
             .contains("Workload typed indexed comparison summary")
+    );
+    assert!(
+        output
+            .terminal_output
+            .contains("Workload typed indexed existence comparison summary")
     );
     assert!(
         output

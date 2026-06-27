@@ -1,5 +1,6 @@
 use crate::benchmark::reports::{
     RepeatedTimingConfig, compare_typed_query_execution, compare_typed_query_execution_repeated,
+    compare_typed_query_existence_execution,
 };
 use crate::build::{BuildConfig, FSEBuilder};
 use crate::data::{
@@ -88,6 +89,45 @@ fn typed_comparison_supports_categorical_equality_plan() {
     assert_eq!(report.baseline_matched_records, 2);
     assert_eq!(report.indexed_matched_records, 2);
     assert_eq!(report.indexed_stats.matched_records, 2);
+}
+
+#[test]
+fn typed_existence_comparison_reports_planned_existence_metrics() {
+    let fixture = typed_fixture();
+    let status_encoder = status_encoder();
+    let predicate = FSEPredicate::equals(
+        FSEPredicateField::name("status"),
+        FSEValue::Category("closed".to_string()),
+    );
+    let plan = TypedQueryPlan::categorical_equality(
+        &predicate,
+        &fixture.schema,
+        &fixture.mapping,
+        &status_encoder,
+    )
+    .expect("categorical predicate should produce a plan");
+
+    let report = compare_typed_query_existence_execution(&fixture.query_index, &plan)
+        .expect("typed existence comparison should execute");
+
+    assert!(report.baseline_has_match);
+    assert!(report.planned_has_match);
+    assert_eq!(
+        report.planning_diagnostics.output_contract,
+        crate::query::TypedQueryOutputContract::Existence
+    );
+    assert!(report.planning_diagnostics.output_contract.short_circuits());
+    assert_eq!(
+        report.planning_diagnostics.strategy,
+        TypedQueryExecutionStrategy::FlatScan
+    );
+    assert!(
+        report
+            .planning_diagnostics
+            .work_estimate
+            .estimated_predicate_evaluations
+            <= fixture.query_index.batch().len()
+    );
 }
 
 #[test]

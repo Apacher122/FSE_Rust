@@ -10,7 +10,7 @@ use crate::math::Scalar;
 use crate::query::{
     IndexedTypedQueryError, QueryExecutionStats, TypedQueryIndex, TypedQueryOutputContract,
     TypedQueryPlan, TypedQueryPlanningDiagnostics, evaluate_typed_query_plan,
-    plan_typed_query_execution,
+    plan_typed_query_execution, typed_query_has_match,
 };
 
 /// Comparison report for typed batch scan and indexed typed execution.
@@ -58,6 +58,31 @@ pub struct TypedQueryComparisonReport {
     pub retained_leaf_ratio: Scalar,
 }
 
+/// Comparison report for typed scan and planned typed existence execution.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedQueryExistenceComparisonReport {
+    /// Whether typed batch scan found at least one match.
+    pub baseline_has_match: bool,
+
+    /// Whether planned typed execution found at least one match.
+    pub planned_has_match: bool,
+
+    /// Planning diagnostics for the typed existence execution path.
+    pub planning_diagnostics: TypedQueryPlanningDiagnostics,
+
+    /// Wall-clock timing measurements for one existence execution of both paths.
+    pub timing: TimingReport,
+
+    /// Repeated timing measurements for typed batch scan and planned existence execution.
+    pub repeated_timing: RepeatedComparisonTimingReport,
+
+    /// Single-run timing ratio computed as baseline elapsed divided by planned elapsed.
+    pub single_run_timing_ratio: f64,
+
+    /// Average timing ratio computed as baseline average elapsed divided by planned average.
+    pub average_timing_ratio: f64,
+}
+
 /// Compares indexed typed execution against typed batch scan.
 ///
 /// # Runtime Role
@@ -69,6 +94,18 @@ pub fn compare_typed_query_execution(
     plan: &TypedQueryPlan,
 ) -> Result<TypedQueryComparisonReport, IndexedTypedQueryError> {
     compare_typed_query_execution_repeated(query_index, plan, &RepeatedTimingConfig::default())
+}
+
+/// Compares planned typed existence execution against typed batch scan.
+pub fn compare_typed_query_existence_execution(
+    query_index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+) -> Result<TypedQueryExistenceComparisonReport, IndexedTypedQueryError> {
+    compare_typed_query_existence_execution_repeated(
+        query_index,
+        plan,
+        &RepeatedTimingConfig::default(),
+    )
 }
 
 /// Compares indexed typed execution against typed batch scan with repeated timing.
@@ -137,6 +174,65 @@ pub fn compare_typed_query_execution_repeated(
         record_evaluation_avoidance_ratio,
         candidate_ratio: indexed_report.execution_stats.candidate_ratio,
         retained_leaf_ratio: indexed_report.execution_stats.retained_leaf_ratio,
+    })
+}
+
+/// Compares planned typed existence execution against typed batch scan with repeated timing.
+///
+/// # Panics
+///
+/// Panics when planned typed existence returns a different boolean result than
+/// typed batch scan.
+pub fn compare_typed_query_existence_execution_repeated(
+    query_index: &TypedQueryIndex,
+    plan: &TypedQueryPlan,
+    timing_config: &RepeatedTimingConfig,
+) -> Result<TypedQueryExistenceComparisonReport, IndexedTypedQueryError> {
+    let (baseline_has_match, baseline_elapsed) = measure_elapsed(|| {
+        let has_match = typed_query_has_match(query_index.batch(), plan);
+        std::hint::black_box(has_match);
+        has_match
+    });
+    let (planned_report, planned_elapsed) = measure_elapsed(|| {
+        let report = query_index.has_match_with_planning(plan)?;
+        std::hint::black_box(report.has_match);
+        Ok::<_, IndexedTypedQueryError>(report)
+    });
+    let planned_report = planned_report?;
+
+    assert_eq!(
+        baseline_has_match, planned_report.has_match,
+        "planned typed existence must match typed batch scan presence"
+    );
+
+    let repeated_timing = measure_repeated_comparison_interleaved(
+        timing_config,
+        || {
+            let has_match = typed_query_has_match(query_index.batch(), plan);
+            std::hint::black_box(has_match);
+        },
+        || {
+            let report = query_index
+                .has_match_with_planning(plan)
+                .expect("planned typed existence should match the validated single-run comparison");
+            std::hint::black_box(report.has_match);
+        },
+    );
+
+    Ok(TypedQueryExistenceComparisonReport {
+        baseline_has_match,
+        planned_has_match: planned_report.has_match,
+        planning_diagnostics: planned_report.diagnostics,
+        timing: TimingReport {
+            baseline_elapsed,
+            fse_elapsed: planned_elapsed,
+        },
+        single_run_timing_ratio: duration_ratio(baseline_elapsed, planned_elapsed),
+        average_timing_ratio: duration_ratio(
+            repeated_timing.baseline.average_elapsed,
+            repeated_timing.fse.average_elapsed,
+        ),
+        repeated_timing,
     })
 }
 

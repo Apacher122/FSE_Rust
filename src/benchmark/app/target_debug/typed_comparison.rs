@@ -9,7 +9,8 @@ use super::target::{
 use super::typed_workload::{TypedBenchmarkContext, typed_x_range_plan};
 use crate::benchmark::reports::output::format_duration_ascii;
 use crate::benchmark::reports::{
-    TypedQueryComparisonReport, compare_typed_query_execution_repeated,
+    TypedQueryComparisonReport, TypedQueryExistenceComparisonReport,
+    compare_typed_query_execution_repeated, compare_typed_query_existence_execution_repeated,
 };
 use crate::benchmark::workloads::QueryWorkloadCase;
 use crate::query::TypedQueryPlanningRiskFlags;
@@ -28,8 +29,12 @@ impl BenchmarkApplicationRenderer {
             "Target workload typed indexed comparison",
             |output, context, workload| {
                 let report = typed_comparison_report(context, &typed_context, workload);
+                let existence_report =
+                    typed_existence_comparison_report(context, &typed_context, workload);
 
                 append_target_typed_comparison_report(output, &report);
+                output.push('\n');
+                append_target_typed_existence_comparison_report(output, &existence_report);
             },
         );
     }
@@ -77,6 +82,41 @@ impl BenchmarkApplicationRenderer {
                 cost_comparison.flat_scan_record_delta,
                 cost_comparison.traversal_node_visit_delta,
                 format_scalar_percent(report.record_evaluation_avoidance_ratio),
+            ));
+        }
+
+        output.push('\n');
+        output.push_str("Workload typed indexed existence comparison summary\n");
+        output.push_str("--------------------------------------------------\n");
+        output.push_str(
+            "workload | baseline has match | planned has match | typed scan existence | planned existence | timing ratio | planner strategy | planner reason | planner cost classification | planner predicate delta | planner flat scan delta | planner traversal delta | agreement\n",
+        );
+
+        for workload in &context.workloads {
+            let report = typed_existence_comparison_report(context, &typed_context, workload);
+            let cost_comparison = report
+                .planning_diagnostics
+                .cost_comparison_against_flat_scan();
+
+            output.push_str(&format!(
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
+                workload.name,
+                report.baseline_has_match,
+                report.planned_has_match,
+                format_duration_ascii(report.repeated_timing.baseline.average_elapsed),
+                format_duration_ascii(report.repeated_timing.fse.average_elapsed),
+                format_speedup_ratio(report.average_timing_ratio),
+                format!("{:?}", report.planning_diagnostics.strategy),
+                format!("{:?}", report.planning_diagnostics.reason),
+                format!(
+                    "{:?}",
+                    report
+                        .planning_diagnostics
+                        .cost_classification_against_flat_scan()
+                ),
+                cost_comparison.predicate_evaluation_delta,
+                cost_comparison.flat_scan_record_delta,
+                cost_comparison.traversal_node_visit_delta,
             ));
         }
 
@@ -224,6 +264,93 @@ fn append_target_typed_comparison_report(output: &mut String, report: &TypedQuer
     append_debug_line(output, "typed comparison agreement", "pass");
 }
 
+fn append_target_typed_existence_comparison_report(
+    output: &mut String,
+    report: &TypedQueryExistenceComparisonReport,
+) {
+    let cost_comparison = report
+        .planning_diagnostics
+        .cost_comparison_against_flat_scan();
+
+    append_debug_line(
+        output,
+        "baseline typed existence has match",
+        report.baseline_has_match,
+    );
+    append_debug_line(
+        output,
+        "planned typed existence has match",
+        report.planned_has_match,
+    );
+    append_debug_duration_line(
+        output,
+        "typed scan existence average elapsed",
+        report.repeated_timing.baseline.average_elapsed,
+    );
+    append_debug_duration_line(
+        output,
+        "planned typed existence average elapsed",
+        report.repeated_timing.fse.average_elapsed,
+    );
+    append_debug_line(
+        output,
+        "planned typed existence speedup",
+        format_speedup_ratio(report.average_timing_ratio),
+    );
+    append_debug_line(
+        output,
+        "existence planner strategy",
+        format!("{:?}", report.planning_diagnostics.strategy),
+    );
+    append_debug_line(
+        output,
+        "existence planner reason",
+        format!("{:?}", report.planning_diagnostics.reason),
+    );
+    append_debug_line(
+        output,
+        "existence planner cost classification",
+        format!(
+            "{:?}",
+            report
+                .planning_diagnostics
+                .cost_classification_against_flat_scan()
+        ),
+    );
+    append_debug_line(
+        output,
+        "existence planner estimated predicate evaluations",
+        report
+            .planning_diagnostics
+            .work_estimate
+            .estimated_predicate_evaluations,
+    );
+    append_debug_line(
+        output,
+        "existence planner estimated flat scan records",
+        report
+            .planning_diagnostics
+            .work_estimate
+            .estimated_flat_scan_records,
+    );
+    append_debug_line(
+        output,
+        "existence planner predicate evaluation delta vs flat scan",
+        cost_comparison.predicate_evaluation_delta,
+    );
+    append_debug_line(
+        output,
+        "existence planner flat scan record delta vs flat scan",
+        cost_comparison.flat_scan_record_delta,
+    );
+    append_debug_line(
+        output,
+        "existence planner traversal node visit delta vs flat scan",
+        cost_comparison.traversal_node_visit_delta,
+    );
+    append_debug_line(output, "typed existence comparison agreement", "pass");
+}
+
 fn typed_comparison_report(
     context: &BenchmarkApplicationContext,
     typed_context: &TypedBenchmarkContext,
@@ -237,6 +364,21 @@ fn typed_comparison_report(
         &context.timing_config,
     )
     .expect("typed benchmark comparison should execute")
+}
+
+fn typed_existence_comparison_report(
+    context: &BenchmarkApplicationContext,
+    typed_context: &TypedBenchmarkContext,
+    workload: &QueryWorkloadCase,
+) -> TypedQueryExistenceComparisonReport {
+    let plan = typed_x_range_plan(typed_context, workload);
+
+    compare_typed_query_existence_execution_repeated(
+        typed_context.query_index(),
+        &plan,
+        &context.timing_config,
+    )
+    .expect("typed existence benchmark comparison should execute")
 }
 
 fn format_scalar_percent(value: crate::math::Scalar) -> String {
