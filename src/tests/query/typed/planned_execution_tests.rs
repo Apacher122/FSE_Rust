@@ -387,6 +387,56 @@ fn planned_typed_query_existence_excludes_tombstones_on_flat_scan() {
 }
 
 #[test]
+fn planned_typed_query_visitors_exclude_tombstones_on_flat_scan() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = broad_class_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let plan = class_equality_plan(&schema, &mapping, "alpha");
+    let tombstones = TypedRowTombstoneSet::from_row_ids(vec![RowId::new(100), RowId::new(102)]);
+    let mut visited_row_ids = Vec::new();
+    let mut visited_rows = Vec::new();
+
+    let row_id_report = query_index
+        .visit_row_ids_with_planning_excluding_tombstones(&plan, &tombstones, |row_id| {
+            visited_row_ids.push(row_id);
+        })
+        .expect("planned tombstone row-id visitor should execute");
+    let row_report = query_index
+        .visit_rows_with_planning_excluding_tombstones(&plan, &tombstones, |row_id, _record| {
+            visited_rows.push(row_id);
+        })
+        .expect("planned tombstone row visitor should execute");
+
+    assert_eq!(visited_row_ids, vec![RowId::new(101)]);
+    assert_eq!(visited_rows, vec![RowId::new(101)]);
+    assert_eq!(row_id_report.visited_records, 1);
+    assert_eq!(row_report.visited_records, 1);
+    assert_eq!(
+        row_id_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowIdVisitor
+    );
+    assert_eq!(
+        row_id_report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::FlatScan
+    );
+    assert_eq!(
+        row_id_report.diagnostics.reason,
+        TypedQueryPlanningReason::BroadCategoricalEquality
+    );
+    assert_eq!(
+        row_report.diagnostics.output_contract,
+        TypedQueryOutputContract::RowVisitor
+    );
+    assert_eq!(
+        row_report.diagnostics.strategy,
+        TypedQueryExecutionStrategy::FlatScan
+    );
+}
+
+#[test]
 fn planned_typed_query_count_matches_uses_flat_scan_for_broad_plan() {
     let schema = entity_schema();
     let mapping = entity_mapping(&schema);

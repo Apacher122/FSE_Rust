@@ -604,10 +604,8 @@ where
     match strategy {
         TypedQueryExecutionStrategy::NoOp => {}
         TypedQueryExecutionStrategy::FlatScan => {
-            for row_id in visible_row_ids_from_batch(index.batch(), plan, tombstones) {
-                visited_records += 1;
-                visitor(row_id);
-            }
+            visited_records +=
+                visit_visible_row_ids_in_batch(index.batch(), plan, tombstones, &mut visitor);
         }
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
             index.visit_row_ids_excluding_tombstones(plan, tombstones, |row_id| {
@@ -701,10 +699,8 @@ where
     match strategy {
         TypedQueryExecutionStrategy::NoOp => {}
         TypedQueryExecutionStrategy::FlatScan => {
-            for row in visible_rows_from_batch(index.batch(), plan, tombstones) {
-                visited_records += 1;
-                visitor(row.row_id(), row.record());
-            }
+            visited_records +=
+                visit_visible_rows_in_batch(index.batch(), plan, tombstones, &mut visitor);
         }
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
             index.visit_rows_excluding_tombstones(plan, tombstones, |row_id, record| {
@@ -872,15 +868,10 @@ where
     match strategy {
         TypedQueryExecutionStrategy::NoOp => {}
         TypedQueryExecutionStrategy::FlatScan => {
-            for row_id in visible_row_ids_from_batch(view.base().batch(), plan, tombstones) {
-                visited_records += 1;
-                visitor(row_id);
-            }
-
-            for row_id in visible_row_ids_from_batch(view.appended(), plan, tombstones) {
-                visited_records += 1;
-                visitor(row_id);
-            }
+            visited_records +=
+                visit_visible_row_ids_in_batch(view.base().batch(), plan, tombstones, &mut visitor);
+            visited_records +=
+                visit_visible_row_ids_in_batch(view.appended(), plan, tombstones, &mut visitor);
         }
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
             view.visit_row_ids_excluding_tombstones(plan, tombstones, |row_id| {
@@ -980,15 +971,10 @@ where
     match strategy {
         TypedQueryExecutionStrategy::NoOp => {}
         TypedQueryExecutionStrategy::FlatScan => {
-            for row in visible_rows_from_batch(view.base().batch(), plan, tombstones) {
-                visited_records += 1;
-                visitor(row.row_id(), row.record());
-            }
-
-            for row in visible_rows_from_batch(view.appended(), plan, tombstones) {
-                visited_records += 1;
-                visitor(row.row_id(), row.record());
-            }
+            visited_records +=
+                visit_visible_rows_in_batch(view.base().batch(), plan, tombstones, &mut visitor);
+            visited_records +=
+                visit_visible_rows_in_batch(view.appended(), plan, tombstones, &mut visitor);
         }
         TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
             view.visit_rows_excluding_tombstones(plan, tombstones, |row_id, record| {
@@ -1130,4 +1116,54 @@ fn has_visible_match_in_batch(
         .iter()
         .zip(batch.records())
         .any(|(row_id, record)| !tombstones.contains(*row_id) && record_matches_plan(record, plan))
+}
+
+fn visit_visible_row_ids_in_batch<F>(
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    visitor: &mut F,
+) -> usize
+where
+    F: FnMut(RowId),
+{
+    if plan.is_unsatisfiable() {
+        return 0;
+    }
+
+    let mut visited_records = 0;
+
+    for (row_id, record) in batch.row_ids().iter().zip(batch.records()) {
+        if !tombstones.contains(*row_id) && record_matches_plan(record, plan) {
+            visited_records += 1;
+            visitor(*row_id);
+        }
+    }
+
+    visited_records
+}
+
+fn visit_visible_rows_in_batch<F>(
+    batch: &FSERecordBatch,
+    plan: &TypedQueryPlan,
+    tombstones: &TypedRowTombstoneSet,
+    visitor: &mut F,
+) -> usize
+where
+    F: FnMut(RowId, &FSERecord),
+{
+    if plan.is_unsatisfiable() {
+        return 0;
+    }
+
+    let mut visited_records = 0;
+
+    for (row_id, record) in batch.row_ids().iter().zip(batch.records()) {
+        if !tombstones.contains(*row_id) && record_matches_plan(record, plan) {
+            visited_records += 1;
+            visitor(*row_id, record);
+        }
+    }
+
+    visited_records
 }
