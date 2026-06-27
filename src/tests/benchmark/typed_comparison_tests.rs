@@ -36,9 +36,9 @@ fn typed_comparison_reports_exact_indexed_execution_metrics() {
         fixture.query_index.batch().len()
     );
     assert_eq!(report.indexed_stats.matched_records, 2);
-    assert_eq!(report.indexed_stats.reconstructed_records, 2);
-    assert_eq!(report.avoided_record_evaluations, 2);
-    assert_eq!(report.record_evaluation_avoidance_ratio, 0.5);
+    assert_eq!(report.indexed_stats.reconstructed_records, 4);
+    assert_eq!(report.avoided_record_evaluations, 0);
+    assert_eq!(report.record_evaluation_avoidance_ratio, 0.0);
     assert_eq!(report.candidate_ratio, report.indexed_stats.candidate_ratio);
     assert_eq!(
         report.retained_leaf_ratio,
@@ -46,11 +46,11 @@ fn typed_comparison_reports_exact_indexed_execution_metrics() {
     );
     assert_eq!(
         report.planning_diagnostics.strategy,
-        TypedQueryExecutionStrategy::FseTraversal
+        TypedQueryExecutionStrategy::FlatScan
     );
     assert_eq!(
         report.planning_diagnostics.selectivity_bucket,
-        TypedQuerySelectivityBucket::Selective
+        TypedQuerySelectivityBucket::Moderate
     );
     assert!(!report.planning_diagnostics.risk_flags.has_any());
     let planner_comparison = report
@@ -59,11 +59,11 @@ fn typed_comparison_reports_exact_indexed_execution_metrics() {
 
     assert_eq!(
         planner_comparison.selected_strategy,
-        TypedQueryExecutionStrategy::FseTraversal
+        TypedQueryExecutionStrategy::FlatScan
     );
-    assert!(planner_comparison.reduces_predicate_evaluations());
-    assert!(planner_comparison.reduces_flat_scan_records());
-    assert!(planner_comparison.traversal_node_visit_delta > 0);
+    assert!(!planner_comparison.reduces_predicate_evaluations());
+    assert!(!planner_comparison.reduces_flat_scan_records());
+    assert_eq!(planner_comparison.traversal_node_visit_delta, 0);
 }
 
 #[test]

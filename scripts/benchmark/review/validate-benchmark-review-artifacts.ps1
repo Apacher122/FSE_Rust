@@ -382,6 +382,10 @@ $TypedIndexedComparisonSummaryRows = Read-BenchmarkReviewPolicyValidatedCsv `
   "timing_ratio",
   "candidate_ratio",
   "planner_strategy",
+  "planner_reason",
+  "planner_cost_classification",
+  "hierarchy_metadata_bytes",
+  "records_pruned",
   "selectivity_bucket",
   "planner_risk",
   "planner_predicate_evaluation_delta",
@@ -402,6 +406,33 @@ Test-BenchmarkReviewTextColumnAllInSet `
   -Rows $TypedIndexedComparisonSummaryRows `
   -ColumnName "planner_strategy" `
   -ExpectedValues @("fsetraversal", "flatscan", "hybrid", "noop") `
+  -Description "typed indexed comparison summary"
+
+Test-BenchmarkReviewTextColumnAllInSet `
+  -Rows $TypedIndexedComparisonSummaryRows `
+  -ColumnName "planner_reason" `
+  -ExpectedValues @(
+  "emptyresult",
+  "selectivegeometry",
+  "moderategeometry",
+  "broadgeometry",
+  "highdimensionallowconstraint",
+  "broadcategoricalequality",
+  "appenddeltascan",
+  "adversarialgeometry",
+  "costmodeloverride"
+) `
+  -Description "typed indexed comparison summary"
+
+Test-BenchmarkReviewTextColumnAllInSet `
+  -Rows $TypedIndexedComparisonSummaryRows `
+  -ColumnName "planner_cost_classification" `
+  -ExpectedValues @(
+  "nowork",
+  "flatscanequivalent",
+  "scanworkreduction",
+  "traversaloverheadwithoutscanreduction"
+) `
   -Description "typed indexed comparison summary"
 
 Test-BenchmarkReviewTextColumnAllInSet `

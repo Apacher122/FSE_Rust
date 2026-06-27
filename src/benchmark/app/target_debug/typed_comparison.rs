@@ -44,7 +44,7 @@ impl BenchmarkApplicationRenderer {
         output.push_str("Workload typed indexed comparison summary\n");
         output.push_str("-----------------------------------------\n");
         output.push_str(
-            "workload | matched | typed scan | indexed typed | timing ratio | candidate ratio | planner strategy | selectivity bucket | planner risk | planner predicate delta | planner flat scan delta | planner traversal delta | record avoidance | agreement\n",
+            "workload | matched | typed scan | indexed typed | timing ratio | candidate ratio | planner strategy | planner reason | planner cost classification | hierarchy metadata bytes | records pruned | selectivity bucket | planner risk | planner predicate delta | planner flat scan delta | planner traversal delta | record avoidance | agreement\n",
         );
 
         for workload in &context.workloads {
@@ -54,7 +54,7 @@ impl BenchmarkApplicationRenderer {
                 .cost_comparison_against_flat_scan();
 
             output.push_str(&format!(
-                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
+                "{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | pass\n",
                 workload.name,
                 report.indexed_matched_records,
                 format_duration_ascii(report.repeated_timing.baseline.average_elapsed),
@@ -62,6 +62,15 @@ impl BenchmarkApplicationRenderer {
                 format_speedup_ratio(report.average_timing_ratio),
                 format_scalar_percent(report.candidate_ratio),
                 format!("{:?}", report.planning_diagnostics.strategy),
+                format!("{:?}", report.planning_diagnostics.reason),
+                format!(
+                    "{:?}",
+                    report
+                        .planning_diagnostics
+                        .cost_classification_against_flat_scan()
+                ),
+                report.planning_diagnostics.hierarchy_metadata_bytes,
+                report.indexed_stats.records_pruned(),
                 format!("{:?}", report.planning_diagnostics.selectivity_bucket),
                 format_planner_risk_flags(report.planning_diagnostics.risk_flags),
                 cost_comparison.predicate_evaluation_delta,
@@ -134,6 +143,26 @@ fn append_target_typed_comparison_report(output: &mut String, report: &TypedQuer
         output,
         "planner reason",
         format!("{:?}", report.planning_diagnostics.reason),
+    );
+    append_debug_line(
+        output,
+        "planner cost classification",
+        format!(
+            "{:?}",
+            report
+                .planning_diagnostics
+                .cost_classification_against_flat_scan()
+        ),
+    );
+    append_debug_line(
+        output,
+        "hierarchy metadata bytes",
+        report.planning_diagnostics.hierarchy_metadata_bytes,
+    );
+    append_debug_line(
+        output,
+        "records pruned",
+        report.indexed_stats.records_pruned(),
     );
     append_debug_line(
         output,

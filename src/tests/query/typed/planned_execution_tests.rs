@@ -1,4 +1,4 @@
-﻿use crate::build::{BuildConfig, FSEBuilder};
+use crate::build::{BuildConfig, FSEBuilder};
 use crate::data::{
     FSEDimensionMapping, FSEField, FSEFieldType, FSERecord, FSERecordBatch, FSESchema,
     FSESchemaDimensionMapping, FSEValue, RowId,

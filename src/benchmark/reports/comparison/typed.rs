@@ -90,7 +90,7 @@ pub fn compare_typed_query_execution_repeated(
         row_ids
     });
     let (indexed_report, indexed_elapsed) = measure_elapsed(|| {
-        let report = query_index.query_row_ids_with_stats(plan)?;
+        let report = query_index.query_row_ids_with_planning(plan)?;
         std::hint::black_box(report.row_ids.len());
         Ok::<_, IndexedTypedQueryError>(report)
     });
@@ -106,14 +106,14 @@ pub fn compare_typed_query_execution_repeated(
         },
         || {
             let report = query_index
-                .query_row_ids_with_stats(plan)
+                .query_row_ids_with_planning(plan)
                 .expect("indexed typed query should match the validated single-run comparison");
             std::hint::black_box(report.row_ids.len());
         },
     );
 
     let evaluated_records = query_index.batch().len();
-    let reconstructed_records = indexed_report.stats.reconstructed_records;
+    let reconstructed_records = indexed_report.execution_stats.reconstructed_records;
     let avoided_record_evaluations = evaluated_records.saturating_sub(reconstructed_records);
     let record_evaluation_avoidance_ratio =
         scalar_ratio_or_zero(avoided_record_evaluations, evaluated_records);
@@ -121,7 +121,7 @@ pub fn compare_typed_query_execution_repeated(
     Ok(TypedQueryComparisonReport {
         baseline_matched_records: baseline_row_ids.len(),
         indexed_matched_records: indexed_report.row_ids.len(),
-        indexed_stats: indexed_report.stats.clone(),
+        indexed_stats: indexed_report.execution_stats.clone(),
         planning_diagnostics,
         timing: TimingReport {
             baseline_elapsed,
@@ -135,8 +135,8 @@ pub fn compare_typed_query_execution_repeated(
         repeated_timing,
         avoided_record_evaluations,
         record_evaluation_avoidance_ratio,
-        candidate_ratio: indexed_report.stats.candidate_ratio,
-        retained_leaf_ratio: indexed_report.stats.retained_leaf_ratio,
+        candidate_ratio: indexed_report.execution_stats.candidate_ratio,
+        retained_leaf_ratio: indexed_report.execution_stats.retained_leaf_ratio,
     })
 }
 

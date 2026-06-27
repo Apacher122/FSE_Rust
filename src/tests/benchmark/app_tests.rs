@@ -295,6 +295,10 @@ fn benchmark_application_renderer_uses_detailed_output_for_debug_report() {
     assert!(output.contains("append-delta reconstructed records"));
     assert!(output.contains("rebuilt query average elapsed"));
     assert!(output.contains("planner strategy"));
+    assert!(output.contains("planner reason"));
+    assert!(output.contains("planner cost classification"));
+    assert!(output.contains("hierarchy metadata bytes"));
+    assert!(output.contains("records pruned"));
     assert!(output.contains("planner selectivity bucket"));
     assert!(output.contains("planner risk"));
     assert!(output.contains("planner predicate evaluation delta vs flat scan"));
@@ -472,6 +476,14 @@ fn benchmark_application_runs_debug_report_configuration() {
             .contains("append-delta reconstructed records")
     );
     assert!(output.terminal_output.contains("planner strategy"));
+    assert!(output.terminal_output.contains("planner reason"));
+    assert!(
+        output
+            .terminal_output
+            .contains("planner cost classification")
+    );
+    assert!(output.terminal_output.contains("hierarchy metadata bytes"));
+    assert!(output.terminal_output.contains("records pruned"));
     assert!(
         output
             .terminal_output
