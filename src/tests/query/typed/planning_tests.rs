@@ -228,6 +228,58 @@ fn typed_query_planning_diagnostics_uses_category_frequency_for_broad_equality()
 }
 
 #[test]
+fn typed_query_planning_diagnostics_estimates_existence_short_circuit_work() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = broad_class_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let plan = class_equality_plan(&schema, &mapping, "alpha");
+
+    let diagnostics =
+        plan_typed_query_execution(&query_index, &plan, TypedQueryOutputContract::Existence);
+
+    assert!(diagnostics.output_contract.short_circuits());
+    assert_eq!(diagnostics.strategy, TypedQueryExecutionStrategy::FlatScan);
+    assert_eq!(
+        diagnostics.reason,
+        TypedQueryPlanningReason::BroadCategoricalEquality
+    );
+    assert_eq!(diagnostics.estimated_candidate_records, 3);
+    assert_eq!(diagnostics.work_estimate.estimated_traversal_node_visits, 0);
+    assert_eq!(diagnostics.work_estimate.estimated_reconstructed_records, 0);
+    assert_eq!(diagnostics.work_estimate.estimated_predicate_evaluations, 1);
+    assert_eq!(diagnostics.work_estimate.estimated_materialized_records, 0);
+    assert_eq!(diagnostics.work_estimate.estimated_flat_scan_records, 1);
+    assert_eq!(
+        diagnostics
+            .strategy_costs
+            .flat_scan
+            .estimated_predicate_evaluations,
+        1
+    );
+    assert_eq!(
+        diagnostics
+            .strategy_costs
+            .fse_traversal
+            .estimated_reconstructed_records,
+        1
+    );
+    assert_eq!(
+        diagnostics
+            .strategy_costs
+            .fse_traversal
+            .estimated_predicate_evaluations,
+        1
+    );
+    assert_eq!(
+        diagnostics.cost_classification_against_flat_scan(),
+        TypedQueryPlanningCostClassification::FlatScanEquivalent
+    );
+}
+
+#[test]
 fn typed_query_planning_diagnostics_prioritizes_broad_category_frequency_reason() {
     let schema = high_dimensional_categorical_schema();
     let mapping = high_dimensional_categorical_mapping(&schema);
@@ -396,6 +448,49 @@ fn typed_query_planning_diagnostics_selects_hybrid_for_append_delta_view() {
             >= diagnostics.append_delta_record_count
     );
     assert_eq!(diagnostics.work_estimate.estimated_materialized_records, 0);
+}
+
+#[test]
+fn typed_query_planning_diagnostics_estimates_append_delta_existence_short_circuit_work() {
+    let schema = entity_schema();
+    let mapping = entity_mapping(&schema);
+    let batch = entity_batch(&schema);
+    let appended = appended_entity_batch(&schema);
+    let encoder = entity_encoder(&schema);
+    let query_index =
+        TypedQueryIndex::try_build(batch, &encoder, &builder()).expect("valid input should build");
+    let view = TypedAppendDeltaQueryView::try_new(&query_index, &appended)
+        .expect("valid append batch should produce a query view");
+    let plan = score_and_class_plan(&schema, &mapping);
+
+    let diagnostics =
+        plan_typed_append_delta_query_execution(&view, &plan, TypedQueryOutputContract::Existence);
+
+    assert!(diagnostics.output_contract.short_circuits());
+    assert_eq!(diagnostics.strategy, TypedQueryExecutionStrategy::Hybrid);
+    assert_eq!(
+        diagnostics.reason,
+        TypedQueryPlanningReason::AppendDeltaScan
+    );
+    assert_eq!(diagnostics.append_delta_record_count, 2);
+    assert_eq!(diagnostics.work_estimate.estimated_reconstructed_records, 1);
+    assert_eq!(diagnostics.work_estimate.estimated_predicate_evaluations, 1);
+    assert_eq!(diagnostics.work_estimate.estimated_materialized_records, 0);
+    assert_eq!(diagnostics.work_estimate.estimated_flat_scan_records, 0);
+    assert!(
+        diagnostics
+            .strategy_costs
+            .flat_scan
+            .estimated_predicate_evaluations
+            < diagnostics.total_records
+    );
+    let comparison = diagnostics.cost_comparison_against_flat_scan();
+
+    assert!(comparison.reduces_flat_scan_records());
+    assert_eq!(
+        comparison.classification(),
+        TypedQueryPlanningCostClassification::ScanWorkReduction
+    );
 }
 
 #[test]

@@ -900,36 +900,114 @@ fn estimate_strategy_work(
         TypedQueryExecutionStrategy::FlatScan => TypedQueryPlanningWorkEstimate {
             estimated_traversal_node_visits: 0,
             estimated_reconstructed_records: 0,
-            estimated_predicate_evaluations: total_records,
+            estimated_predicate_evaluations: estimated_scan_records_for_contract(
+                output_contract,
+                total_records,
+                estimated_candidate_records,
+            ),
             estimated_materialized_records: estimated_materialized_records(
                 output_contract,
                 estimated_candidate_records,
             ),
-            estimated_flat_scan_records: total_records,
+            estimated_flat_scan_records: estimated_scan_records_for_contract(
+                output_contract,
+                total_records,
+                estimated_candidate_records,
+            ),
         },
         TypedQueryExecutionStrategy::FseTraversal => TypedQueryPlanningWorkEstimate {
             estimated_traversal_node_visits: estimated_traversal_node_visits(base),
-            estimated_reconstructed_records: base.estimated_candidate_records,
-            estimated_predicate_evaluations: base.estimated_candidate_records,
+            estimated_reconstructed_records: estimated_scan_records_for_contract(
+                output_contract,
+                base.estimated_candidate_records,
+                base.estimated_candidate_records,
+            ),
+            estimated_predicate_evaluations: estimated_scan_records_for_contract(
+                output_contract,
+                base.estimated_candidate_records,
+                base.estimated_candidate_records,
+            ),
             estimated_materialized_records: estimated_materialized_records(
                 output_contract,
                 base.estimated_candidate_records,
             ),
             estimated_flat_scan_records: 0,
         },
-        TypedQueryExecutionStrategy::Hybrid => TypedQueryPlanningWorkEstimate {
-            estimated_traversal_node_visits: estimated_traversal_node_visits(base),
-            estimated_reconstructed_records: base.estimated_candidate_records,
-            estimated_predicate_evaluations: base
-                .estimated_candidate_records
-                .saturating_add(append_delta_record_count),
-            estimated_materialized_records: estimated_materialized_records(
+        TypedQueryExecutionStrategy::Hybrid => {
+            let (base_candidate_work, append_delta_work) = estimated_hybrid_scan_records(
                 output_contract,
-                estimated_candidate_records,
-            ),
-            estimated_flat_scan_records: append_delta_record_count,
-        },
+                base.estimated_candidate_records,
+                append_delta_record_count,
+            );
+
+            TypedQueryPlanningWorkEstimate {
+                estimated_traversal_node_visits: estimated_traversal_node_visits(base),
+                estimated_reconstructed_records: base_candidate_work,
+                estimated_predicate_evaluations: base_candidate_work
+                    .saturating_add(append_delta_work),
+                estimated_materialized_records: estimated_materialized_records(
+                    output_contract,
+                    estimated_candidate_records,
+                ),
+                estimated_flat_scan_records: append_delta_work,
+            }
+        }
     }
+}
+
+fn estimated_scan_records_for_contract(
+    output_contract: TypedQueryOutputContract,
+    available_records: usize,
+    estimated_matching_records: usize,
+) -> usize {
+    if output_contract.short_circuits() {
+        return estimated_short_circuit_scan_records(available_records, estimated_matching_records);
+    }
+
+    available_records
+}
+
+fn estimated_hybrid_scan_records(
+    output_contract: TypedQueryOutputContract,
+    base_candidate_records: usize,
+    append_delta_record_count: usize,
+) -> (usize, usize) {
+    if !output_contract.short_circuits() {
+        return (base_candidate_records, append_delta_record_count);
+    }
+
+    if base_candidate_records > 0 {
+        return (
+            estimated_short_circuit_scan_records(base_candidate_records, base_candidate_records),
+            0,
+        );
+    }
+
+    (
+        0,
+        estimated_short_circuit_scan_records(append_delta_record_count, append_delta_record_count),
+    )
+}
+
+fn estimated_short_circuit_scan_records(
+    available_records: usize,
+    estimated_matching_records: usize,
+) -> usize {
+    if available_records == 0 {
+        return 0;
+    }
+
+    if estimated_matching_records == 0 {
+        return available_records;
+    }
+
+    let denominator = estimated_matching_records.saturating_add(1);
+    let estimated_records = available_records
+        .saturating_add(denominator)
+        .saturating_sub(1)
+        / denominator;
+
+    estimated_records.clamp(1, available_records)
 }
 
 fn estimated_traversal_node_visits(base: BasePlanningEstimate) -> usize {
