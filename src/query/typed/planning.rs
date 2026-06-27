@@ -292,6 +292,9 @@ pub struct TypedQueryPlanningRiskFlags {
     /// A high-dimensional query constrains too few dimensions for stable pruning.
     pub high_dimensional_low_constraint: bool,
 
+    /// The query overlaps many index partitions but targets few candidates.
+    pub adversarial_geometry: bool,
+
     /// Pending append-delta records require direct predicate evaluation.
     pub append_delta_scan: bool,
 }
@@ -302,6 +305,7 @@ impl TypedQueryPlanningRiskFlags {
         self.broad_predicate
             || self.materialization_pressure
             || self.high_dimensional_low_constraint
+            || self.adversarial_geometry
             || self.append_delta_scan
     }
 }
@@ -417,6 +421,9 @@ pub enum TypedQueryPlanningReason {
 
     /// A high-dimensional query constrains too few dimensions for a stable pruning estimate.
     HighDimensionalLowConstraintQuery,
+
+    /// The query region overlaps many partitions but contains few estimated candidates.
+    AdversarialGeometry,
 
     /// The cost model overrode the heuristic strategy selection.
     CostModelOverride,
@@ -732,6 +739,16 @@ fn heuristic_select_strategy(
         );
     }
 
+    if estimated_candidate_ratio <= SELECTIVE_QUERY_CANDIDATE_RATIO
+        && base.estimated_retained_leaf_ratio >= BROAD_QUERY_CANDIDATE_RATIO
+        && base.leaf_count > 1
+    {
+        return (
+            TypedQueryExecutionStrategy::FlatScan,
+            TypedQueryPlanningReason::AdversarialGeometry,
+        );
+    }
+
     if estimated_candidate_ratio <= SELECTIVE_QUERY_CANDIDATE_RATIO && base.leaf_count > 1 {
         return (
             TypedQueryExecutionStrategy::FseTraversal,
@@ -955,6 +972,7 @@ fn risk_flags_from_estimate(
             reason,
             TypedQueryPlanningReason::HighDimensionalLowConstraintQuery
         ),
+        adversarial_geometry: matches!(reason, TypedQueryPlanningReason::AdversarialGeometry),
         append_delta_scan: requires_append_delta_scan,
     }
 }
