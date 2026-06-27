@@ -487,6 +487,9 @@ pub struct TypedQueryPlanningDiagnostics {
 
     /// Risk flags derived from the planning estimate and output contract.
     pub risk_flags: TypedQueryPlanningRiskFlags,
+
+    /// Estimated bytes for centroid and bound scalar metadata.
+    pub hierarchy_metadata_bytes: usize,
 }
 
 impl TypedQueryPlanningDiagnostics {
@@ -624,6 +627,7 @@ fn planning_diagnostics_from_estimate(
         work_estimate,
         strategy_costs,
         risk_flags,
+        hierarchy_metadata_bytes: base.node_count * base.dimensions * 12,
     }
 }
 
