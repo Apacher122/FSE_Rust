@@ -13,6 +13,8 @@ const BROAD_QUERY_CANDIDATE_RATIO: Scalar = 0.75;
 const SELECTIVE_QUERY_CANDIDATE_RATIO: Scalar = 0.35;
 const HIGH_DIMENSION_COUNT: usize = 8;
 const LOW_CONSTRAINED_DIMENSION_COUNT: usize = 1;
+const RECONSTRUCTION_WEIGHT: usize = 2;
+const COST_OVERRIDE_MINIMUM_ADVANTAGE: Scalar = 0.10;
 
 /// Caller-visible result shape for typed query planning.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -82,6 +84,17 @@ impl TypedQueryPlanningWorkEstimate {
     /// Returns true when every estimated work component is zero.
     pub fn is_empty(&self) -> bool {
         *self == Self::empty()
+    }
+
+    /// Returns a weighted total work estimate for cost comparison.
+    pub fn total_weighted_work(&self) -> usize {
+        self.estimated_predicate_evaluations
+            + self
+                .estimated_reconstructed_records
+                .saturating_mul(RECONSTRUCTION_WEIGHT)
+            + self.estimated_traversal_node_visits
+            + self.estimated_materialized_records
+            + self.estimated_flat_scan_records
     }
 }
 
@@ -404,6 +417,9 @@ pub enum TypedQueryPlanningReason {
 
     /// A high-dimensional query constrains too few dimensions for a stable pruning estimate.
     HighDimensionalLowConstraintQuery,
+
+    /// The cost model overrode the heuristic strategy selection.
+    CostModelOverride,
 }
 
 /// Diagnostic report produced before typed query execution.
@@ -560,6 +576,14 @@ fn planning_diagnostics_from_estimate(
         TypedQuerySelectivityBucket::from_candidate_ratio(estimated_candidate_ratio);
     let requires_append_delta_scan = append_delta_candidate_records > 0;
 
+    let strategy_costs = estimate_strategy_costs(
+        output_contract,
+        base,
+        estimated_candidate_records,
+        append_delta_record_count,
+        total_records,
+    );
+
     let (strategy, reason) = select_strategy(
         plan,
         output_contract,
@@ -568,13 +592,7 @@ fn planning_diagnostics_from_estimate(
         estimated_candidate_records,
         estimated_candidate_ratio,
         requires_append_delta_scan,
-    );
-    let strategy_costs = estimate_strategy_costs(
-        output_contract,
-        base,
-        estimated_candidate_records,
-        append_delta_record_count,
-        total_records,
+        strategy_costs,
     );
     let work_estimate = strategy_costs.for_strategy(strategy);
     let risk_flags = risk_flags_from_estimate(
@@ -610,6 +628,29 @@ fn planning_diagnostics_from_estimate(
 }
 
 fn select_strategy(
+    plan: &TypedQueryPlan,
+    output_contract: TypedQueryOutputContract,
+    total_records: usize,
+    base: BasePlanningEstimate,
+    estimated_candidate_records: usize,
+    estimated_candidate_ratio: Scalar,
+    requires_append_delta_scan: bool,
+    strategy_costs: TypedQueryStrategyCostEstimates,
+) -> (TypedQueryExecutionStrategy, TypedQueryPlanningReason) {
+    let (heuristic_strategy, heuristic_reason) = heuristic_select_strategy(
+        plan,
+        output_contract,
+        total_records,
+        base,
+        estimated_candidate_records,
+        estimated_candidate_ratio,
+        requires_append_delta_scan,
+    );
+
+    verify_strategy_by_cost(heuristic_strategy, heuristic_reason, strategy_costs)
+}
+
+fn heuristic_select_strategy(
     plan: &TypedQueryPlan,
     output_contract: TypedQueryOutputContract,
     total_records: usize,
@@ -698,6 +739,37 @@ fn select_strategy(
         TypedQueryExecutionStrategy::FseTraversal,
         TypedQueryPlanningReason::ModerateGeometry,
     )
+}
+
+fn verify_strategy_by_cost(
+    heuristic_strategy: TypedQueryExecutionStrategy,
+    heuristic_reason: TypedQueryPlanningReason,
+    strategy_costs: TypedQueryStrategyCostEstimates,
+) -> (TypedQueryExecutionStrategy, TypedQueryPlanningReason) {
+    let fse_total = strategy_costs.fse_traversal.total_weighted_work();
+    let flat_total = strategy_costs.flat_scan.total_weighted_work();
+
+    match heuristic_strategy {
+        TypedQueryExecutionStrategy::FseTraversal
+            if fse_total as Scalar
+                > flat_total as Scalar * (1.0 + COST_OVERRIDE_MINIMUM_ADVANTAGE) =>
+        {
+            (
+                TypedQueryExecutionStrategy::FlatScan,
+                TypedQueryPlanningReason::CostModelOverride,
+            )
+        }
+        TypedQueryExecutionStrategy::FlatScan
+            if flat_total as Scalar
+                > fse_total as Scalar * (1.0 + COST_OVERRIDE_MINIMUM_ADVANTAGE) =>
+        {
+            (
+                TypedQueryExecutionStrategy::FseTraversal,
+                TypedQueryPlanningReason::CostModelOverride,
+            )
+        }
+        _ => (heuristic_strategy, heuristic_reason),
+    }
 }
 
 fn estimate_base_index(index: &TypedQueryIndex, plan: &TypedQueryPlan) -> BasePlanningEstimate {
