@@ -49,6 +49,14 @@ pub struct QueryExecutionStats {
     pub candidate_ratio: Scalar,
 }
 
+impl QueryExecutionStats {
+    /// Number of records avoided by geometric pruning.
+    pub fn records_pruned(&self) -> usize {
+        self.total_records
+            .saturating_sub(self.reconstructed_records)
+    }
+}
+
 /// Query result paired with execution statistics.
 #[derive(Clone, Debug, PartialEq)]
 pub struct QueryExecutionReport {

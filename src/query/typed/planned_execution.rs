@@ -17,7 +17,9 @@ use super::planning::{
 };
 use super::tombstone::TypedRowTombstoneSet;
 
-/// Row-id query result paired with planning diagnostics.
+use crate::query::execution::QueryExecutionStats;
+
+/// Row-id query result paired with planning diagnostics and execution statistics.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlannedTypedQueryRowIdReport {
     /// Matching logical row identifiers.
@@ -25,6 +27,9 @@ pub struct PlannedTypedQueryRowIdReport {
 
     /// Planning diagnostics used to choose the execution path.
     pub diagnostics: TypedQueryPlanningDiagnostics,
+
+    /// Runtime statistics collected during query execution.
+    pub execution_stats: QueryExecutionStats,
 }
 
 /// Typed row query result paired with planning diagnostics.
@@ -73,16 +78,37 @@ pub fn planned_typed_query_row_ids(
     plan: &TypedQueryPlan,
 ) -> Result<PlannedTypedQueryRowIdReport, IndexedTypedQueryError> {
     let diagnostics = plan_typed_query_execution(index, plan, TypedQueryOutputContract::RowIds);
-    let row_ids = execute_index_strategy(
-        index,
-        plan,
-        diagnostics.strategy,
-        diagnostics.estimated_candidate_records,
-    )?;
+    let strategy = diagnostics.strategy;
+
+    let (row_ids, execution_stats) = match strategy {
+        TypedQueryExecutionStrategy::NoOp => (Vec::new(), QueryExecutionStats::default()),
+        TypedQueryExecutionStrategy::FlatScan => {
+            let ids = evaluate_typed_query_plan_with_capacity(
+                index.batch(),
+                plan,
+                diagnostics.estimated_candidate_records,
+            );
+            let matched = ids.len();
+            let total = index.batch().len();
+            let stats = QueryExecutionStats {
+                total_records: total,
+                reconstructed_records: total,
+                matched_records: matched,
+                candidate_ratio: 1.0,
+                ..QueryExecutionStats::default()
+            };
+            (ids, stats)
+        }
+        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
+            let report = index.query_row_ids_with_stats(plan)?;
+            (report.row_ids, report.stats)
+        }
+    };
 
     Ok(PlannedTypedQueryRowIdReport {
         row_ids,
         diagnostics,
+        execution_stats,
     })
 }
 
@@ -99,6 +125,7 @@ pub fn planned_typed_query_row_ids_excluding_tombstones(
     Ok(PlannedTypedQueryRowIdReport {
         row_ids,
         diagnostics,
+        execution_stats: QueryExecutionStats::default(),
     })
 }
 
@@ -305,6 +332,7 @@ pub fn planned_append_delta_query_row_ids(
     Ok(PlannedTypedQueryRowIdReport {
         row_ids,
         diagnostics,
+        execution_stats: QueryExecutionStats::default(),
     })
 }
 
@@ -326,6 +354,7 @@ pub fn planned_append_delta_query_row_ids_excluding_tombstones(
     Ok(PlannedTypedQueryRowIdReport {
         row_ids,
         diagnostics,
+        execution_stats: QueryExecutionStats::default(),
     })
 }
 
@@ -521,25 +550,6 @@ pub fn planned_append_delta_query_has_match_excluding_tombstones(
         has_match,
         diagnostics,
     })
-}
-
-fn execute_index_strategy(
-    index: &TypedQueryIndex,
-    plan: &TypedQueryPlan,
-    strategy: TypedQueryExecutionStrategy,
-    estimated_candidate_records: usize,
-) -> Result<Vec<RowId>, IndexedTypedQueryError> {
-    match strategy {
-        TypedQueryExecutionStrategy::NoOp => Ok(Vec::new()),
-        TypedQueryExecutionStrategy::FlatScan => Ok(evaluate_typed_query_plan_with_capacity(
-            index.batch(),
-            plan,
-            estimated_candidate_records,
-        )),
-        TypedQueryExecutionStrategy::FseTraversal | TypedQueryExecutionStrategy::Hybrid => {
-            index.query_row_ids(plan)
-        }
-    }
 }
 
 fn execute_index_strategy_excluding_tombstones(
